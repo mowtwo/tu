@@ -45,6 +45,7 @@ export let Todo = () => {
       button(onClick: setEmpty) { "empty" }
       button(onClick: setOne) { "one item" }
       button(onClick: setMany) { "three items" }
+      button(onClick: () => { items = ["buy milk", "walk the dog", "write Tu", "call mom"]; count = 4 }) { "four items" }
     }
   }
 }

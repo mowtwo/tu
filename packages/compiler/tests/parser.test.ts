@@ -248,6 +248,15 @@ describe('parser', () => {
     )
   })
 
+  it('tolerates `;` as a no-op statement separator inside a block', () => {
+    // The lexer admits `;` (added in M2.4 for type spans). Inside a block
+    // the parser treats it as an optional separator — `{ a = 1; b = 2 }`
+    // and `{ a = 1 \n b = 2 }` parse to the same Block.
+    const tree = ast('let f = () => { count = 1; count = 2 }')
+    const lambda = (tree.body[0] as { value: { body: { body: unknown[] } } }).value
+    expect(lambda.body.body).toHaveLength(2)
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

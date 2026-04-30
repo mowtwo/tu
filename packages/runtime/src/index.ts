@@ -155,39 +155,83 @@ export function mount(thunk: () => Child, container: Element): () => void {
 }
 
 /**
+ * One attribute → cell binding for `defineCustomElement`. The attribute's
+ * string value (or `null` when removed) flows into `cell.set(...)` after
+ * passing through the optional `parse`. Without `parse`, raw strings go
+ * straight into the cell — so it's caller's job to use `parse: Number` /
+ * `parse: (s) => s === ''` etc. for non-string types.
+ */
+export interface CustomElementAttribute {
+  /** Any object exposing `.set(value)` — typically a `Signal.State`. */
+  cell: { set(value: unknown): void }
+  /** Convert the raw HTML attribute string into the cell's value type. */
+  parse?: (raw: string | null) => unknown
+}
+
+export interface CustomElementOptions {
+  /** Attribute → cell map. Keys become `observedAttributes`; the matching
+   *  cell's `.set()` is called on initial connect AND on attribute change. */
+  attributes?: Record<string, CustomElementAttribute>
+}
+
+/**
  * Wrap a Tu thunk in a custom-element class and register it under
- * `tagName`. The resulting element mounts the thunk on `connectedCallback`
- * and tears down (`stop()`) on `disconnectedCallback`.
+ * `tagName`. The resulting element:
+ *   - Applies any `attributes` bindings before the first mount, so the
+ *     first render sees the user-provided attribute values.
+ *   - Mounts the thunk on `connectedCallback` (re-renders reactively).
+ *   - Re-applies a binding on every `attributeChangedCallback` — the
+ *     reactive Watcher then patches the DOM via the standard diff path.
+ *   - Tears down (`stop()`) on `disconnectedCallback`.
  *
- * V1 limitations:
- *   - The thunk's reactive scope is the MODULE's top-level cells. Multiple
- *     instances of the same custom element share state — useful for once-
- *     per-page components, limiting otherwise. Per-instance state needs
- *     local-`let` support in Tu (not in V1).
- *   - No attribute bridging. HTML attributes don't auto-bind to Tu cells
- *     yet; users hand-roll observedAttributes via a custom subclass if
- *     they need it.
+ * V1 limitation: the thunk's reactive scope is the MODULE's top-level
+ * cells. Multiple instances of the same registered element share state —
+ * fine for singleton cases, limiting otherwise. Per-instance state
+ * needs local-`let` support in Tu.
  *
  * Throws a `TypeError` outside a browser-like environment (no
  * `customElements`).
  */
 export function defineCustomElement(
   thunk: () => Child,
-  tagName: string
+  tagName: string,
+  options: CustomElementOptions = {}
 ): void {
   if (typeof customElements === 'undefined') {
     throw new TypeError(
       `defineCustomElement requires a browser-like environment with customElements; got none`
     )
   }
+  const attrs = options.attributes ?? {}
+  const observed = Object.keys(attrs)
   const TuElement = class extends HTMLElement {
+    static get observedAttributes(): string[] {
+      return observed
+    }
     private _stop?: () => void
     connectedCallback(): void {
+      // Apply initial attribute values BEFORE mount so the first render
+      // sees them — otherwise the thunk reads the cell's default and a
+      // re-render is needed to catch up.
+      for (const name of observed) {
+        const binding = attrs[name]!
+        const initial = this.getAttribute(name)
+        binding.cell.set(binding.parse ? binding.parse(initial) : initial)
+      }
       this._stop = mount(thunk, this)
     }
     disconnectedCallback(): void {
       this._stop?.()
       this._stop = undefined
+    }
+    attributeChangedCallback(
+      name: string,
+      _oldValue: string | null,
+      newValue: string | null
+    ): void {
+      const binding = attrs[name]
+      if (!binding) return
+      binding.cell.set(binding.parse ? binding.parse(newValue) : newValue)
     }
   }
   customElements.define(tagName, TuElement)

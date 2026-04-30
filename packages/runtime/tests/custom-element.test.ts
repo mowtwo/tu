@@ -61,6 +61,48 @@ describe('defineCustomElement()', () => {
     expect(renderCount).toBe(before)
   })
 
+  it('M4.2: applies an attribute → cell binding before the first mount', () => {
+    const name = new Signal.State('default')
+    defineCustomElement(() => h('p', {}, [name.get()]), 'tu-attr-init', {
+      attributes: { name: { cell: name } },
+    })
+    const el = dom.window.document.createElement('tu-attr-init')
+    el.setAttribute('name', 'Alice')
+    dom.window.document.body.appendChild(el)
+    // First render saw `Alice`, not `default`.
+    expect(el.textContent).toBe('Alice')
+  })
+
+  it('M4.2: subsequent attribute changes flow into the bound cell', async () => {
+    const name = new Signal.State('default')
+    defineCustomElement(() => h('p', {}, [name.get()]), 'tu-attr-change', {
+      attributes: { name: { cell: name } },
+    })
+    const el = dom.window.document.createElement('tu-attr-change')
+    el.setAttribute('name', 'Alice')
+    dom.window.document.body.appendChild(el)
+
+    el.setAttribute('name', 'Bob')
+    await flush()
+    expect(el.textContent).toBe('Bob')
+  })
+
+  it('M4.2: parse hook coerces attribute strings to richer types', async () => {
+    const count = new Signal.State(0)
+    defineCustomElement(
+      () => h('p', {}, [`count = ${count.get()}`]),
+      'tu-attr-parse',
+      { attributes: { count: { cell: count, parse: (s) => Number(s) } } }
+    )
+    const el = dom.window.document.createElement('tu-attr-parse')
+    el.setAttribute('count', '42')
+    dom.window.document.body.appendChild(el)
+    expect(el.textContent).toBe('count = 42')
+    el.setAttribute('count', '100')
+    await flush()
+    expect(el.textContent).toBe('count = 100')
+  })
+
   it('throws when customElements is unavailable', () => {
     const original = (globalThis as unknown as { customElements?: unknown }).customElements
     ;(globalThis as unknown as { customElements?: unknown }).customElements = undefined

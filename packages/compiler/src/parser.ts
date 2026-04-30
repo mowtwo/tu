@@ -503,6 +503,14 @@ export class Parser {
     const lbrace = this.expect(TokenKind.LBrace)
     const body: Expr[] = []
     while (this.peek().kind !== TokenKind.RBrace) {
+      // Tolerate optional `;` as a statement separator. Tu is whitespace-
+      // separated by default, but readers (and hands trained on JS / TS)
+      // reach for `;` when squeezing two stmts onto one line. Keep it a
+      // no-op so `() => { foo = 1; bar = 2 }` works the way users expect.
+      if (this.peek().kind === TokenKind.Semi) {
+        this.pos++
+        continue
+      }
       body.push(this.parseExpr())
     }
     const rbrace = this.expect(TokenKind.RBrace)
