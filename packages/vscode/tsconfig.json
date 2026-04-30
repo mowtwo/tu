@@ -3,7 +3,14 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    // VS Code's extension host loads the entrypoint via CommonJS `require()`,
+    // not ESM. Emit CJS even though the source uses ESM syntax — tsc handles
+    // the translation. Without this, the extension silently fails to load
+    // on activate (the error lands in Extension Host log, not the UI).
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false
   },
   "include": ["src/**/*"]
 }

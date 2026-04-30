@@ -12,10 +12,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./server": {
-      "import": "./dist/server.js"
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
     }
   },
   "files": [
