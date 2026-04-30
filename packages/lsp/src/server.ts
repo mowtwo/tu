@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import { TextDocument } from 'vscode-languageserver-textdocument'
 import {
+  CompletionItem,
+  CompletionItemKind,
   createConnection,
   Diagnostic,
   DiagnosticSeverity,
   Hover,
+  Location,
   MarkupKind,
   ProposedFeatures,
   Range,
@@ -13,6 +16,8 @@ import {
   type DiagnosticRelatedInformation,
 } from 'vscode-languageserver/node.js'
 import { fileURLToPath } from 'node:url'
+import { completionsAtTuPosition } from './completion.js'
+import { definitionAtTuPosition } from './definition.js'
 import { checkTuSource, type TuDiagnostic } from './diagnostics.js'
 import { hoverAtTuPosition } from './hover.js'
 
@@ -23,12 +28,37 @@ connection.onInitialize(() => ({
   capabilities: {
     textDocumentSync: TextDocumentSyncKind.Incremental,
     hoverProvider: true,
+    definitionProvider: true,
+    completionProvider: {
+      // No `triggerCharacters` — VS Code auto-invokes completion on
+      // identifier-typing already, and the only Tu punctuation that could
+      // make sense (`.` for ClassRef) is a separate semantic; let the user
+      // invoke explicitly there.
+      resolveProvider: false,
+    },
   },
   serverInfo: {
     name: '@tu/lsp',
     version: '0.0.0',
   },
 }))
+
+const TS_KIND_TO_LSP_COMPLETION: Record<string, CompletionItemKind> = {
+  var: CompletionItemKind.Variable,
+  let: CompletionItemKind.Variable,
+  const: CompletionItemKind.Constant,
+  function: CompletionItemKind.Function,
+  method: CompletionItemKind.Method,
+  property: CompletionItemKind.Property,
+  parameter: CompletionItemKind.Variable,
+  class: CompletionItemKind.Class,
+  interface: CompletionItemKind.Interface,
+  enum: CompletionItemKind.Enum,
+  module: CompletionItemKind.Module,
+  alias: CompletionItemKind.Reference,
+  keyword: CompletionItemKind.Keyword,
+  type: CompletionItemKind.TypeParameter,
+}
 
 const SEVERITY_MAP: Record<TuDiagnostic['severity'], DiagnosticSeverity> = {
   error: DiagnosticSeverity.Error,
@@ -169,6 +199,64 @@ documents.onDidClose((e) => {
   debounceTimers.delete(e.document.uri)
   // Clear stale diagnostics for closed documents.
   void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] })
+})
+
+connection.onCompletion((params): CompletionItem[] => {
+  const doc = documents.get(params.textDocument.uri)
+  if (!doc) return []
+  const filename = params.textDocument.uri.startsWith('file://')
+    ? fileURLToPath(params.textDocument.uri)
+    : params.textDocument.uri
+  const text = doc.getText()
+  try {
+    const items = completionsAtTuPosition(
+      text,
+      filename,
+      params.position.line,
+      params.position.character
+    )
+    return items.map((it) => {
+      const item: CompletionItem = {
+        label: it.label,
+        kind: TS_KIND_TO_LSP_COMPLETION[it.kind] ?? CompletionItemKind.Text,
+        sortText: it.sortText,
+      }
+      if (it.insertText !== undefined) item.insertText = it.insertText
+      if (it.detail !== undefined) item.detail = it.detail
+      if (it.documentation !== undefined) {
+        item.documentation = { kind: MarkupKind.Markdown, value: it.documentation }
+      }
+      return item
+    })
+  } catch {
+    return []
+  }
+})
+
+connection.onDefinition((params): Location[] => {
+  const doc = documents.get(params.textDocument.uri)
+  if (!doc) return []
+  const filename = params.textDocument.uri.startsWith('file://')
+    ? fileURLToPath(params.textDocument.uri)
+    : params.textDocument.uri
+  const text = doc.getText()
+  try {
+    const defs = definitionAtTuPosition(
+      text,
+      filename,
+      params.position.line,
+      params.position.character
+    )
+    return defs.map((d) => ({
+      uri: d.uri,
+      range: {
+        start: { line: d.line, character: d.col },
+        end: { line: d.line, character: d.col + d.length },
+      },
+    }))
+  } catch {
+    return []
+  }
 })
 
 connection.onHover((params): Hover | null => {

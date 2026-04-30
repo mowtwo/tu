@@ -279,14 +279,39 @@ export function mapSourceLineColToTS(
   tokens: TokenMapping[],
   source: string,
   line: number,
-  col: number
+  col: number,
+  options: { inclusiveEnd?: boolean } = {}
 ): { tsOffset: number; tokenSrcStart: number; tokenSrcEnd: number } | null {
   const srcOffset = lineColToOffset(source, line, col)
   if (srcOffset === null) return null
-  const tok = tightestContainingSrc(tokens, srcOffset)
+  // `inclusiveEnd` admits cursors sitting at exactly `srcEnd` — used by
+  // completion, where the user typically asks "what idents start with what
+  // I just typed?" with the cursor pinned to the end of the last char.
+  const tok = options.inclusiveEnd
+    ? tightestContainingSrcInclusiveEnd(tokens, srcOffset)
+    : tightestContainingSrc(tokens, srcOffset)
   if (!tok) return null
   const interior = srcOffset - tok.srcStart
   const jsWidth = tok.jsEnd - tok.jsStart
-  const tsOffset = tok.jsStart + Math.min(interior, Math.max(0, jsWidth - 1))
+  const cap = options.inclusiveEnd ? jsWidth : Math.max(0, jsWidth - 1)
+  const tsOffset = tok.jsStart + Math.min(interior, cap)
   return { tsOffset, tokenSrcStart: tok.srcStart, tokenSrcEnd: tok.srcEnd }
+}
+
+function tightestContainingSrcInclusiveEnd(
+  tokens: TokenMapping[],
+  srcOffset: number
+): TokenMapping | undefined {
+  let best: TokenMapping | undefined
+  let bestWidth = Number.POSITIVE_INFINITY
+  for (const t of tokens) {
+    if (t.srcStart <= srcOffset && srcOffset <= t.srcEnd) {
+      const w = t.srcEnd - t.srcStart
+      if (w < bestWidth) {
+        best = t
+        bestWidth = w
+      }
+    }
+  }
+  return best
 }

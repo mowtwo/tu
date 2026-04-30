@@ -23,10 +23,18 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Annotated `let X: type = …` declarations | M2 | when needed | Tu currently has lambda-param annotations only. Adding type annotations on let-decls lets users override TS inference (rare but useful for opaque cells). |
 | `tu check` CLI command | M2 | post-M3 | The `examples/clicker/typecheck.mjs` script proves the recipe; the M3 V1 LSP also exposes `checkTuFile`/`checkTuSource` from `@tu/lsp` programmatically. Lift into `@tu/cli` for a CLI entrypoint. |
-| LSP V2: completion, goto-definition, rename | M3 V1 | post-M3 | Hover landed in M3.3. The remaining three IDE features need either the Volar framework or deeper tsserver integration; the same `mapSourceLineColToTS` reverse-mapping infrastructure carries them forward. |
+| LSP V2: rename | M3 V1 | post-M3 | Completion landed in M3.4 and goto-definition in M3.5. Rename remains — it needs symbol-graph traversal across all open shadows + applyEdits round-trips through `mapTSRangeToSource` for every reference. |
 | LSP hover: cache LanguageService across hovers | M3.3 | post-M3.3 | Each hover currently rebuilds the import-graph BFS + a fresh `ts.LanguageService`. Acceptable for V1 correctness, but for snappier interactive feel cache by `(rootFilename, hash of every shadow source)` and reuse the LanguageService until any shadow changes. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.5
+
+- ~~LSP V2: goto-definition~~ — landed: same `LanguageService` + reverse-mapping infrastructure as hover/completion. New `definitionAtTuPosition` calls `getDefinitionAtPosition`, then maps each TS `DefinitionInfo` back through the **target** shadow's `tokenMappings` (the definition might live in a different `.tu` file when crossing imports). Definitions whose `fileName` falls outside the shadow graph (e.g. `@tu/runtime`'s `.d.ts`) are dropped — we don't surface internal `.ts` files as a goto target. LSP server now advertises `definitionProvider: true`. Verified end-to-end: jumping from a `count` read to its `let count = 0` lands on cols 11..15 of line 0; jumping from a cross-file `Card("hi")` call lands on the `Card` ident in `Card.tu`.
+
+## Closed in M3.4
+
+- ~~LSP V2: completion~~ — landed: `completionsAtTuPosition` reuses the shadow graph + `LanguageService` and calls `getCompletionsAtPosition`. The reverse mapping was extended with an `inclusiveEnd` flag so cursors sitting at exactly `srcEnd` of an identifier (the typical case while typing) still resolve — the cap on the interior offset goes from `jsWidth - 1` (strict) to `jsWidth` (inclusive). LSP server advertises `completionProvider: { resolveProvider: false }` and maps TS `ScriptElementKind` → LSP `CompletionItemKind`. Verified that previously-declared idents, typed lambda params, and cross-`.tu` imported names all surface in the completion list.
 
 ## Closed in M3.3
 
