@@ -33,6 +33,18 @@ importers:
         specifier: ^26.0.0
         version: 26.1.0
 
+  examples/composition:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+
   examples/counter:
     dependencies:
       '@tu/compiler':

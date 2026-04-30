@@ -479,9 +479,9 @@ export class Parser {
     let endOffset = nameTok.end
     if (this.peek().kind === TokenKind.Colon) {
       this.pos++
-      const typeTok = this.expect(TokenKind.Ident)
-      type = typeTok.text
-      endOffset = typeTok.end
+      const span = this.parseRawTypeUntilParamBoundary()
+      type = span.text
+      endOffset = span.end
     }
     return type === undefined
       ? {
@@ -499,6 +499,45 @@ export class Parser {
           nameStart: nameTok.start,
           nameEnd: nameTok.end,
         }
+  }
+
+  /**
+   * Same depth-tracked raw-type read as `parseRawTypeUntilEquals`, but the
+   * terminators are the param-list separators: `,` and `)` at depth 0.
+   * Lets users write rich param types: `(items: VNode[])`,
+   * `(cb: (x: number) => string)`, `(opts: { force?: boolean })`.
+   */
+  private parseRawTypeUntilParamBoundary(): { text: string; start: number; end: number } {
+    const start = this.peek().start
+    let depth = 0
+    let end = start
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) {
+        throw this.error(`unexpected EOF in param type annotation`)
+      }
+      if (depth === 0 && (t.kind === TokenKind.Comma || t.kind === TokenKind.RParen)) {
+        break
+      }
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
+        t.kind === TokenKind.Lt
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
+        t.kind === TokenKind.Gt
+      ) {
+        depth--
+      }
+      end = t.end
+      this.pos++
+    }
+    return { text: this.source.slice(start, end).trim(), start, end }
   }
 
   private parseBlock(): Block {

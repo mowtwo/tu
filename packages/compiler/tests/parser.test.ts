@@ -3,7 +3,9 @@ import { tokenize } from '../src/lexer.js'
 import { parse } from '../src/parser.js'
 
 function ast(src: string) {
-  return parse(tokenize(src))
+  // M5.5: param-type slicing uses the parser's source field, so the
+  // helper must thread the raw source through.
+  return parse(tokenize(src), src)
 }
 
 describe('parser', () => {

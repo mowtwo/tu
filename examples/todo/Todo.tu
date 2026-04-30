@@ -16,7 +16,8 @@ export let label = computed(
   else { "many items" }
 )
 
-let B = (a:Child)=>{
+
+let B = (props:string,a:Child)=>{
   fragement {
     "11"
     "222"
@@ -25,6 +26,7 @@ let B = (a:Child)=>{
     }
   }
 }
+
 
 let setEmpty = () => {
   items = []
@@ -56,6 +58,10 @@ export let Todo = () => {
     h1 { "Todo — " label }
 
     d
+
+    B ("") {
+        "abc"
+    }
 
     if (count > 0) {
       ul {

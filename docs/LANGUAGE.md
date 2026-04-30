@@ -1,7 +1,7 @@
 # Tu Language Reference
 
 A practical reference for every Tu syntactic form that compiles today. Covers
-the language as of the M2.5 / M3.9 line — see [DEFERRED.md](./DEFERRED.md) for
+the language as of the M5.x line — see [DEFERRED.md](./DEFERRED.md) for
 work still in flight.
 
 Tu is a single-pass, expression-oriented language that compiles to a small
@@ -91,13 +91,32 @@ Add `: T` between the name and `=` to give the binding an explicit TS type.
 The annotation is captured as a raw source slice and threaded into the TS
 shadow, with appropriate Signal wrapping:
 
-| Tu source                         | Emitted TS const type                       |
-| --------------------------------- | ------------------------------------------- |
-| `let App: () => string = …`       | `const App: () => string`                   |
-| `let count: number = 0`           | `const count: Signal.State<number>`         |
-| `let total: number = computed(…)` | `const total: Signal.Computed<number>`      |
+| Tu source                                  | Emitted TS const type                       |
+| ------------------------------------------ | ------------------------------------------- |
+| `let App: () => string = …`                | `const App: () => string`                   |
+| `let count: number = 0`                    | `const count: Signal.State<number>`         |
+| `let total: number = computed(…)`          | `const total: Signal.Computed<number>`      |
+| `let cell: Signal.State<MyShape> = …`      | `const cell: Signal.State<MyShape>` (no double-wrap — codegen detects the explicit Signal prefix) |
 
 The annotation is erased in JS-mode emission.
+
+### Local `let` inside a block
+
+A `let X = expr` written **inside a block body** declares a block-scoped
+const — it does NOT become a Signal cell. Useful for closures and small
+computations:
+
+```tu
+let Greet = (name: string) => {
+  let greeting = "Hello, " + name + "!"
+  let upper = greeting   // any plain JS expression
+  p { upper }
+}
+```
+
+Local lets shadow same-named top-level cells inside that block (reads
+emit as bare idents, no `.get()` injection). Type annotations are
+supported via the same raw-slice mechanism.
 
 ---
 
@@ -189,7 +208,14 @@ A 1-statement block compiles to `(stmt)`. An empty block is `(undefined)`.
 
 ## Markup (tag-calls)
 
-Markup uses a trailing-closure DSL. Three shapes:
+Markup uses a trailing-closure DSL. **Capitalization is the
+discriminator between HTML tags and user components** (React/JSX
+convention):
+
+- **Lowercase** identifier → `h("tag", props, children)` (HTML element)
+- **Uppercase** identifier → `Callee(args, [children])` (component
+  function call). tsserver sees the call as a real function — hover,
+  goto-definition, and completion all work on the component name.
 
 ### Bare tag with children
 
@@ -211,6 +237,46 @@ img(src: "logo.svg", alt: "logo")
 A `(Ident: …)` opener disambiguates tag-calls from positional calls. With
 no explicit-prop opener (and no children block), it parses as a positional
 call instead.
+
+### Component invocation
+
+```tu
+import { Card } from "./Card.tu"
+
+let App = () => Card("Alice") {
+  p { "Body content" }
+}
+```
+
+The component lambda conventionally takes `children` as its last
+positional parameter:
+
+```tu
+let Card = (name: string, children: VNode[]) => .card() {
+  h2 { "Hello, " name "!" }
+  children
+}
+```
+
+`children` is an array of vnodes; the runtime's flatten step splices
+them into the parent's children list at render time. `VNode` is auto-
+imported from `@tu/runtime` in TS-mode emit, so the annotation resolves
+without an explicit user import.
+
+### Fragment
+
+`Fragment { … }` from `@tu/runtime` lets a component return multiple
+sibling vnodes without an enclosing wrapper element (React's `<>…</>`):
+
+```tu
+import { Fragment } from "@tu/runtime"
+
+let Layout = (title: string, children: VNode[]) => Fragment {
+  header { h1 { title } }
+  main { children }
+  footer { "© 2026" }
+}
+```
 
 ### Pug-style class shorthand
 
@@ -318,21 +384,56 @@ let App = () => {
 A `style { … }` block emits an `<style>` HTML element sibling to the main
 component vnode. The CSS body is preserved verbatim (Tu doesn't parse CSS).
 
-### Scoped classes
+### Top-level rules must be class-rooted (M5/D)
 
-When a component contains a `style` block AND any `.classRef` references
-in the markup, Tu hashes every declared class with a per-component FNV-1a
-suffix (`-tu-{6 hex}`):
+Every top-level rule's selector list must start with `.` (a class
+selector), `:global(…)` (escape hatch), or `@` (at-rule like `@media`).
+Element selectors at top level (`p { … }`) raise a compile error to
+prevent global bleed:
 
 ```tu
-let Card = () => {
-  div(class: .card) { "hi" }                         // class="card-tu-a1b2c3"
-  style { .card { padding: 1rem; } }                 // .card-tu-a1b2c3 { … }
+style {
+  .card { padding: 1rem; }                  // ✅ class-rooted
+  .card .title { font-size: 1.25rem; }      // ✅ compound, still rooted
+  :global(.legacy-modal) { z-index: 9999; } // ✅ escape hatch
+  @media (min-width: 600px) { … }           // ✅ at-rule
+
+  p { color: red; }                         // ❌ compile error
 }
 ```
 
-Two components declaring the same class name get different hashes — styles
-don't bleed across components.
+For element selectors that only apply within a class, switch to CSS4
+nesting (modern browsers handle natively):
+
+```tu
+.card {
+  padding: 1rem;
+  > h2 { font-size: 1.25rem; }   // applies to .card > h2
+  &:hover { background: #eee; }  // applies to .card:hover
+}
+```
+
+### Scoped classes (dual-name injection — M5/F)
+
+When a component contains a `style` block AND any `.classRef` references
+in the markup, Tu hashes every declared class with a per-component FNV-1a
+suffix (`-tu-{6 hex}`). The markup carries **both** the original name and
+the hashed one (space-joined); CSS selectors use the hashed form only:
+
+```tu
+let Card = () => {
+  div(class: .card) { "hi" }
+  // → class="card card-tu-a1b2c3"  (original + hashed)
+
+  style { .card { padding: 1rem; } }
+  // → .card-tu-a1b2c3 { padding: 1rem; }  (hashed only)
+}
+```
+
+Two components declaring the same class name get different hashes — the
+component-scoped styles don't bleed. The unhashed name on markup lets
+global CSS / dev-tool inspection / framework theming layers still target
+`.card` if needed.
 
 ### `:global(.foo)` escape hatch
 

@@ -1,0 +1,18 @@
+{
+  "name": "@tu-examples/composition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M5 demo: capitalized components, children-as-last-arg, Fragment, local let, dual class injection.",
+  "scripts": {
+    "demo": "node run.mjs",
+    "build": "echo 'composition example: built on demand by run.mjs'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*",
+    "jsdom": "^26.0.0"
+  }
+}
