@@ -140,6 +140,36 @@ describe('completionsAtTuPosition — completion at a .tu cursor position', () =
     expect(labels).not.toContain('color')
   })
 
+  it('M5.4: surfaces TS built-in types in a let-decl annotation position', () => {
+    const src = 'export let count: '
+    const items = completionsAtTuPosition(src, join(tmp, 'type-let.tu'), 0, 18)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('string')
+    expect(labels).toContain('number')
+    expect(labels).toContain('boolean')
+    expect(labels).toContain('VNode')
+    expect(labels).toContain('Child')
+  })
+
+  it('M5.4: surfaces user-defined `type X` aliases in a type position', () => {
+    const src = ['type Person = { name: string }', 'export let alice: '].join('\n')
+    const items = completionsAtTuPosition(src, join(tmp, 'type-user.tu'), 1, 18)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('Person')
+    // detail explains it's a Tu type alias.
+    const person = items.find((i) => i.label === 'Person')!
+    expect(person.detail).toMatch(/type alias/)
+  })
+
+  it('M5.4: surfaces types in a lambda param annotation position', () => {
+    // `let f = (x: |)` — cursor at the `|` mark inside the param paren.
+    const src = 'export let f = (x: ) => x'
+    const items = completionsAtTuPosition(src, join(tmp, 'type-param.tu'), 0, 19)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('string')
+    expect(labels).toContain('number')
+  })
+
   it('M3.10: HTML tags do not duplicate user idents already returned by tsserver', () => {
     // User declared a `div` of their own (rare but legal). tsserver
     // returns it; our augmentation must not add a second `div` entry.

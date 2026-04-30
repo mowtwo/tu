@@ -25,6 +25,21 @@ export interface TuCompletionItem {
  * day-to-day UI work; users wanting more should `// @ts-ignore` or
  * extend.
  */
+/**
+ * Type names surfaced inside a type-annotation position (`let X: |` or
+ * `(p: |)`). Built-in TS scalars + Tu's runtime exports. User-defined
+ * `type X = …` aliases are added on top per file.
+ */
+const TYPE_COMPLETIONS: readonly string[] = [
+  // TS built-in scalars
+  'string', 'number', 'boolean', 'void', 'null', 'undefined',
+  'any', 'unknown', 'never', 'object', 'bigint', 'symbol',
+  // Tu runtime types (auto-imported in TS-mode emit)
+  'VNode', 'Child',
+  // Reactive cell wrappers
+  'Signal.State', 'Signal.Computed',
+]
+
 const HTML_TAGS: readonly string[] = [
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio',
   'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button',
@@ -99,6 +114,19 @@ export function completionsAtTuPosition(
     return out
   }
 
+  if (ctx.kind === 'type-position') {
+    const seen = new Set(out.map((c) => c.label))
+    for (const t of TYPE_COMPLETIONS) {
+      if (seen.has(t)) continue
+      out.push({ label: t, kind: 'type', sortText: '1_' + t })
+    }
+    for (const t of ctx.userTypes) {
+      if (seen.has(t)) continue
+      out.push({ label: t, kind: 'type', sortText: '0_' + t, detail: 'Tu type alias' })
+    }
+    return out
+  }
+
   if (ctx.kind === 'expression-head') {
     const seen = new Set(out.map((c) => c.label))
     for (const tag of HTML_TAGS) {
@@ -157,7 +185,13 @@ interface ExpressionHeadContext {
   kind: 'expression-head'
 }
 
-type CursorContext = ClassRefContext | ExpressionHeadContext
+interface TypeContext {
+  kind: 'type-position'
+  /** User-defined type-alias names parsed from the same source. */
+  userTypes: string[]
+}
+
+type CursorContext = ClassRefContext | ExpressionHeadContext | TypeContext
 
 /**
  * Find the previous non-whitespace token before the cursor and use it to
@@ -220,9 +254,6 @@ function analyzeCursorContext(source: string, line: number, col: number): Cursor
   }
 
   // Inside a `class: …` tag-call prop value? Surface declared classes.
-  // The user typed `class: ` and is about to put a value; the most useful
-  // thing is to insert `.declaredClass` (ClassRef syntax) so the dual-
-  // class injection kicks in.
   if (prevTok.kind === TokenKind.Colon && realPrev > 0) {
     const before = tokens[realPrev - 1]!
     if (before.kind === TokenKind.Ident && before.text === 'class') {
@@ -234,6 +265,11 @@ function analyzeCursorContext(source: string, line: number, col: number): Cursor
         }
       }
     }
+  }
+
+  // Type position? After `:` in a `let X: …` or `(p: …)` annotation.
+  if (prevTok.kind === TokenKind.Colon && isTypePositionAfter(tokens, realPrev)) {
+    return { kind: 'type-position', userTypes: collectUserTypes(source) }
   }
 
   if (
@@ -287,6 +323,61 @@ function collectScopedClassesAt(source: string, offset: number): Set<string> | n
   if (!host) return null
   const map = getScopedClassMap(program)
   return map.get(host.name) ?? null
+}
+
+/**
+ * Decide whether a `:` at `colonIdx` is opening a type annotation (vs a
+ * tag-call prop value). Walks backward from the colon, looking for the
+ * surrounding context: a `Let` keyword (let-decl annotation) or an
+ * unmatched `LParen` at start-of-line / start-of-source level (lambda
+ * param annotation). Stops at any decisive boundary token to avoid
+ * walking too far.
+ */
+function isTypePositionAfter(tokens: Token[], colonIdx: number): boolean {
+  let parenDepth = 0
+  for (let i = colonIdx - 1; i >= 0; i--) {
+    const t = tokens[i]!
+    if (
+      t.kind === TokenKind.Equals ||
+      t.kind === TokenKind.Semi ||
+      t.kind === TokenKind.RBrace ||
+      t.kind === TokenKind.LBrace ||
+      t.kind === TokenKind.FatArrow
+    ) {
+      return false
+    }
+    if (t.kind === TokenKind.RParen) parenDepth++
+    if (t.kind === TokenKind.LParen) {
+      if (parenDepth === 0) {
+        // Walked back to the opening paren — we're inside a paren group.
+        // If the LParen is preceded by an Ident, this might be a CallExpr
+        // or TagCall args, NOT a lambda param list (those don't have a
+        // callee Ident). Param lists open with bare LParen (lambdas) or
+        // `=>` after them. Look one token back: if it's an Ident, NOT a
+        // param list.
+        const before = i > 0 ? tokens[i - 1] : null
+        if (before && before.kind === TokenKind.Ident) return false
+        return true
+      }
+      parenDepth--
+    }
+    if (t.kind === TokenKind.Let && parenDepth === 0) return true
+  }
+  return false
+}
+
+/**
+ * Find every top-level `type X = …` declaration in `source` and return
+ * the names. Uses a regex scan so it works even when the rest of the
+ * file is mid-typing and won't parse cleanly (`let alice: |` → parse
+ * error, but a `type Person = …` above is still extractable).
+ */
+function collectUserTypes(source: string): string[] {
+  const re = /^[ \t]*(?:export[ \t]+)?type[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*=/gm
+  const out: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(source)) !== null) out.push(m[1]!)
+  return out
 }
 
 // ─── CSS LSP delegation (M3.11) ────────────────────────────────────────────

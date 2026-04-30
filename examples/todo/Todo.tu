@@ -16,6 +16,16 @@ export let label = computed(
   else { "many items" }
 )
 
+let B = (a:Child)=>{
+  fragement {
+    "11"
+    "222"
+    div() {
+      "333"
+    }
+  }
+}
+
 let setEmpty = () => {
   items = []
   count = 0
