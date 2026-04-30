@@ -379,6 +379,38 @@ describe('codegen', () => {
     )
   })
 
+  it('M5.8: member access injects .get() on the leaf cell ident only', () => {
+    const js = compile(`
+      let origin = { x: 0, y: 0 }
+      let App = () => p { origin.x }
+    `)
+    // `origin.get().x` — the cell read happens, then the property is accessed
+    // on the resolved value. The property name itself stays plain.
+    expect(js).toContain('origin.get().x')
+  })
+
+  it('M5.8: chained member access compiles to nested dots', () => {
+    const js = compile(`
+      let nested = { outer: { inner: 1 } }
+      let App = () => p { nested.outer.inner }
+    `)
+    expect(js).toContain('nested.get().outer.inner')
+  })
+
+  it('M5.8: member access on a call result skips .get() (call result is not a cell)', () => {
+    const js = compile(`
+      let make = (n: number) => { x: n }
+      let App = () => p { make(7).x }
+    `)
+    expect(js).toContain('make(7).x')
+  })
+
+  it('M5.8: lambda-param object access emits the param ident plain', () => {
+    const js = compile('let read = (p) => p.x')
+    expect(js).toContain('const read = (p) => p.x')
+    expect(js).not.toContain('p.get()')
+  })
+
   it('M5.6: object literal as a let-decl value emits the matching JS object', () => {
     const js = compile('let p = { x: 1, y: 2 }')
     expect(js).toContain('const p = new Signal.State({ x: 1, y: 2 })')

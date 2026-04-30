@@ -111,6 +111,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  examples/typed:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
   packages/cli:
     dependencies:
       '@tu/compiler':

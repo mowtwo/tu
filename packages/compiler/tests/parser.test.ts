@@ -325,6 +325,47 @@ describe('parser', () => {
     expect(() => ast('let App = () => div { { x: 1 } }')).toThrow(/ObjectLit as child/)
   })
 
+  it('parses postfix member access `obj.x`', () => {
+    const tree = ast('let v = origin.x')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'MemberExpr',
+      object: { kind: 'Ident', name: 'origin' },
+      property: 'x',
+    })
+  })
+
+  it('parses chained member access `a.b.c` left-leaning', () => {
+    const tree = ast('let v = obj.a.b')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'MemberExpr',
+      property: 'b',
+      object: {
+        kind: 'MemberExpr',
+        property: 'a',
+        object: { kind: 'Ident', name: 'obj' },
+      },
+    })
+  })
+
+  it('member access on a call result: `make(n).x`', () => {
+    const tree = ast('let v = make(n).x')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'MemberExpr',
+      property: 'x',
+      object: { kind: 'CallExpr', callee: 'make' },
+    })
+  })
+
+  it('postfix dot does NOT collide with prefix-dot ClassRef', () => {
+    // `class: .card` keeps its ClassRef parse — the dot is at expression
+    // *head*, not after a returned value.
+    const tree = ast('let App = () => div(class: .card) { "x" }')
+    const tag = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { props: { name: string; value: { kind: string } }[] }
+    }
+    expect(tag.body.props[0]!.value).toMatchObject({ kind: 'ClassRef', name: 'card' })
+  })
+
   it('parses lambda return-type annotation `(x): T => …`', () => {
     const tree = ast('let f = (x: number): string => x')
     const lambda = (tree.body[0] as { value: unknown }).value as {

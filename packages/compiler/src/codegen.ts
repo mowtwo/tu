@@ -12,6 +12,7 @@ import type {
   IfExpr,
   Lambda,
   LocalLet,
+  MemberExpr,
   ObjectLit,
   Program,
   Prop,
@@ -474,7 +475,20 @@ class Codegen {
       case 'ObjectLit':
         this.emitObjectLit(expr)
         return
+      case 'MemberExpr':
+        this.emitMemberExpr(expr)
+        return
     }
+  }
+
+  private emitMemberExpr(node: MemberExpr): void {
+    // Recurse into the object first — if it's a cell ident, this emits the
+    // `.get()` injection automatically. Then append the property name as a
+    // plain JS dot-access. The property is always a static identifier
+    // (parser guarantees `Ident` after the postfix dot).
+    this.emitExpr(node.object)
+    this.write('.')
+    this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
   }
 
   private emitArrayLit(node: ArrayLit): void {
@@ -900,6 +914,9 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'ObjectLit':
       for (const p of expr.properties) collectClassRefs(p.value, out)
       return
+    case 'MemberExpr':
+      collectClassRefs(expr.object, out)
+      return
     default:
       return
   }
@@ -949,6 +966,9 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'ObjectLit':
       for (const p of expr.properties) collectStyleBlockBodies(p.value, out)
+      return
+    case 'MemberExpr':
+      collectStyleBlockBodies(expr.object, out)
       return
     default:
       return

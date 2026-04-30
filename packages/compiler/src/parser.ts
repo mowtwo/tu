@@ -17,6 +17,7 @@ import type {
   LetDecl,
   LocalLet,
   NumberLit,
+  MemberExpr,
   ObjectLit,
   ObjectProp,
   Param,
@@ -321,7 +322,7 @@ export class Parser {
   }
 
   private parseBinary(minPrec: number): Expr {
-    let left = this.parsePrefix()
+    let left = this.parsePostfix(this.parsePrefix())
     while (true) {
       const op = BINARY_OPS[this.peek().kind]
       if (!op || op.prec < minPrec) break
@@ -337,6 +338,34 @@ export class Parser {
       } satisfies BinaryExpr
     }
     return left
+  }
+
+  /**
+   * Postfix loop applied to any expression yielding a value: `expr.x.y` →
+   * a left-leaning `MemberExpr` chain. Stops on any non-`.Ident` shape so
+   * pug-shorthand `.foo() { … }` (a *prefix* dot in expression-head
+   * position) and class-binding values like `class: .card` keep their
+   * existing meaning — those never reach this function because the
+   * starter of those forms is a `Dot` token at parse-prefix time, not
+   * after a returned value.
+   */
+  private parsePostfix(expr: Expr): Expr {
+    while (true) {
+      if (this.peek().kind !== TokenKind.Dot) return expr
+      const next = this.tokens[this.pos + 1]
+      if (next?.kind !== TokenKind.Ident) return expr
+      this.pos++ // consume the dot
+      const propTok = this.expect(TokenKind.Ident)
+      expr = {
+        kind: 'MemberExpr',
+        object: expr,
+        property: propTok.text,
+        start: expr.start,
+        end: propTok.end,
+        propertyStart: propTok.start,
+        propertyEnd: propTok.end,
+      } satisfies MemberExpr
+    }
   }
 
   private parsePrefix(): Expr {

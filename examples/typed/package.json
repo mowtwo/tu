@@ -1,0 +1,17 @@
+{
+  "name": "@tu-examples/typed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M5.6 + M5.7 demo: object literals, lambda return-type annotations, type aliases working together.",
+  "scripts": {
+    "demo": "node run.mjs",
+    "build": "echo 'typed example: built on demand by run.mjs'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
+  }
+}

@@ -96,6 +96,7 @@ export type Expr =
   | ClassRef
   | ArrayLit
   | ObjectLit
+  | MemberExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -182,6 +183,7 @@ export type Child =
   | ClassRef
   | ArrayLit
   | ObjectLit
+  | MemberExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -320,4 +322,21 @@ export interface ObjectProp {
 export interface ClassRef extends Ranged {
   kind: 'ClassRef'
   name: string
+}
+
+/**
+ * `obj.foo` — postfix member access. `.` is unambiguous here because
+ * ClassRef's `.foo` is a *prefix* dot (recognized by `parsePrefix`),
+ * whereas member access is parsed as a postfix loop after any expression
+ * that yields a value. Codegen emits `obj.foo` directly; the leaf cell
+ * ident inside `object` still receives `.get()` injection per the usual
+ * cell-read rules — the property name is plain.
+ */
+export interface MemberExpr extends Ranged {
+  kind: 'MemberExpr'
+  object: Expr
+  property: string
+  /** Source byte range of the property name. */
+  propertyStart: number
+  propertyEnd: number
 }

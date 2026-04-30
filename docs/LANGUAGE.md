@@ -172,6 +172,21 @@ block.
 A bare identifier reads the binding by that name. Resolution follows
 JS-style lexical scope (lambda params, `for` binders, then top-level lets).
 
+### Member access
+
+```tu
+obj.x
+make(n).field
+nested.outer.inner
+```
+
+Postfix `.Ident` reads a property from any expression that yields a value.
+The `.` here doesn't collide with the prefix-dot ClassRef syntax —
+`class: .card` keeps its existing meaning because the dot sits at
+expression *head*, not after a returned value. Cell reads inject `.get()`
+on the leaf ident only: `origin.x` compiles to `origin.get().x` when
+`origin` is a state cell.
+
 ### Arithmetic and comparison
 
 ```tu
