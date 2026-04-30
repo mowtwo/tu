@@ -2,7 +2,7 @@ export const VERSION = '0.0.0'
 
 export { Signal } from 'signal-polyfill'
 
-export type Child = VNode | string | number | null | undefined
+export type Child = VNode | string | number | null | undefined | Child[]
 
 export interface VNode {
   tag: string
@@ -19,11 +19,16 @@ export function h(
   return { tag, props, children }
 }
 
-/** Render a VNode (or text/number) to an HTML string. M1.0 SSR target. */
+/** Render a VNode (or text/number/array) to an HTML string. M1.0 SSR target. */
 export function renderToString(node: Child): string {
   if (node == null) return ''
   if (typeof node === 'string') return escapeText(node)
   if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) {
+    let out = ''
+    for (const c of node) out += renderToString(c)
+    return out
+  }
   return renderVNode(node)
 }
 

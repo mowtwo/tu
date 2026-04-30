@@ -5,9 +5,14 @@ import type {
   CallExpr,
   Child,
   Expr,
+  ForExpr,
   Ident,
+  IfExpr,
   Lambda,
   LetDecl,
+  MatchArm,
+  MatchExpr,
+  MatchPattern,
   NumberLit,
   Param,
   Program,
@@ -19,15 +24,32 @@ import type {
 import { TokenKind, type Token } from './tokens.js'
 
 const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
-  [TokenKind.Plus]: { op: '+', prec: 1 },
-  [TokenKind.Minus]: { op: '-', prec: 1 },
-  [TokenKind.Star]: { op: '*', prec: 2 },
-  [TokenKind.Slash]: { op: '/', prec: 2 },
-  [TokenKind.Percent]: { op: '%', prec: 2 },
+  // Equality (lowest)
+  [TokenKind.EqEq]: { op: '==', prec: 1 },
+  [TokenKind.NotEq]: { op: '!=', prec: 1 },
+  // Relational
+  [TokenKind.Lt]: { op: '<', prec: 2 },
+  [TokenKind.LtEq]: { op: '<=', prec: 2 },
+  [TokenKind.Gt]: { op: '>', prec: 2 },
+  [TokenKind.GtEq]: { op: '>=', prec: 2 },
+  // Additive
+  [TokenKind.Plus]: { op: '+', prec: 3 },
+  [TokenKind.Minus]: { op: '-', prec: 3 },
+  // Multiplicative (highest)
+  [TokenKind.Star]: { op: '*', prec: 4 },
+  [TokenKind.Slash]: { op: '/', prec: 4 },
+  [TokenKind.Percent]: { op: '%', prec: 4 },
 }
 
 export class Parser {
   private pos = 0
+  /**
+   * When true, a `{` after an identifier or in prefix position is NOT treated as the
+   * start of a tag-call children block (or bare block) — it terminates the current
+   * expression instead. Used while parsing the `iter` expression of a `for` loop, where
+   * the trailing block is the loop body, not a tag-call on `iter`.
+   */
+  private noBraceBlock = false
   constructor(private readonly tokens: Token[]) {}
 
   parseProgram(): Program {
@@ -73,7 +95,10 @@ export class Parser {
   private parsePrefix(): Expr {
     const k = this.peek().kind
     if (k === TokenKind.LParen) return this.parseLambda()
-    if (k === TokenKind.LBrace) return this.parseBlock()
+    if (k === TokenKind.LBrace && !this.noBraceBlock) return this.parseBlock()
+    if (k === TokenKind.If) return this.parseIfExpr()
+    if (k === TokenKind.For) return this.parseForExpr()
+    if (k === TokenKind.Match) return this.parseMatchExpr()
     return this.parsePrimary()
   }
 
@@ -110,6 +135,83 @@ export class Parser {
     return { kind: 'Block', body }
   }
 
+  private parseIfExpr(): IfExpr {
+    this.expect(TokenKind.If)
+    this.expect(TokenKind.LParen)
+    const cond = this.parseExpr()
+    this.expect(TokenKind.RParen)
+    const then = this.parseBlock()
+    let elseBranch: Block | IfExpr | undefined
+    if (this.peek().kind === TokenKind.Else) {
+      this.pos++
+      if (this.peek().kind === TokenKind.If) {
+        elseBranch = this.parseIfExpr()
+      } else {
+        elseBranch = this.parseBlock()
+      }
+    }
+    return elseBranch === undefined
+      ? { kind: 'IfExpr', cond, then }
+      : { kind: 'IfExpr', cond, then, else: elseBranch }
+  }
+
+  private parseForExpr(): ForExpr {
+    this.expect(TokenKind.For)
+    const item = this.expect(TokenKind.Ident).text
+    this.expect(TokenKind.In)
+    // Suppress trailing-brace block during iter parsing so that
+    // `for x in items { body }` doesn't treat `items { body }` as a tag-call.
+    const prev = this.noBraceBlock
+    this.noBraceBlock = true
+    let iter: Expr
+    try {
+      iter = this.parseExpr()
+    } finally {
+      this.noBraceBlock = prev
+    }
+    const body = this.parseBlock()
+    return { kind: 'ForExpr', item, iter, body }
+  }
+
+  private parseMatchExpr(): MatchExpr {
+    this.expect(TokenKind.Match)
+    this.expect(TokenKind.LParen)
+    const scrutinee = this.parseExpr()
+    this.expect(TokenKind.RParen)
+    this.expect(TokenKind.LBrace)
+    const arms: MatchArm[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      arms.push(this.parseMatchArm())
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    this.expect(TokenKind.RBrace)
+    return { kind: 'MatchExpr', scrutinee, arms }
+  }
+
+  private parseMatchArm(): MatchArm {
+    const pattern = this.parseMatchPattern()
+    this.expect(TokenKind.FatArrow)
+    const body = this.parseExpr()
+    return { pattern, body }
+  }
+
+  private parseMatchPattern(): MatchPattern {
+    const t = this.peek()
+    if (t.kind === TokenKind.Underscore) {
+      this.pos++
+      return { kind: 'PatWild' }
+    }
+    if (t.kind === TokenKind.Number) {
+      this.pos++
+      return { kind: 'PatLit', value: { kind: 'NumberLit', value: t.value as number } }
+    }
+    if (t.kind === TokenKind.String) {
+      this.pos++
+      return { kind: 'PatLit', value: { kind: 'StringLit', value: t.value as string } }
+    }
+    throw this.error(`expected match pattern (literal or _)`)
+  }
+
   private parsePrimary(): Expr {
     const t = this.peek()
     if (t.kind === TokenKind.String) {
@@ -135,7 +237,7 @@ export class Parser {
    */
   private parseIdentTail(name: string): Expr {
     const next = this.peek().kind
-    if (next === TokenKind.LBrace) {
+    if (next === TokenKind.LBrace && !this.noBraceBlock) {
       return this.parseTagCall(name)
     }
     if (next === TokenKind.LParen) {
@@ -204,7 +306,8 @@ export class Parser {
 
   private parseChild(): Child {
     // Children can be any expression except lambdas or bare blocks.
-    // Using parseExpr lets binary arithmetic (e.g. `count + 1`) appear inline.
+    // Using parseExpr lets binary arithmetic (e.g. `count + 1`) and
+    // control-flow expressions (`if`, `for`, `match`) appear inline.
     const e = this.parseExpr()
     if (e.kind === 'Lambda' || e.kind === 'Block') {
       throw this.error(`unexpected ${e.kind} as child`)

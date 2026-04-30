@@ -77,4 +77,50 @@ describe('lexer', () => {
     expect(tokens[0]).toMatchObject({ start: 0, end: 3 })
     expect(tokens[1]).toMatchObject({ start: 4, end: 5 })
   })
+
+  it('lexes control-flow keywords', () => {
+    const tokens = tokenize('if else for in match')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.If,
+      TokenKind.Else,
+      TokenKind.For,
+      TokenKind.In,
+      TokenKind.Match,
+      TokenKind.Eof,
+    ])
+  })
+
+  it('lexes comparison operators', () => {
+    const tokens = tokenize('< > <= >= == !=')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Lt,
+      TokenKind.Gt,
+      TokenKind.LtEq,
+      TokenKind.GtEq,
+      TokenKind.EqEq,
+      TokenKind.NotEq,
+      TokenKind.Eof,
+    ])
+  })
+
+  it('distinguishes = / == / =>', () => {
+    const tokens = tokenize('= == =>')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Equals,
+      TokenKind.EqEq,
+      TokenKind.FatArrow,
+      TokenKind.Eof,
+    ])
+  })
+
+  it('lexes lone underscore as Underscore (not Ident)', () => {
+    const tokens = tokenize('_ _x')
+    expect(tokens[0]?.kind).toBe(TokenKind.Underscore)
+    expect(tokens[1]?.kind).toBe(TokenKind.Ident)
+    expect(tokens[1]?.text).toBe('_x')
+  })
+
+  it('throws on bare !', () => {
+    expect(() => tokenize('!')).toThrow(/Unexpected character/)
+  })
 })

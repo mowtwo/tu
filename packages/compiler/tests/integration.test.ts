@@ -114,6 +114,86 @@ describe('compile + render end-to-end', () => {
     expect(result.after).toBe(11) //  5*2 + 1
   })
 
+  it('renders a for-loop list reactively as the iter cell mutates', async () => {
+    const result = await compileAndRun(
+      `
+        let items = 0
+        let List = () => ul {
+          for item in items {
+            li { item }
+          }
+        }
+      `,
+      (mod) => {
+        const items = mod['items'] as SignalCell<string[]>
+        const List = mod['List'] as () => unknown
+        items.set(['a', 'b', 'c'])
+        const three = renderToString(List() as never)
+        items.set(['x'])
+        const one = renderToString(List() as never)
+        items.set([])
+        const empty = renderToString(List() as never)
+        return { three, one, empty }
+      }
+    )
+    expect(result.three).toBe('<ul><li>a</li><li>b</li><li>c</li></ul>')
+    expect(result.one).toBe('<ul><li>x</li></ul>')
+    expect(result.empty).toBe('<ul></ul>')
+  })
+
+  it('renders an if/else branch reactively', async () => {
+    const result = await compileAndRun(
+      `
+        let count = 0
+        let App = () => div {
+          if (count > 0) {
+            p { "positive: " count }
+          } else {
+            p { "non-positive" }
+          }
+        }
+      `,
+      (mod) => {
+        const count = mod['count'] as SignalCell<number>
+        const App = mod['App'] as () => unknown
+        const zero = renderToString(App() as never)
+        count.set(5)
+        const five = renderToString(App() as never)
+        return { zero, five }
+      }
+    )
+    expect(result.zero).toBe('<div><p>non-positive</p></div>')
+    expect(result.five).toBe('<div><p>positive: 5</p></div>')
+  })
+
+  it('renders a match expression reactively, with wildcard fallback', async () => {
+    const result = await compileAndRun(
+      `
+        let n = 0
+        let App = () => p {
+          match (n) {
+            0 => "zero"
+            1 => "one"
+            _ => "many"
+          }
+        }
+      `,
+      (mod) => {
+        const n = mod['n'] as SignalCell<number>
+        const App = mod['App'] as () => unknown
+        const zero = renderToString(App() as never)
+        n.set(1)
+        const one = renderToString(App() as never)
+        n.set(99)
+        const many = renderToString(App() as never)
+        return { zero, one, many }
+      }
+    )
+    expect(result.zero).toBe('<p>zero</p>')
+    expect(result.one).toBe('<p>one</p>')
+    expect(result.many).toBe('<p>many</p>')
+  })
+
   it('lambda params shadow same-named top-level cells', async () => {
     const result = await compileAndRun(
       `

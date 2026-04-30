@@ -124,4 +124,72 @@ describe('parser', () => {
     expect(() => ast('let')).toThrow(/expected Ident/)
     expect(() => ast('let x =')).toThrow(/at offset/)
   })
+
+  it('parses an if expression with else branch', () => {
+    const tree = ast('let x = if (1) { 2 } else { 3 }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'IfExpr',
+      cond: { kind: 'NumberLit', value: 1 },
+      then: { kind: 'Block', body: [{ kind: 'NumberLit', value: 2 }] },
+      else: { kind: 'Block', body: [{ kind: 'NumberLit', value: 3 }] },
+    })
+  })
+
+  it('parses if without else (else is absent in node)', () => {
+    const tree = ast('let x = if (1) { 2 }')
+    const v = (tree.body[0] as { value: { else?: unknown } }).value
+    expect(v).toMatchObject({ kind: 'IfExpr' })
+    expect((v as { else?: unknown }).else).toBeUndefined()
+  })
+
+  it('parses else-if as nested IfExpr in else slot', () => {
+    const tree = ast('let x = if (1) { 1 } else if (2) { 2 } else { 3 }')
+    const v = (tree.body[0] as { value: unknown }).value as {
+      else: { kind: string; else: unknown }
+    }
+    expect(v.else.kind).toBe('IfExpr')
+    expect(v.else.else).toMatchObject({ kind: 'Block' })
+  })
+
+  it('parses a for-in expression', () => {
+    const tree = ast('let x = for item in items { item }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ForExpr',
+      item: 'item',
+      iter: { kind: 'Ident', name: 'items' },
+      body: { kind: 'Block', body: [{ kind: 'Ident', name: 'item' }] },
+    })
+  })
+
+  it('parses match with literal and wildcard arms', () => {
+    const tree = ast(`
+      let x = match (n) {
+        0 => "zero"
+        _ => "other"
+      }
+    `)
+    const v = (tree.body[0] as { value: unknown }).value as {
+      kind: string
+      arms: { pattern: { kind: string } }[]
+    }
+    expect(v.kind).toBe('MatchExpr')
+    expect(v.arms[0]?.pattern.kind).toBe('PatLit')
+    expect(v.arms[1]?.pattern.kind).toBe('PatWild')
+  })
+
+  it('parses comparison operators with lower precedence than arithmetic', () => {
+    // a + 1 > 0  parses as (a + 1) > 0
+    const tree = ast('let x = a + 1 > 0')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'BinaryExpr',
+      op: '>',
+      left: {
+        kind: 'BinaryExpr',
+        op: '+',
+        left: { kind: 'Ident', name: 'a' },
+        right: { kind: 'NumberLit', value: 1 },
+      },
+      right: { kind: 'NumberLit', value: 0 },
+    })
+  })
 })

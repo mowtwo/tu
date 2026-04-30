@@ -1,10 +1,14 @@
 import type {
   BinaryExpr,
+  BinaryOp,
   Block,
   CallExpr,
   Child,
   Expr,
+  ForExpr,
+  IfExpr,
   Lambda,
+  MatchExpr,
   Program,
   Prop,
   Stmt,
@@ -18,6 +22,13 @@ const RUNTIME_IMPORT = `import { h, Signal } from '@tu/runtime'`
  * `name.get()` or stays as a plain reference.
  */
 type CellKind = 'state' | 'computed' | 'function'
+
+/** Tu `==` / `!=` map to JS strict equality to avoid coercion surprises. */
+const BINARY_OP_JS: Record<BinaryOp, string> = {
+  '+': '+', '-': '-', '*': '*', '/': '/', '%': '%',
+  '==': '===', '!=': '!==',
+  '<': '<', '<=': '<=', '>': '>', '>=': '>=',
+}
 
 export function generate(program: Program): string {
   const cells = analyzeProgram(program)
@@ -89,6 +100,12 @@ class Codegen {
         return this.emitIdentRead(expr.name)
       case 'Block':
         return this.emitBlock(expr)
+      case 'IfExpr':
+        return this.emitIfExpr(expr)
+      case 'ForExpr':
+        return this.emitForExpr(expr)
+      case 'MatchExpr':
+        return this.emitMatchExpr(expr)
     }
   }
 
@@ -129,7 +146,48 @@ class Codegen {
   }
 
   private emitBinaryExpr(node: BinaryExpr): string {
-    return `(${this.emitExpr(node.left)} ${node.op} ${this.emitExpr(node.right)})`
+    const op = BINARY_OP_JS[node.op]
+    return `(${this.emitExpr(node.left)} ${op} ${this.emitExpr(node.right)})`
+  }
+
+  private emitIfExpr(node: IfExpr): string {
+    const cond = this.emitExpr(node.cond)
+    const thenJs = this.emitExpr(node.then)
+    if (node.else === undefined) {
+      return `(${cond} ? ${thenJs} : undefined)`
+    }
+    const elseJs = this.emitExpr(node.else)
+    return `(${cond} ? ${thenJs} : ${elseJs})`
+  }
+
+  private emitForExpr(node: ForExpr): string {
+    const iter = this.emitExpr(node.iter)
+    this.shadowed.push(new Set([node.item]))
+    try {
+      const body = this.emitExpr(node.body)
+      return `Array.from(${iter}, (${node.item}) => ${body})`
+    } finally {
+      this.shadowed.pop()
+    }
+  }
+
+  private emitMatchExpr(node: MatchExpr): string {
+    const scrut = this.emitExpr(node.scrutinee)
+    const cases: string[] = []
+    let hasWild = false
+    for (const arm of node.arms) {
+      const body = this.emitExpr(arm.body)
+      if (arm.pattern.kind === 'PatWild') {
+        cases.push(body)
+        hasWild = true
+        break
+      }
+      const lit = arm.pattern.value
+      const litJs = lit.kind === 'StringLit' ? JSON.stringify(lit.value) : String(lit.value)
+      cases.push(`__m === ${litJs} ? ${body}`)
+    }
+    if (!hasWild) cases.push('undefined')
+    return `((__m) => ${cases.join(' : ')})(${scrut})`
   }
 
   private emitProps(props: Prop[]): string {

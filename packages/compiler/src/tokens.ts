@@ -3,6 +3,7 @@ export enum TokenKind {
   Ident,
   String,
   Number,
+  Underscore,
   // punctuation
   LParen,
   RParen,
@@ -18,9 +19,21 @@ export enum TokenKind {
   Star,
   Slash,
   Percent,
+  // comparison
+  Gt,
+  Lt,
+  GtEq,
+  LtEq,
+  EqEq,
+  NotEq,
   // keywords
   Let,
   Export,
+  If,
+  Else,
+  For,
+  In,
+  Match,
   // misc
   Eof,
 }
@@ -38,4 +51,9 @@ export interface Token {
 export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   let: TokenKind.Let,
   export: TokenKind.Export,
+  if: TokenKind.If,
+  else: TokenKind.Else,
+  for: TokenKind.For,
+  in: TokenKind.In,
+  match: TokenKind.Match,
 })

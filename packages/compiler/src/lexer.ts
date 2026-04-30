@@ -40,7 +40,25 @@ export class Lexer {
         if (this.src.charAt(this.pos + 1) === '>') {
           return this.punct(TokenKind.FatArrow, start, 2)
         }
+        if (this.src.charAt(this.pos + 1) === '=') {
+          return this.punct(TokenKind.EqEq, start, 2)
+        }
         return this.punct(TokenKind.Equals, start, 1)
+      case '!':
+        if (this.src.charAt(this.pos + 1) === '=') {
+          return this.punct(TokenKind.NotEq, start, 2)
+        }
+        break
+      case '<':
+        if (this.src.charAt(this.pos + 1) === '=') {
+          return this.punct(TokenKind.LtEq, start, 2)
+        }
+        return this.punct(TokenKind.Lt, start, 1)
+      case '>':
+        if (this.src.charAt(this.pos + 1) === '=') {
+          return this.punct(TokenKind.GtEq, start, 2)
+        }
+        return this.punct(TokenKind.Gt, start, 1)
       case '+':
         return this.punct(TokenKind.Plus, start, 1)
       case '-':
@@ -126,6 +144,9 @@ export class Lexer {
       this.pos++
     }
     const text = this.src.slice(start, this.pos)
+    if (text === '_') {
+      return { kind: TokenKind.Underscore, text, start, end: this.pos }
+    }
     const kw = KEYWORDS[text]
     return {
       kind: kw ?? TokenKind.Ident,

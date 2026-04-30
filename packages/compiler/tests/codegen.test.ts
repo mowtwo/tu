@@ -76,6 +76,51 @@ describe('codegen', () => {
     expect(js).toContain(`export const App = () => (h("div", {}, ["hi"]))`)
   })
 
+  it('emits an if expression as a ternary', () => {
+    const js = compile('let x = if (1) { 2 } else { 3 }')
+    expect(js).toContain('(1 ? (2) : (3))')
+  })
+
+  it('emits if without else as ternary with undefined fallthrough', () => {
+    const js = compile('let x = if (1) { 2 }')
+    expect(js).toContain('(1 ? (2) : undefined)')
+  })
+
+  it('emits a for expression as Array.from with shadowed binder', () => {
+    const js = compile(`
+      let items = 0
+      let App = () => ul {
+        for item in items {
+          li { item }
+        }
+      }
+    `)
+    // `items` is a top-level cell so reads .get(); `item` is the loop binder, not a cell.
+    expect(js).toContain('Array.from(items.get(), (item) => (h("li", {}, [item])))')
+  })
+
+  it('emits a match expression as IIFE with strict-equality ternary chain', () => {
+    const js = compile(`
+      let n = 0
+      let label = computed(match (n) {
+        0 => "zero"
+        1 => "one"
+        _ => "other"
+      })
+    `)
+    expect(js).toContain('((__m) => __m === 0 ? "zero" : __m === 1 ? "one" : "other")(n.get())')
+  })
+
+  it('emits === / !== for Tu == / !=', () => {
+    const js = compile(`
+      let a = 1
+      let eq = computed(a == 1)
+      let ne = computed(a != 2)
+    `)
+    expect(js).toContain('(a.get() === 1)')
+    expect(js).toContain('(a.get() !== 2)')
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       let Greeting = (name: string) => {

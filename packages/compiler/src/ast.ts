@@ -22,6 +22,9 @@ export type Expr =
   | NumberLit
   | Ident
   | Block
+  | IfExpr
+  | ForExpr
+  | MatchExpr
 
 export interface Lambda {
   kind: 'Lambda'
@@ -52,7 +55,16 @@ export interface Prop {
   value: Expr
 }
 
-export type Child = TagCall | CallExpr | BinaryExpr | StringLit | NumberLit | Ident
+export type Child =
+  | TagCall
+  | CallExpr
+  | BinaryExpr
+  | StringLit
+  | NumberLit
+  | Ident
+  | IfExpr
+  | ForExpr
+  | MatchExpr
 
 export interface CallExpr {
   kind: 'CallExpr'
@@ -60,7 +72,9 @@ export interface CallExpr {
   args: Expr[]
 }
 
-export type BinaryOp = '+' | '-' | '*' | '/' | '%'
+export type BinaryOp =
+  | '+' | '-' | '*' | '/' | '%'
+  | '==' | '!=' | '<' | '<=' | '>' | '>='
 
 export interface BinaryExpr {
   kind: 'BinaryExpr'
@@ -82,4 +96,34 @@ export interface NumberLit {
 export interface Ident {
   kind: 'Ident'
   name: string
+}
+
+export interface IfExpr {
+  kind: 'IfExpr'
+  cond: Expr
+  then: Block
+  else?: Block | IfExpr
+}
+
+export interface ForExpr {
+  kind: 'ForExpr'
+  /** Loop binding name. */
+  item: string
+  iter: Expr
+  body: Block
+}
+
+export interface MatchExpr {
+  kind: 'MatchExpr'
+  scrutinee: Expr
+  arms: MatchArm[]
+}
+
+export type MatchPattern =
+  | { kind: 'PatLit'; value: StringLit | NumberLit }
+  | { kind: 'PatWild' }
+
+export interface MatchArm {
+  pattern: MatchPattern
+  body: Expr
 }

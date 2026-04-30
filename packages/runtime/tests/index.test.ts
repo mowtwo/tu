@@ -47,4 +47,13 @@ describe('@tu/runtime', () => {
   it('renderToString concatenates mixed children', () => {
     expect(renderToString(h('h1', {}, ['Hello, ', 'World', '!']))).toBe('<h1>Hello, World!</h1>')
   })
+
+  it('renderToString flattens array children (for-loop output)', () => {
+    const v = h('ul', {}, [[h('li', {}, ['a']), h('li', {}, ['b'])]])
+    expect(renderToString(v)).toBe('<ul><li>a</li><li>b</li></ul>')
+  })
+
+  it('renderToString flattens nested arrays', () => {
+    expect(renderToString([['a', 'b'], 'c'])).toBe('abc')
+  })
 })
