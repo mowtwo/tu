@@ -7,19 +7,15 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <aside class="sidebar">
-      <h1 class="brand">Tu <span class="brand__cn">图</span></h1>
-      <p class="subtitle">Pre-alpha playground</p>
-      <nav class="demos" id="demos"></nav>
-      <footer class="meta">
-        <p>Edit any <code>.tu</code> file under <code>examples/</code> and the page reloads via the <code>@tu/vite</code> plugin.</p>
-      </footer>
-    </aside>
+    <!--
+      The sidebar and stage header are rendered by Tu components
+      (Sidebar.tu / StageHeader.tu) into these mount hosts. The container
+      classes (.sidebar, .stage__header) are emitted by the Tu components
+      themselves; these <div>s are just empty roots.
+    -->
+    <div id="sidebar-host"></div>
     <main class="stage">
-      <header class="stage__header">
-        <h2 id="demo-title"></h2>
-        <p id="demo-blurb"></p>
-      </header>
+      <div id="header-host"></div>
       <div class="stage__mount" id="mount"></div>
     </main>
     <script type="module" src="/src/main.js"></script>

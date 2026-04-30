@@ -341,17 +341,33 @@ export class Parser {
   }
 
   /**
-   * Postfix loop applied to any expression yielding a value: `expr.x.y` →
-   * a left-leaning `MemberExpr` chain. Stops on any non-`.Ident` shape so
-   * pug-shorthand `.foo() { … }` (a *prefix* dot in expression-head
-   * position) and class-binding values like `class: .card` keep their
-   * existing meaning — those never reach this function because the
-   * starter of those forms is a `Dot` token at parse-prefix time, not
-   * after a returned value.
+   * Postfix loop: `expr.x.y` → a left-leaning `MemberExpr` chain.
+   *
+   * Only applied to **value-yielding** expr kinds (Ident, plain CallExpr,
+   * existing MemberExpr, ObjectLit, ArrayLit). Crucially **NOT** to
+   * TagCall / IfExpr / Block / Lambda / etc. — Tu's children are
+   * whitespace-separated, so without this restriction a sequence like:
+   *
+   *     div { x }
+   *     .body() { y }
+   *
+   * would greedily attach the second statement's prefix dot to the first
+   * statement's TagCall as `(div { x }).body() { y }` — a member access
+   * on a vnode, which is never what the user means. The whitelist
+   * mirrors JS's intuition: dotting onto a tag literal makes no sense.
+   *
+   * Component invocations with a trailing children block
+   * (`Card("hi") { … }`) are also excluded — that result is a vnode, not
+   * a plain value.
+   *
+   * Class-binding values (`class: .card`) keep their existing meaning
+   * because the starter Dot is consumed at parse-PREFIX time by
+   * `parseClassRefOrPugShorthand`, not here.
    */
   private parsePostfix(expr: Expr): Expr {
     while (true) {
       if (this.peek().kind !== TokenKind.Dot) return expr
+      if (!isMemberAccessibleExpr(expr)) return expr
       const next = this.tokens[this.pos + 1]
       if (next?.kind !== TokenKind.Ident) return expr
       this.pos++ // consume the dot
@@ -1038,6 +1054,26 @@ export function parse(tokens: Token[], source: string = '', filename?: string): 
  * fall through to the lowercase path so private-by-convention names don't
  * accidentally become components.
  */
+/**
+ * True when `expr` produces a value that may meaningfully be dotted into
+ * (`obj.x`). False for tag-shaped expressions and statement-shaped
+ * expressions whose result is a vnode/control-flow shape — those would
+ * silently swallow a following `.classRef` shorthand from the next sibling.
+ */
+function isMemberAccessibleExpr(expr: Expr): boolean {
+  if (expr.kind === 'Ident') return true
+  if (expr.kind === 'MemberExpr') return true
+  if (expr.kind === 'ObjectLit') return true
+  if (expr.kind === 'ArrayLit') return true
+  if (expr.kind === 'CallExpr') {
+    // A component invocation with a trailing children block yields a
+    // vnode, not a plain value — exclude it. Plain function/component
+    // calls without children stay accessible.
+    return expr.children === undefined
+  }
+  return false
+}
+
 function isCapitalizedIdent(name: string): boolean {
   if (name.length === 0) return false
   const c = name.charCodeAt(0)

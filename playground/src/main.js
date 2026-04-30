@@ -1,4 +1,17 @@
+// Tu playground bootstrap.
+//
+// The two big chunks of imperative DOM creation that used to live here —
+// the sidebar nav and the stage header — are now Tu components (Sidebar.tu
+// + StageHeader.tu). This file shrinks to:
+//   1. demo registry (id → setup/thunk/teardown/controls)
+//   2. hash-routing → Sidebar.activeId cell
+//   3. demo lifecycle (mount, teardown previous, swap into #mount)
+//   4. Diff-only setInterval + array-controls (escape hatch — these need
+//      JS-side `[...]` spread + Math.random which Tu V1 doesn't surface).
 import { mount } from '@tu/runtime'
+
+import * as Sidebar from './Sidebar.tu'
+import * as Header from './StageHeader.tu'
 
 import * as HelloMod from '../../examples/hello/Greeting.tu'
 import * as CounterMod from '../../examples/counter/Counter.tu'
@@ -8,31 +21,39 @@ import * as ClickerMod from '../../examples/clicker/Clicker.tu'
 import * as DiffMod from '../../examples/diff/Diff.tu'
 import * as ScopedMod from '../../examples/scoped/Scoped.tu'
 import * as CompositionMod from '../../examples/composition/Composition.tu'
+import * as TypedMod from '../../examples/typed/Typed.tu'
 
-// Each demo: id, label, blurb, render thunk that returns a Tu vnode (or array
-// fragment). Some demos (counter / todo) seed their state cells before mount
-// so the playground shows non-empty content out of the gate.
+const demoBlurbs = {
+  hello: 'Static component compiled to ESM and rendered to DOM. No reactivity.',
+  counter:
+    '`let count = 0` auto-binds to a Signal cell. `computed(...)` cells re-derive on mutation. M1.14: Counter.tu now owns its `+` / `−` / `reset` buttons via private `inc / dec / reset` lambdas — no external wiring.',
+  todo:
+    'Control flow: `for item in items`, plus chained `if (count == 0) … else if (count == 1) … else …` for the pluralized label. M2.5: Todo.tu now owns its empty/one/three-items buttons via array literals — no external wiring.',
+  card:
+    '`style { ... }` block (M1.4) + symbolic class refs `.card()` and `class: .card__title` (M1.8). The compiler hashes every declared class with a per-component suffix, so the markup attribute and the CSS selector match up while staying isolated from other components.',
+  clicker:
+    'Fully interactive — `count = count + 1` mutates the cell, `onClick: ...` wires up event listeners, mount() re-renders the DOM on every change.',
+  scoped:
+    "Two components both declare a `.card` style. Symbolic class refs (`.card()` shorthand and `class: .card`) get a per-component hash suffix in markup AND CSS, so the rules don't bleed across components.",
+  composition:
+    "Capitalized components compile as real function calls (not `h(\"Card\", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component's `children` argument. `Fragment` from `@tu/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell).",
+  typed:
+    'M5.6 + M5.7 + M5.8: object literals (`{ x: 1, y: 2 }`), lambda return-type annotations (`(n): Point => …`), type aliases, and member access (`origin.x`). The whole typed-data path round-trips reactively through state and computed cells.',
+  diff:
+    "Keyed diff — the counter cell ticks every 600 ms in the background. Click into the input and type: focus + caret + your text all survive the re-renders, because M1.7 reuses the existing input DOM node rather than rebuilding it. Then try the list buttons — DOM identity is preserved across reorders too.",
+}
+
+let diffTickHandle = null
+
 const demos = [
-  {
-    id: 'hello',
-    label: 'M1.0  Hello',
-    blurb: 'Static component compiled to ESM and rendered to DOM. No reactivity.',
-    setup() {},
-    thunk: () => HelloMod.Greeting('World'),
-  },
+  { id: 'hello', setup() {}, thunk: () => HelloMod.Greeting('World') },
   {
     id: 'counter',
-    label: 'M1.2  Counter',
-    blurb: '`let count = 0` auto-binds to a Signal cell. `computed(...)` cells re-derive on mutation. M1.14: Counter.tu now owns its `+` / `−` / `reset` buttons via private `inc / dec / reset` lambdas — no external wiring.',
-    setup() {
-      CounterMod.count.set(0)
-    },
+    setup() { CounterMod.count.set(0) },
     thunk: () => CounterMod.Counter(),
   },
   {
     id: 'todo',
-    label: 'M1.3  Todo',
-    blurb: 'Control flow: `for item in items`, plus chained `if (count == 0) … else if (count == 1) … else …` for the pluralized label. M2.5: Todo.tu now owns its empty/one/three-items buttons via array literals — no external wiring.',
     setup() {
       TodoMod.items.set([])
       TodoMod.count.set(0)
@@ -41,45 +62,29 @@ const demos = [
   },
   {
     id: 'card',
-    label: 'M1.4  Card',
-    blurb: '`style { ... }` block (M1.4) + symbolic class refs `.card()` and `class: .card__title` (M1.8). The compiler hashes every declared class with a per-component suffix, so the markup attribute and the CSS selector match up while staying isolated from other components.',
     setup() {},
-    thunk: () => CardMod.Card('Tu', 'A reactive UI language with first-class style blocks.'),
+    thunk: () =>
+      CardMod.Card('Tu', 'A reactive UI language with first-class style blocks.'),
   },
   {
     id: 'clicker',
-    label: 'M1.5  Clicker',
-    blurb: 'Fully interactive — `count = count + 1` mutates the cell, `onClick: ...` wires up event listeners, mount() re-renders the DOM on every change.',
-    setup() {
-      ClickerMod.count.set(0)
-    },
+    setup() { ClickerMod.count.set(0) },
     thunk: () => ClickerMod.Clicker(),
   },
+  { id: 'scoped', setup() {}, thunk: () => ScopedMod.Scoped() },
+  { id: 'composition', setup() {}, thunk: () => CompositionMod.App() },
   {
-    id: 'scoped',
-    label: 'M1.8  Scoped',
-    blurb: 'Two components both declare a `.card` style. Symbolic class refs (`.card()` shorthand and `class: .card`) get a per-component hash suffix in markup AND CSS, so the rules don\'t bleed across components.',
-    setup() {},
-    thunk: () => ScopedMod.Scoped(),
-  },
-  {
-    id: 'composition',
-    label: 'M5    Composition',
-    blurb: 'Capitalized components compile as real function calls (not `h("Card", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component\'s `children` argument. `Fragment` from `@tu/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell), useful for derivations and closures.',
-    setup() {},
-    thunk: () => CompositionMod.App(),
+    id: 'typed',
+    setup() {
+      TypedMod.n.set(1)
+    },
+    thunk: () => TypedMod.App(),
   },
   {
     id: 'diff',
-    label: 'M1.7  Diff',
-    blurb: 'Keyed diff — the counter cell ticks every 600 ms in the background. Click into the input and type: focus + caret + your text all survive the re-renders, because M1.7 reuses the existing input DOM node rather than rebuilding it. Then try the list buttons — DOM identity is preserved across reorders too.',
     setup() {
       DiffMod.count.set(0)
       DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date'])
-      // Auto-tick the count cell — the demo's whole point is "cell mutates,
-      // input survives." If the trigger is a button click, the click steals
-      // focus from the input the instant we want to verify focus is kept.
-      // setInterval has no DOM focus to steal.
       diffTickHandle = setInterval(() => {
         DiffMod.count.set(DiffMod.count.get() + 1)
       }, 600)
@@ -114,10 +119,7 @@ const demos = [
           DiffMod.items.set(arr)
         },
       },
-      {
-        label: 'remove first',
-        run: () => DiffMod.items.set(DiffMod.items.get().slice(1)),
-      },
+      { label: 'remove first', run: () => DiffMod.items.set(DiffMod.items.get().slice(1)) },
       {
         label: 'reset list',
         run: () => DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date']),
@@ -126,16 +128,16 @@ const demos = [
   },
 ]
 
-let diffTickHandle = null
-
+const sidebarEl = document.getElementById('sidebar-host')
+const headerEl = document.getElementById('header-host')
 const mountEl = document.getElementById('mount')
-const navEl = document.getElementById('demos')
-const titleEl = document.getElementById('demo-title')
-const blurbEl = document.getElementById('demo-blurb')
-const headerEl = document.querySelector('.stage__header')
+
+// Mount the Tu-rendered chrome once. They re-render reactively as their
+// exported state cells (Sidebar.activeId, Header.title, Header.blurb) change.
+mount(() => Sidebar.Sidebar(), sidebarEl)
+mount(() => Header.StageHeader(), headerEl)
 
 let stop = null
-let activeId = null
 let activeDemo = null
 
 function activate(demo) {
@@ -143,22 +145,20 @@ function activate(demo) {
     stop()
     stop = null
   }
-  // Tear down the previous demo before swapping. setInterval handles, etc.
-  // need a chance to clear so they don't keep firing while another demo is
-  // mounted.
   if (activeDemo?.teardown) activeDemo.teardown()
-  activeId = demo.id
   activeDemo = demo
-  for (const link of navEl.querySelectorAll('a')) {
-    link.classList.toggle('is-active', link.dataset.id === demo.id)
-  }
-  titleEl.textContent = demo.label
-  blurbEl.textContent = demo.blurb
 
-  // Reset any per-demo controls left over from the previous demo.
-  const oldControls = headerEl.querySelector('.controls')
+  const label = labelFor(demo.id)
+  Sidebar.activeId.set(demo.id)
+  Header.title.set(label)
+  Header.blurb.set(demoBlurbs[demo.id] ?? '')
+
+  // Diff demo's controls live outside the Tu chrome (they need JS-side
+  // array spread + Math.random the V1 language doesn't expose). They get
+  // appended to the stage header host as a sibling of the Tu-rendered
+  // <header>. Reset on every swap.
+  const oldControls = headerEl.parentElement.querySelector(':scope > .controls')
   if (oldControls) oldControls.remove()
-
   if (typeof demo.controls === 'function') {
     const controlsEl = document.createElement('div')
     controlsEl.className = 'controls'
@@ -169,30 +169,36 @@ function activate(demo) {
       btn.addEventListener('click', c.run)
       controlsEl.appendChild(btn)
     }
-    headerEl.appendChild(controlsEl)
+    headerEl.parentElement.appendChild(controlsEl)
   }
 
   demo.setup()
   stop = mount(demo.thunk, mountEl)
 }
 
-for (const demo of demos) {
-  const link = document.createElement('a')
-  link.href = `#${demo.id}`
-  link.dataset.id = demo.id
-  link.textContent = demo.label
-  link.addEventListener('click', (e) => {
-    e.preventDefault()
-    history.replaceState(null, '', `#${demo.id}`)
-    activate(demo)
-  })
-  navEl.appendChild(link)
+function labelFor(id) {
+  // Single source of truth for labels lives in Sidebar.tu; mirror just
+  // enough here for the stage header. (M5.8 gave Tu member access but not
+  // yet a way to expose Tu-defined arrays as plain JS values across the
+  // module boundary.)
+  const map = {
+    hello: 'M1.0  Hello',
+    counter: 'M1.2  Counter',
+    todo: 'M1.3  Todo',
+    card: 'M1.4  Card',
+    clicker: 'M1.5  Clicker',
+    scoped: 'M1.8  Scoped',
+    composition: 'M5    Composition',
+    typed: 'M5.6/7/8  Typed',
+    diff: 'M1.7  Diff',
+  }
+  return map[id] ?? id
 }
 
 function activateFromHash() {
   const id = window.location.hash.slice(1)
-  const next = demos.find((d) => d.id === id) ?? demos[demos.length - 1]
-  if (next.id !== activeId) activate(next)
+  const next = demos.find((d) => d.id === id) ?? demos[0]
+  if (next.id !== activeDemo?.id) activate(next)
 }
 
 window.addEventListener('hashchange', activateFromHash)

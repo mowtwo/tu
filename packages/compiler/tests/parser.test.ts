@@ -356,6 +356,42 @@ describe('parser', () => {
     })
   })
 
+  it('postfix dot is REJECTED on a TagCall (whitespace-separated siblings)', () => {
+    // Regression: M5.8's first cut greedily ate `.body()` as `div{x}.body()`,
+    // breaking sibling pug-shorthand inside a Block. The whitelist only
+    // allows postfix dot on value-yielding expr kinds — never TagCalls.
+    const tree = ast(`
+      let App = () => .card() {
+        h1 { "x" }
+        .body() { "y" }
+      }
+    `)
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'TagCall',
+      children: [
+        { kind: 'TagCall', tag: 'h1' },
+        { kind: 'TagCall', tag: 'div' /* pug-shorthand .body() */ },
+      ],
+    })
+  })
+
+  it('postfix dot is REJECTED on a component call with children', () => {
+    // `Card("hi") { children }.x` — a vnode, not a value. The dot belongs
+    // to the next sibling. Regression-guard for the same M5.8 bug.
+    const tree = ast(`
+      let App = () => {
+        Card("hi") { p { "y" } }
+        .body() { "z" }
+      }
+    `)
+    const block = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { body: unknown[] }
+    }
+    expect(block.body.body[0]).toMatchObject({ kind: 'CallExpr', callee: 'Card' })
+    expect(block.body.body[1]).toMatchObject({ kind: 'TagCall', tag: 'div' })
+  })
+
   it('postfix dot does NOT collide with prefix-dot ClassRef', () => {
     // `class: .card` keeps its ClassRef parse — the dot is at expression
     // *head*, not after a returned value.

@@ -15,6 +15,15 @@
   box-sizing: border-box;
 }
 
+/* Tu mounts append into these hosts; making them layout-transparent lets
+   the rendered <aside class="sidebar"> / <header class="stage__header">
+   participate in the body grid / .stage flex as if they were direct
+   children of those parents. */
+#sidebar-host,
+#header-host {
+  display: contents;
+}
+
 body {
   margin: 0;
   display: grid;
