@@ -22,9 +22,16 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize component-prop interfaces in TS emit | M2 | M3 / LSP polish | M2 V1 lets tsserver INFER prop types from the lambda body. For richer IDE hover ("CardProps { title: string; body: string }") synthesize an explicit interface per exported component lambda. |
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Annotated `let X: type = …` declarations | M2 | when needed | Tu currently has lambda-param annotations only. Adding type annotations on let-decls lets users override TS inference (rare but useful for opaque cells). |
-| `tu check` CLI command | M2 | M3 | The `examples/clicker/typecheck.mjs` script proves the recipe; lift into `@tu/cli` so `tu check` works on any `.tu` file or project. |
+| `tu check` CLI command | M2 | post-M3 | The `examples/clicker/typecheck.mjs` script proves the recipe; the M3 V1 LSP also exposes `checkTuFile`/`checkTuSource` from `@tu/lsp` programmatically. Lift into `@tu/cli` for a CLI entrypoint. |
+| LSP V2: hover, completion, goto-definition, rename | M3 V1 | post-M3 | M3 V1 ships diagnostics only via the TypeScript Compiler API. Richer IDE features need either the Volar framework or a deeper tsserver integration. |
+| LSP V2: cross-`.tu` import resolution | M3 V1 | post-M3 | The diagnostic pass is single-file. Importing from another `.tu` triggers a cannot-find-module error inside the LSP. Fix by virtualizing the entire workspace as TS shadows when constructing the ts.Program. |
+| LSP V2: token-level diagnostic ranges | M3 V1 | with finer source maps | M2 V1 source maps are per-top-level-statement, so diagnostics highlight only the start column of the offending statement. Token-level ranges need a finer emit pipeline in `@tu/compiler`. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3 V1
+
+- ~~LSP — diagnostics-only V1~~ — landed: `@tu/lsp` package boots a `vscode-languageserver` server; on document events it runs `compileToTS()` + the in-process TypeScript Compiler API and publishes diagnostics with positions mapped back to `.tu` line/col via the embedded V3 source map. `vscode-tu` activates the client on `onLanguage:tu`. End-to-end smoke-tested: a typed-param mismatch (`G(42)` against `(name: string) =>`) produces TS error 2345 mapped to the right `.tu` line. Hover / completion / goto-definition / cross-`.tu` import resolution are all V2 work tracked in new rows above.
 
 ## Closed in M2.1
 

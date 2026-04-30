@@ -9,13 +9,21 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Programming Languages"],
+  "categories": [
+    "Programming Languages"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "tu",
-        "aliases": ["Tu", "tu", "图"],
-        "extensions": [".tu"],
+        "aliases": [
+          "Tu",
+          "tu",
+          "图"
+        ],
+        "extensions": [
+          ".tu"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/tu-mono.svg",
@@ -34,12 +42,23 @@
       }
     ]
   },
+  "main": "./dist/index.js",
+  "activationEvents": [
+    "onLanguage:tu"
+  ],
   "scripts": {
-    "build": "echo 'vscode-tu is declarative-only; nothing to build'",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
     "dev:install": "node scripts/install-dev.mjs",
     "dev:uninstall": "node scripts/install-dev.mjs --uninstall"
+  },
+  "dependencies": {
+    "@tu/lsp": "workspace:*",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.118.0"
   }
 }

@@ -1,18 +1,27 @@
 {
   "name": "@tu/lsp",
   "version": "0.0.0",
-  "description": "Language Server Protocol implementation for Tu, built on Volar.",
+  "description": "Language Server Protocol implementation for Tu — diagnostics-only V1 powered by the TypeScript compiler API.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "tu-lsp": "./dist/server.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./server": {
+      "import": "./dist/server.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -20,6 +29,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu/compiler": "workspace:*"
+    "@tu/compiler": "workspace:*",
+    "typescript": "^5.9.3",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
   }
 }
