@@ -3,7 +3,7 @@ import { compile } from '../src/index.js'
 
 describe('codegen', () => {
   it('emits a runtime import header bringing in h and Signal', () => {
-    expect(compile('')).toContain(`import { h, Signal } from '@tu/runtime'`)
+    expect(compile('')).toContain(`import { h, Signal } from '@tu-ui/runtime'`)
   })
 
   it('wraps a top-level let with a primitive value as a Signal.State cell', () => {
@@ -409,6 +409,85 @@ describe('codegen', () => {
     const js = compile('let read = (p) => p.x')
     expect(js).toContain('const read = (p) => p.x')
     expect(js).not.toContain('p.get()')
+  })
+
+  it('M6.0: pure-static subtree (≥3 nodes) collapses to h("$static", …)', () => {
+    const js = compile(`
+      let App = () => header(class: "hero") {
+        h1 { "Tu" }
+        p { "A reactive UI language" }
+      }
+    `)
+    expect(js).toContain('h("$static", {}, [],')
+    // The static html is stored as a JSON-escaped JS string literal — check
+    // the inner shape rather than the surrounding quotes.
+    expect(js).toContain('<h1>Tu</h1>')
+    expect(js).toContain('<p>A reactive UI language</p>')
+    // The optimization should drop the inner h() calls entirely.
+    expect(js).not.toMatch(/h\("h1",/)
+    expect(js).not.toMatch(/h\("p",/)
+  })
+
+  it('M6.0: subtree with a cell read does NOT collapse (dynamic disqualifies)', () => {
+    const js = compile(`
+      let count = 0
+      let App = () => header(class: "hero") {
+        h1 { "Tu" }
+        p { "count = " count }
+      }
+    `)
+    expect(js).not.toContain('"$static"')
+    expect(js).toContain('count.get()')
+  })
+
+  it('M6.0: subtree with an event handler does NOT collapse', () => {
+    const js = compile(`
+      let count = 0
+      let App = () => header(class: "hero") {
+        button(onClick: () => count = count + 1) { "+1" }
+        p { "click" }
+      }
+    `)
+    expect(js).not.toContain('"$static"')
+  })
+
+  it('M6.0: tiny subtrees (< 3 nodes) skip the optimization', () => {
+    const js = compile('let App = () => h1 { "hi" }')
+    // Just `h1 { "hi" }` is 2 nodes (tag + text) — below threshold, stays as h() call.
+    expect(js).not.toContain('"$static"')
+    expect(js).toContain('h("h1", {}, ["hi"])')
+  })
+
+  it('M6.0: scoped ClassRef hash is baked into the static html', () => {
+    // The Card body has 3 markup children (h1, p, style) — the style block
+    // disqualifies static optimization on the OUTER `.card()`. Use a
+    // scoped sibling subtree that's pure-static instead.
+    const js = compile(`
+      let Card = () => Fragment {
+        .card() {
+          h1 { "title" }
+          p { "body" }
+        }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    // The static html string should embed the per-component hashed class.
+    // JSON.stringify escapes inner quotes, so the substring uses \" form.
+    expect(js).toMatch(/"\$static",[^]*<div class=\\"card card-tu-[a-f0-9]{6}\\"/)
+  })
+
+  it('M6.0: static html escapes text + attribute special chars', () => {
+    const js = compile(`
+      let App = () => div(title: "<a&b>") {
+        p { "x<y>&z" }
+        p { "more" }
+      }
+    `)
+    // Stored as JSON string literal — check the JSON-escaped form.
+    // Attribute escape: < and & only (NOT >), per HTML attribute rules.
+    expect(js).toContain('title=\\"&lt;a&amp;b>\\"')
+    // Text escape: <, >, AND & all replaced.
+    expect(js).toContain('x&lt;y&gt;&amp;z')
   })
 
   it('M5.6: object literal as a let-decl value emits the matching JS object', () => {

@@ -10,16 +10,37 @@ export interface VNode {
   tag: string
   props: Record<string, unknown>
   children: Child[]
+  /**
+   * **Static-HTML subtree optimization (M6.0).** When the compiler proves a
+   * markup subtree is fully static — no cell reads, no params, no
+   * if/for/event handlers, no nested components — it skips emitting an
+   * `h()` call per nested vnode and instead emits a single
+   * `h("$static", {}, [], "<div>…</div>")`. The runtime then
+   * `cloneNode`s the parsed template once on mount and serves the html
+   * string verbatim during SSR. ClassRef hashes (M5/F dual-class
+   * injection) are baked in at compile time, so scoped styles still
+   * resolve correctly.
+   *
+   * MVP rules: present iff `tag === '$static'`; subtree must be a SINGLE
+   * root element (no fragments). See packages/compiler/src/codegen.ts
+   * `isStaticTree` for the precise predicate.
+   */
+  html?: string
 }
 
 /** Construct a virtual node. Compiled Tu emits calls to this. */
 export function h(
   tag: string,
   props: Record<string, unknown> = {},
-  children: Child[] = []
+  children: Child[] = [],
+  html?: string
 ): VNode {
+  if (html !== undefined) return { tag, props, children, html }
   return { tag, props, children }
 }
+
+/** Tag sentinel used by the static-HTML optimization (M6.0). */
+const STATIC_TAG = '$static'
 
 /**
  * Fragment helper for component bodies that want to return multiple
@@ -31,7 +52,7 @@ export function h(
  *
  * Usage:
  *   ```tu
- *   import { Fragment } from "@tu/runtime"
+ *   import { Fragment } from "@tu-ui/runtime"
  *   let Layout = (children) => Fragment {
  *     header { "Title" }
  *     children
@@ -57,6 +78,12 @@ export function renderToString(node: Child): string {
 }
 
 function renderVNode(node: VNode): string {
+  // Static-HTML subtree (M6.0): the compiler already produced an HTML
+  // string with attributes escaped + ClassRefs resolved, so SSR just
+  // hands it back verbatim. No double-escape.
+  if (node.tag === STATIC_TAG && node.html !== undefined) {
+    return node.html
+  }
   let propStr = ''
   for (const [k, v] of Object.entries(node.props)) {
     if (k === 'key') continue
@@ -143,7 +170,20 @@ interface TextInstance {
   el: Text
 }
 
-type Instance = ElInstance | TextInstance
+/**
+ * Static-HTML subtree (M6.0). Created from `h("$static", {}, [], html)`.
+ * The runtime parses `html` once via `<template>.innerHTML` and adopts the
+ * single resulting root element. Subsequent renders that emit the same
+ * static vnode reuse the existing `el` (the html string is keyed by the
+ * compile-time output, so equality is the only check the runtime needs).
+ */
+interface StaticInstance {
+  kind: 'static'
+  html: string
+  el: Element
+}
+
+type Instance = ElInstance | TextInstance | StaticInstance
 
 /**
  * Properties that must be set as DOM properties rather than HTML attributes
@@ -350,6 +390,25 @@ function materializeInstance(child: NormalizedChild): Instance {
     const text = String(child)
     return { kind: 'text', text, el: document.createTextNode(text) }
   }
+  // Static-HTML subtree (M6.0): parse once via `<template>` (correctly
+  // handles fragment-context elements like <tr>, <td>, <option> that a
+  // <div> wrapper would mis-parse) and adopt the single root element.
+  if (child.tag === STATIC_TAG && child.html !== undefined) {
+    const tpl = document.createElement('template')
+    tpl.innerHTML = child.html
+    const el = tpl.content.firstElementChild
+    if (!el) {
+      // Empty html string (shouldn't happen — codegen always produces at
+      // least one element). Fall back to an empty <div> placeholder so the
+      // mount path doesn't crash.
+      return {
+        kind: 'static',
+        html: child.html,
+        el: document.createElement('div'),
+      }
+    }
+    return { kind: 'static', html: child.html, el: el as Element }
+  }
   const el = document.createElement(child.tag)
   const handlers: Record<string, EventListener> = {}
   for (const [k, v] of Object.entries(child.props)) {
@@ -457,6 +516,28 @@ function hydrateChildren(
       continue
     }
 
+    // Static-HTML subtree (M6.0). SSR emitted the html verbatim, so the
+    // existing DOM element at this position IS the static subtree's root.
+    // We don't walk inside it — by construction it's fully static.
+    if (child.tag === STATIC_TAG && child.html !== undefined) {
+      if (node && node.nodeType === 1) {
+        out.push({
+          kind: 'static',
+          html: child.html,
+          el: node as Element,
+        })
+        i++
+        continue
+      }
+      warnHydrationMismatch(`expected static element, got ${describeNode(node)}`)
+      const inst = materializeInstance(child)
+      if (node) parentEl.insertBefore(inst.el, node)
+      else parentEl.appendChild(inst.el)
+      nodes.splice(i, 0, inst.el)
+      out.push(inst)
+      i++
+      continue
+    }
     if (
       node &&
       node.nodeType === 1 /* ELEMENT_NODE */ &&
@@ -547,7 +628,7 @@ function describeNode(n: Node | undefined): string {
 
 function warnHydrationMismatch(msg: string): void {
   if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-    console.warn(`[@tu/runtime] hydration mismatch: ${msg}`)
+    console.warn(`[@tu-ui/runtime] hydration mismatch: ${msg}`)
   }
 }
 
@@ -708,6 +789,24 @@ function patchInstance(
       text,
       el: document.createTextNode(text),
     }
+    parentEl.replaceChild(next.el, oldInst.el)
+    return next
+  }
+  // Static-HTML subtree (M6.0). The compile-time html string is the
+  // identity key — same string means same DOM, no patching needed.
+  // Different string (rare; static subtrees usually keep their compiled
+  // shape forever) → re-materialize and replace.
+  if (newChild.tag === STATIC_TAG && newChild.html !== undefined) {
+    if (oldInst.kind === 'static' && oldInst.html === newChild.html) {
+      return oldInst
+    }
+    const next = materializeInstance(newChild)
+    parentEl.replaceChild(next.el, oldInst.el)
+    return next
+  }
+  // Crossing in/out of $static: always replace.
+  if (oldInst.kind === 'static') {
+    const next = materializeInstance(newChild)
     parentEl.replaceChild(next.el, oldInst.el)
     return next
   }

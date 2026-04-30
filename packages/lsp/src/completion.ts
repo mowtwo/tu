@@ -1,4 +1,4 @@
-import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu/compiler'
+import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu-ui/compiler'
 import { cssService, findCssContextAt } from './css-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'

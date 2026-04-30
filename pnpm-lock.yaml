@@ -29,10 +29,10 @@ importers:
 
   examples/clicker:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       jsdom:
@@ -41,10 +41,10 @@ importers:
 
   examples/composition:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       jsdom:
@@ -53,46 +53,46 @@ importers:
 
   examples/counter:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/diff:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/hello:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/scoped:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/ssr:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       jsdom:
@@ -101,53 +101,60 @@ importers:
 
   examples/styled:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/todo:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   examples/typed:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
   packages/cli:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@tu/lsp':
+      '@tu-ui/lsp':
         specifier: workspace:*
         version: link:../lsp
 
-  packages/compiler: {}
+  packages/compiler:
+    devDependencies:
+      '@tu-ui/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
 
   packages/create-tu: {}
 
   packages/format:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../compiler
 
   packages/lsp:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../compiler
       typescript:
@@ -180,7 +187,7 @@ importers:
 
   packages/vite-tu:
     dependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../compiler
     devDependencies:
@@ -190,7 +197,7 @@ importers:
 
   packages/vscode:
     dependencies:
-      '@tu/lsp':
+      '@tu-ui/lsp':
         specifier: workspace:*
         version: link:../lsp
       vscode-languageclient:
@@ -203,14 +210,14 @@ importers:
 
   playground:
     dependencies:
-      '@tu/runtime':
+      '@tu-ui/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
     devDependencies:
-      '@tu/compiler':
+      '@tu-ui/compiler':
         specifier: workspace:*
         version: link:../packages/compiler
-      '@tu/vite':
+      '@tu-ui/vite':
         specifier: workspace:*
         version: link:../packages/vite-tu
       vite:

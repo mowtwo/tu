@@ -1,5 +1,5 @@
 export const VERSION = '0.0.0'
-export const SERVER_NAME = '@tu/lsp'
+export const SERVER_NAME = '@tu-ui/lsp'
 
 export { checkTuFile, checkTuSource, type TuDiagnostic } from './diagnostics.js'
 export { completionsAtTuPosition, type TuCompletionItem } from './completion.js'

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "In-browser playground for Tu — bundles every milestone demo via the @tu/vite plugin.",
+  "description": "In-browser playground for Tu — bundles every milestone demo via the @tu-ui/vite plugin.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,11 +12,11 @@
     "check": "echo 'no checks'"
   },
   "dependencies": {
-    "@tu/runtime": "workspace:*"
+    "@tu-ui/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@tu/compiler": "workspace:*",
-    "@tu/vite": "workspace:*",
+    "@tu-ui/compiler": "workspace:*",
+    "@tu-ui/vite": "workspace:*",
     "vite": "^7.0.0"
   }
 }

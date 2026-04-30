@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { renderToString } from '@tu/runtime'
+import { renderToString } from '@tu-ui/runtime'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../src/index.js'
 
@@ -292,6 +292,51 @@ describe('compile + render end-to-end', () => {
       }
     )
     expect(result).toEqual({ x: 7, doubled: 14 })
+  })
+
+  it('M6.0: static subtree round-trips through SSR + mount unchanged', async () => {
+    const html = await compileAndRun(
+      `
+        export let App = () => header(class: "hero") {
+          h1 { "Tu" }
+          p { "A reactive UI language" }
+        }
+      `,
+      (mod) => {
+        const fn = mod['App'] as () => unknown
+        return renderToString(fn() as never)
+      }
+    )
+    // Static optimization should NOT change the rendered HTML — same
+    // bytes the unoptimized path would have produced.
+    expect(html).toBe(
+      '<header class="hero"><h1>Tu</h1><p>A reactive UI language</p></header>'
+    )
+  })
+
+  it('M6.0: scoped class hash baked into static html still matches the rewritten CSS', async () => {
+    const html = await compileAndRun(
+      `
+        import { Fragment } from "@tu-ui/runtime"
+        export let Card = () => Fragment {
+          .card() {
+            h1 { "title" }
+            p { "body" }
+          }
+          style { .card { padding: 1rem; } }
+        }
+      `,
+      (mod) => {
+        const fn = mod['Card'] as () => unknown
+        return renderToString(fn() as never)
+      }
+    )
+    // Same per-component hash should appear on both the static markup
+    // div AND the rewritten CSS selector inside the <style> tag.
+    const m = html.match(/class="card (card-tu-[a-f0-9]{6})"/)
+    expect(m).not.toBeNull()
+    const klass = m![1]!
+    expect(html).toContain(`<style>.${klass} { padding: 1rem; }`)
   })
 
   it('lambda params shadow same-named top-level cells', async () => {

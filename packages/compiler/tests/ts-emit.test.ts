@@ -194,7 +194,7 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
     const tsPath = join(tmp, 'Out.ts')
     writeFileSync(tsPath, ts)
     // Minimal tsconfig — strict, modern target. Use repo node_modules so the
-    // @tu/runtime types resolve correctly.
+    // @tu-ui/runtime types resolve correctly.
     const tsconfigPath = join(tmp, 'tsconfig.json')
     writeFileSync(
       tsconfigPath,
@@ -207,7 +207,7 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
           noEmit: true,
           skipLibCheck: true,
           paths: {
-            '@tu/runtime': [resolve(repoRoot, 'packages/runtime/dist/index.d.ts')],
+            '@tu-ui/runtime': [resolve(repoRoot, 'packages/runtime/dist/index.d.ts')],
           },
         },
         include: ['Out.ts'],

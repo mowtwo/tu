@@ -1,4 +1,4 @@
-import { checkTuFile, type TuDiagnostic } from '@tu/lsp'
+import { checkTuFile, type TuDiagnostic } from '@tu-ui/lsp'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 

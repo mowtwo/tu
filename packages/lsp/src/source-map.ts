@@ -1,5 +1,5 @@
-import type { SourceMapV3, TokenMapping } from '@tu/compiler'
-import { lineColAt } from '@tu/compiler'
+import type { SourceMapV3, TokenMapping } from '@tu-ui/compiler'
+import { lineColAt } from '@tu-ui/compiler'
 
 /**
  * Decoded mapping segment: the position in the generated TS, plus the

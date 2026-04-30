@@ -11,7 +11,7 @@
     "check": "echo 'no checks'"
   },
   "dependencies": {
-    "@tu/compiler": "workspace:*",
-    "@tu/runtime": "workspace:*"
+    "@tu-ui/compiler": "workspace:*",
+    "@tu-ui/runtime": "workspace:*"
   }
 }

@@ -6,7 +6,7 @@ import {
   type CellKind,
   type Program,
   type TokenMapping,
-} from '@tu/compiler'
+} from '@tu-ui/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +18,7 @@ export function tuPathToTs(p: string): string {
   return p.endsWith('.tu') ? p.slice(0, -'.tu'.length) + '.ts' : p + '.ts'
 }
 
-/** Locate `@tu/runtime`'s `.d.ts` so the in-memory program can resolve the import. */
+/** Locate `@tu-ui/runtime`'s `.d.ts` so the in-memory program can resolve the import. */
 export function findRuntimeTypesPath(): string {
   // From dist/shadow-graph.js → dist/ → packages/lsp/ → packages/ → repo/
   const here = dirname(fileURLToPath(import.meta.url))
@@ -31,7 +31,7 @@ export function findRuntimeTypesPath(): string {
     if (existsSync(c)) return c
   }
   throw new Error(
-    `@tu/lsp could not locate @tu/runtime types (looked in ${candidates.join(', ')})`
+    `@tu-ui/lsp could not locate @tu-ui/runtime types (looked in ${candidates.join(', ')})`
   )
 }
 
@@ -52,7 +52,7 @@ export function getTuCompilerOptions(): ts.CompilerOptions {
     skipLibCheck: true,
     noEmit: true,
     paths: {
-      '@tu/runtime': [findRuntimeTypesPath()],
+      '@tu-ui/runtime': [findRuntimeTypesPath()],
     },
   }
 }

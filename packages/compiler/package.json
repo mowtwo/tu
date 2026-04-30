@@ -1,5 +1,5 @@
 {
-  "name": "@tu/compiler",
+  "name": "@tu-ui/compiler",
   "version": "0.1.0-alpha.0",
   "description": "Tu compiler — lexer, parser, type-mapper, codegen.",
   "keywords": [
@@ -40,6 +40,10 @@
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@tu-ui/runtime": "workspace:*",
+    "jsdom": "^26.0.0"
   },
   "publishConfig": {
     "access": "public"

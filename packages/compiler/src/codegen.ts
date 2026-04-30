@@ -32,8 +32,8 @@ import { lineColAt } from './diagnostics.js'
  * legal ESM at runtime).
  */
 function runtimeImportLine(tsMode: boolean): string {
-  if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu/runtime'`
-  return `import { h, Signal } from '@tu/runtime'`
+  if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu-ui/runtime'`
+  return `import { h, Signal } from '@tu-ui/runtime'`
 }
 
 export interface SourceMapV3 {
@@ -747,6 +747,26 @@ class Codegen {
   }
 
   private emitTagCall(node: TagCall): void {
+    // Static-HTML subtree optimization (M6.0). When the whole TagCall is
+    // statically determinable at compile time (no cell reads, no params,
+    // no event handlers, no control flow, no nested components), serialize
+    // it to an HTML string here and emit a single
+    // `h("$static", {}, [], "<tag>…</tag>")` call. The runtime parses the
+    // template once on mount and serves it verbatim during SSR — saving an
+    // h() call + props object + children array per nested vnode.
+    //
+    // Subtree size threshold: skip if a single tag with at most one text
+    // child — the parse cost wouldn't be worth the saved allocations.
+    const ctx = this.currentScope()
+    if (isStaticTree(node, ctx) && countStaticNodes(node) >= 3) {
+      const html = renderStaticToHtml(node, ctx)
+      this.write('h(')
+      this.mark(node.tagStart, node.tagEnd, () => this.write('"$static"'))
+      this.write(', {}, [], ')
+      this.write(JSON.stringify(html))
+      this.write(')')
+      return
+    }
     this.write('h(')
     // Mark the tag span so a TS error on the synthetic h() call's tag
     // argument lands on the source `div` / `.foo` token.
@@ -1191,6 +1211,140 @@ function checkSelectorList(raw: string): string | null {
     return p
   }
   return null
+}
+
+// ─── Static-HTML subtree optimization (M6.0) ───────────────────────────────
+//
+// When a TagCall subtree is fully statically determinable (no cell reads,
+// no lambda params, no event handlers, no control flow, no nested
+// components), the codegen serializes it to an HTML string at compile
+// time and emits a single `h("$static", {}, [], html)` call. The runtime
+// parses the template once on mount and reuses the resulting DOM root.
+//
+// Bounds (V1 MVP):
+//   - Subtree must be a single TagCall as its root.
+//   - All props must be literal (StringLit / NumberLit / true / declared
+//     ClassRef). No cell-driven props, no event handlers (`on*`).
+//   - Children must each be: StringLit, NumberLit, declared ClassRef, or
+//     another static TagCall recursively. No idents (cell reads), no
+//     calls, no if/for, no Lambda/Block/AssignExpr/ObjectLit/MemberExpr.
+//   - Tag must NOT be `style` or `script` — raw-text elements have
+//     different escape rules; the existing `emitStyleBlock` path already
+//     handles `style { ... }` specially.
+//
+// ClassRef hashes are baked in here using the same dual-class output as
+// `emitClassRef` (M5/F dual-class injection), so scoped CSS keeps lining
+// up with the static markup.
+
+const STATIC_VOID_ELEMENTS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'source', 'track', 'wbr',
+])
+
+/** True iff the expression's runtime shape is fully known at compile time. */
+function isStaticTree(expr: Expr | Child, scope: ScopeCtx | undefined): boolean {
+  if (expr.kind === 'StringLit') return true
+  if (expr.kind === 'NumberLit') return true
+  if (expr.kind === 'ClassRef') {
+    return scope !== undefined && scope.declared.has(expr.name)
+  }
+  if (expr.kind === 'TagCall') {
+    if (expr.tag === 'style' || expr.tag === 'script') return false
+    for (const p of expr.props) {
+      if (isEventPropName(p.name)) return false
+      if (!isStaticPropValue(p.value, scope)) return false
+    }
+    for (const c of expr.children) {
+      if (!isStaticTree(c as Expr, scope)) return false
+    }
+    return true
+  }
+  return false
+}
+
+function isStaticPropValue(v: Expr, scope: ScopeCtx | undefined): boolean {
+  if (v.kind === 'StringLit') return true
+  if (v.kind === 'NumberLit') return true
+  if (v.kind === 'ClassRef') {
+    return scope !== undefined && scope.declared.has(v.name)
+  }
+  return false
+}
+
+function isEventPropName(name: string): boolean {
+  if (name.length < 3) return false
+  if (name.charAt(0) !== 'o' || name.charAt(1) !== 'n') return false
+  const c = name.charCodeAt(2)
+  return c >= 0x41 && c <= 0x5a // capital letter
+}
+
+/** Count tag/text/classref nodes in a static subtree — used for the
+ *  "skip tiny optimizations" threshold. */
+function countStaticNodes(expr: Expr | Child): number {
+  if (expr.kind === 'TagCall') {
+    let n = 1
+    for (const c of expr.children) n += countStaticNodes(c as Expr)
+    return n
+  }
+  return 1
+}
+
+/**
+ * Serialize a known-static subtree to an HTML string. Mirror of
+ * `renderVNode` from `@tu-ui/runtime`, but operating on AST nodes instead of
+ * VNodes. Uses the same escape rules so the output round-trips through
+ * `renderToString` without double-escaping.
+ */
+function renderStaticToHtml(expr: Expr | Child, scope: ScopeCtx | undefined): string {
+  if (expr.kind === 'StringLit') return escapeStaticText(expr.value)
+  if (expr.kind === 'NumberLit') return String(expr.value)
+  if (expr.kind === 'ClassRef') {
+    if (!scope) return escapeStaticText(expr.name)
+    return escapeStaticText(`${expr.name} ${expr.name}-tu-${scope.hash}`)
+  }
+  if (expr.kind === 'TagCall') {
+    let propStr = ''
+    for (const p of expr.props) {
+      const rendered = renderStaticPropValue(p.value, scope)
+      if (rendered === null) continue // boolean false / null prop — drop
+      if (rendered === '') {
+        propStr += ` ${p.name}` // boolean true → bare attribute
+      } else {
+        propStr += ` ${p.name}="${escapeStaticAttr(rendered)}"`
+      }
+    }
+    if (STATIC_VOID_ELEMENTS.has(expr.tag)) {
+      return `<${expr.tag}${propStr}>`
+    }
+    let childStr = ''
+    for (const c of expr.children) {
+      childStr += renderStaticToHtml(c as Expr, scope)
+    }
+    return `<${expr.tag}${propStr}>${childStr}</${expr.tag}>`
+  }
+  // Should never reach — isStaticTree gates the kinds we accept.
+  return ''
+}
+
+/** Returns the prop value as a string (escapable), or `null` to drop the
+ *  prop entirely (false / null / undefined values), or `''` for a boolean
+ *  `true` (emit as a bare attribute). */
+function renderStaticPropValue(v: Expr, scope: ScopeCtx | undefined): string | null {
+  if (v.kind === 'StringLit') return v.value
+  if (v.kind === 'NumberLit') return String(v.value)
+  if (v.kind === 'ClassRef') {
+    if (!scope) return v.name
+    return `${v.name} ${v.name}-tu-${scope.hash}`
+  }
+  return null
+}
+
+function escapeStaticText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function escapeStaticAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
 // ─── Hash ───────────────────────────────────────────────────────────────────

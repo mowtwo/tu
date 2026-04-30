@@ -19,7 +19,7 @@ Mental model order when reading Tu:
 
 ```tu
 // 1. Imports. Sources end in .tu (cross-Tu) or are bare (npm packages).
-import { Fragment } from "@tu/runtime"
+import { Fragment } from "@tu-ui/runtime"
 import { Card } from "./Card.tu"
 
 // 2. Type aliases (TS-style; raw RHS preserved to TS shadow).
@@ -206,7 +206,7 @@ Components are real functions. tsserver sees them as such — hover, goto-defini
 ### Fragment (multi-root return)
 
 ```tu
-import { Fragment } from "@tu/runtime"
+import { Fragment } from "@tu-ui/runtime"
 
 let App = () => Fragment {
   header { … }
@@ -305,7 +305,7 @@ A `ClassRef` to an **undeclared** class (one not declared in the enclosing compo
 
 ```tu
 import { Card } from "./Card.tu"        // cross-.tu (sibling)
-import { Fragment } from "@tu/runtime"  // npm package
+import { Fragment } from "@tu-ui/runtime"  // npm package
 ```
 
 V1 supports named imports only. No default imports, no namespace imports.
@@ -345,7 +345,7 @@ Each `.tu` file compiles to a single `.js` (or `.ts` shadow) module. The compile
 4. **Generates** JS/TS via a streaming buffer that records `TokenMapping`s as it emits. Top-level lets become `const X = new Signal.State(…)` / `Signal.Computed(…)` / plain const based on classification. Tag-calls become `h("tag", props, children)`. Component calls stay as real function calls. Pug-shorthand desugars in the AST. ClassRefs emit hashed class strings. Style blocks emit as `<style>` vnode children with the CSS rewritten.
 5. **Source maps** are V3, per-token + per-statement.
 
-The runtime is `@tu/runtime` — `h(tag, props, children)`, `mount(thunk, container)`, `hydrate(thunk, container)`, `renderToString(node)`, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved).
+The runtime is `@tu-ui/runtime` — `h(tag, props, children)`, `mount(thunk, container)`, `hydrate(thunk, container)`, `renderToString(node)`, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved).
 
 ## Testing pattern
 

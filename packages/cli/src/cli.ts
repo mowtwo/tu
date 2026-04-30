@@ -10,7 +10,7 @@ Usage:
   tu <command> [...args]
 
 Commands:
-  check     Type-check one or more .tu files via @tu/lsp
+  check     Type-check one or more .tu files via @tu-ui/lsp
 ${COMMANDS.filter((c) => c !== 'check')
   .map((c) => `  ${c.padEnd(9)} (planned)`)
   .join('\n')}

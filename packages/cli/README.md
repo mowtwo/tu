@@ -1,4 +1,4 @@
-# @tu/cli
+# @tu-ui/cli
 
 Provides the `tu` command-line tool: `build`, `dev`, `check`, `fmt`.
 

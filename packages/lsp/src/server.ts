@@ -42,7 +42,7 @@ connection.onInitialize(() => ({
     },
   },
   serverInfo: {
-    name: '@tu/lsp',
+    name: '@tu-ui/lsp',
     version: '0.0.0',
   },
 }))
@@ -87,7 +87,7 @@ function toLspDiagnostic(d: TuDiagnostic, documentText: string): Diagnostic {
       severity: SEVERITY_MAP[d.severity],
       range,
       message: d.message,
-      source: '@tu/lsp',
+      source: '@tu-ui/lsp',
       code: d.code === -1 ? undefined : d.code,
     } satisfies Diagnostic
   }
@@ -98,7 +98,7 @@ function toLspDiagnostic(d: TuDiagnostic, documentText: string): Diagnostic {
     severity: SEVERITY_MAP[d.severity],
     range,
     message: d.message,
-    source: '@tu/lsp',
+    source: '@tu-ui/lsp',
     code: d.code === -1 ? undefined : d.code,
   } satisfies Diagnostic
 }
@@ -186,8 +186,8 @@ function runCheck(uri: string): void {
       {
         severity: DiagnosticSeverity.Error,
         range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-        message: `@tu/lsp internal error: ${err instanceof Error ? err.message : String(err)}`,
-        source: '@tu/lsp',
+        message: `@tu-ui/lsp internal error: ${err instanceof Error ? err.message : String(err)}`,
+        source: '@tu-ui/lsp',
       },
     ]
   }

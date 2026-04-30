@@ -2,8 +2,8 @@
 // into a fresh jsdom document, then call hydrate() to ADOPT that DOM —
 // no createElement on the first frame — and verify identity preservation
 // + event listener wiring + post-hydration patchChildren.
-import { compile } from '@tu/compiler'
-import { hydrate, renderToString } from '@tu/runtime'
+import { compile } from '@tu-ui/compiler'
+import { hydrate, renderToString } from '@tu-ui/runtime'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

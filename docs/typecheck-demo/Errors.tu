@@ -1,4 +1,4 @@
-// Intentionally broken — open this in VS Code to verify the @tu/lsp
+// Intentionally broken — open this in VS Code to verify the @tu-ui/lsp
 // diagnostics extension is working. Each `bad*` binding below should get a
 // red squiggle on its first column with a TypeScript-style error message
 // when you hover over it.

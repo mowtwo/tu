@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Fragment, h, renderToString, VERSION } from '../src/index.js'
 
-describe('@tu/runtime', () => {
+describe('@tu-ui/runtime', () => {
   it('exposes a version', () => {
     expect(VERSION).toBe('0.0.0')
   })

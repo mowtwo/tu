@@ -12,7 +12,7 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
-describe('@tu/vite', () => {
+describe('@tu-ui/vite', () => {
   it('exposes a version', () => {
     expect(VERSION).toBe('0.0.0')
   })
@@ -34,7 +34,7 @@ describe('@tu/vite', () => {
     ) => Promise<{ code: string; map: null } | null>
     const result = await load.call({}, file)
     expect(result).not.toBeNull()
-    expect(result!.code).toContain(`import { h, Signal } from '@tu/runtime'`)
+    expect(result!.code).toContain(`import { h, Signal } from '@tu-ui/runtime'`)
     expect(result!.code).toContain(`export const Greet = (name) => h("p", {}, [name])`)
   })
 

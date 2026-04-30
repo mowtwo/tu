@@ -1,5 +1,5 @@
 {
-  "name": "@tu/vite",
+  "name": "@tu-ui/vite",
   "version": "0.1.0-alpha.0",
   "description": "Vite plugin for Tu — compiles .tu source modules on import.",
   "keywords": [
@@ -40,7 +40,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu/compiler": "workspace:*"
+    "@tu-ui/compiler": "workspace:*"
   },
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"

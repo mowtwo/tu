@@ -40,7 +40,7 @@ export let Sidebar = () => aside(class: "sidebar") {
   footer(class: "meta") {
     p {
       "Edit any " code { ".tu" } " file under " code { "examples/" }
-      " and the page reloads via the " code { "@tu/vite" } " plugin."
+      " and the page reloads via the " code { "@tu-ui/vite" } " plugin."
     }
   }
 }

@@ -1,7 +1,7 @@
 // Compile Card.tu, render the component, and write the resulting HTML to
 // dist/Card.html so it can be opened in a browser to inspect the styling.
-import { compile } from '@tu/compiler'
-import { renderToString } from '@tu/runtime'
+import { compile } from '@tu-ui/compiler'
+import { renderToString } from '@tu-ui/runtime'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'

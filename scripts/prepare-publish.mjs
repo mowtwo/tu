@@ -32,25 +32,25 @@ const HOMEPAGE = 'https://mowtwo.github.io/tu/'
 // surfaces them appropriately (rather than every package having identical
 // keyword bags).
 const PACKAGE_META = {
-  '@tu/compiler': {
+  '@tu-ui/compiler': {
     keywords: ['tu', 'tu-lang', 'compiler', 'parser', 'codegen', 'reactive', 'signals'],
   },
-  '@tu/runtime': {
+  '@tu-ui/runtime': {
     keywords: ['tu', 'tu-lang', 'runtime', 'reactive', 'signals', 'tc39-signals', 'ssr', 'hydrate', 'custom-elements'],
   },
-  '@tu/vite': {
+  '@tu-ui/vite': {
     keywords: ['tu', 'tu-lang', 'vite', 'vite-plugin', 'reactive'],
   },
-  '@tu/lsp': {
+  '@tu-ui/lsp': {
     keywords: ['tu', 'tu-lang', 'lsp', 'language-server', 'typescript'],
   },
-  '@tu/cli': {
+  '@tu-ui/cli': {
     keywords: ['tu', 'tu-lang', 'cli'],
   },
-  '@tu/format': {
+  '@tu-ui/format': {
     keywords: ['tu', 'tu-lang', 'formatter', 'prettier-plugin'],
   },
-  '@tu/std': {
+  '@tu-ui/std': {
     keywords: ['tu', 'tu-lang', 'stdlib'],
   },
   'create-tu': {

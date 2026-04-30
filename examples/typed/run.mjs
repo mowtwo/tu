@@ -4,8 +4,8 @@
 //   • Object literal as a state-cell value (`origin: Point = { … }`)
 //   • Lambda return-type annotation (`make = (n): Point => { … }`)
 //   • Reactive update cycling through a computed object literal
-import { compile } from '@tu/compiler'
-import { renderToString } from '@tu/runtime'
+import { compile } from '@tu-ui/compiler'
+import { renderToString } from '@tu-ui/runtime'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
