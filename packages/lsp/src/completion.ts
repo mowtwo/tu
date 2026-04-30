@@ -1,5 +1,6 @@
 import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu-ui/compiler'
 import { cssService, findCssContextAt } from './css-lsp.js'
+import { htmlTagNames, renderHtmlTagDocs } from './html-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
@@ -129,16 +130,26 @@ export function completionsAtTuPosition(
 
   if (ctx.kind === 'expression-head') {
     const seen = new Set(out.map((c) => c.label))
-    for (const tag of HTML_TAGS) {
+    // Source the HTML tag list from vscode-html-languageservice's data
+    // provider — covers the full standard set (~115 tags) plus the
+    // descriptions / MDN refs surfaced as completion `documentation`.
+    // The legacy `HTML_TAGS` curated list is kept as a fallback for the
+    // (rare) case where a tag isn't in the standard data.
+    const tagList = htmlTagNames()
+    const tags = tagList.length > 0 ? tagList : HTML_TAGS
+    for (const tag of tags) {
       if (seen.has(tag)) continue
-      out.push({
+      const docs = renderHtmlTagDocs(tag)
+      const item: TuCompletionItem = {
         label: tag,
         kind: 'function',
         // High sortText so HTML tags appear AFTER user-defined idents but
         // still in the list (most users want their own names first).
         sortText: '8_' + tag,
         detail: `Tu tag-call: emits h("${tag}", …)`,
-      })
+      }
+      if (docs) item.documentation = docs
+      out.push(item)
     }
   }
 

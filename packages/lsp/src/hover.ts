@@ -2,8 +2,9 @@ import { lineColAt } from '@tu-ui/compiler'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { cssService, findCssContextAt } from './css-lsp.js'
+import { findTagCallAt, renderHtmlTagDocs } from './html-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'
-import { mapSourceLineColToTS } from './source-map.js'
+import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
 export interface TuHover {
   /** TS-style display string (`(parameter) name: string`, `Signal.State<number>`, …). */
@@ -31,6 +32,13 @@ export function hoverAtTuPosition(
   // CSS body? Delegate to the CSS language service before touching ts.
   const cssHover = maybeCssHover(source, line, col)
   if (cssHover !== undefined) return cssHover
+
+  // HTML tag identifier in markup position (e.g. cursor on `div` inside
+  // `div { … }` or `button(onClick: …) { … }`). Tu's tag-calls compile to
+  // `h("div", …)` strings that tsserver can't surface docs for, so we
+  // delegate to vscode-html-languageservice's tag-data tables instead.
+  const htmlHover = maybeHtmlTagHover(source, line, col)
+  if (htmlHover !== null) return htmlHover
 
   const session = getOrCreateSession(source, filename)
   if (!session) return null
@@ -63,6 +71,31 @@ export function hoverAtTuPosition(
   }
   if (documentation !== undefined) result.documentation = documentation
   return result
+}
+
+/**
+ * Hover for an HTML tag identifier in markup position. Returns null if
+ * the cursor isn't on a known HTML tag — caller falls through to tsserver.
+ */
+function maybeHtmlTagHover(
+  source: string,
+  line: number,
+  col: number
+): TuHover | null {
+  const offset = lineColToOffset(source, line, col)
+  if (offset === null) return null
+  const hit = findTagCallAt(source, offset)
+  if (!hit) return null
+  const docs = renderHtmlTagDocs(hit.tag)
+  if (!docs) return null
+  // line/col returned by lineColAt are 1-based; LSP wants 0-based.
+  const startLC = lineColAt(source, hit.start)
+  return {
+    contents: docs,
+    line: startLC.line - 1,
+    col: startLC.col - 1,
+    length: hit.end - hit.start,
+  }
 }
 
 /** Convenience: read .tu off disk and hover. */

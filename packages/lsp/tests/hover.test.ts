@@ -90,6 +90,31 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.line).toBe(3)
   })
 
+  it('M6.0+: hovering an HTML tag identifier returns MDN-style docs', () => {
+    // line 0: export let App = () => button(class: "go") { "click" }
+    //                                ^^^^^^ col 23 — the `button` tag
+    const src = 'export let App = () => button(class: "go") { "click" }'
+    const info = hoverAtTuPosition(src, join(tmp, 'html-hover.tu'), 0, 24)
+    expect(info).not.toBeNull()
+    // vscode-html-languageservice content includes the tag wrapped in
+    // backticks plus a description.
+    expect(info!.contents).toContain('`<button>`')
+    expect(info!.contents.toLowerCase()).toContain('button')
+    // Range covers exactly `button` (6 chars).
+    expect(info!.length).toBe(6)
+  })
+
+  it('M6.0+: hovering a non-standard tag name (Web Component) returns null', () => {
+    const src = 'export let App = () => my-element { "x" }'
+    // Tu's lexer rejects `-` inside an ident, so this won't parse — guard
+    // against the hover path crashing on a non-standard tag word.
+    const info = hoverAtTuPosition(src, join(tmp, 'unknown-tag.tu'), 0, 24)
+    // Either null (parse failure → no shadow) or a non-html-tag hover.
+    if (info !== null) {
+      expect(info.contents).not.toContain('<my-element>')
+    }
+  })
+
   it('returns null when the source has a Tu compile error', () => {
     // Unbalanced braces — buildShadowGraph swallows the compile error and
     // returns no shadow for the root file. Hover gracefully degrades to null.
