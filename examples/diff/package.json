@@ -1,0 +1,16 @@
+{
+  "name": "@tu-examples/diff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1.7 demo: keyed diff — focus preservation across cell mutation and key-based list reorder.",
+  "scripts": {
+    "build": "echo 'diff example: visual demo only — exercise it via the playground'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
+  }
+}

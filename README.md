@@ -89,6 +89,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.4 | `style { … }` block | ✅ |
 | M1.5 | Events + `mount()` (interactive components) | ✅ |
 | M1.6 | Vite plugin + browser playground | ✅ |
+| M1.7 | Keyed diff (focus-preserving + reorder) | ✅ |
 | M2 | Type inference + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |

@@ -5,6 +5,7 @@ import * as CounterMod from '../../examples/counter/Counter.tu'
 import * as TodoMod from '../../examples/todo/Todo.tu'
 import * as CardMod from '../../examples/styled/Card.tu'
 import * as ClickerMod from '../../examples/clicker/Clicker.tu'
+import * as DiffMod from '../../examples/diff/Diff.tu'
 
 // Each demo: id, label, blurb, render thunk that returns a Tu vnode (or array
 // fragment). Some demos (counter / todo) seed their state cells before mount
@@ -79,6 +80,55 @@ const demos = [
       ClickerMod.count.set(0)
     },
     thunk: () => ClickerMod.Clicker(),
+  },
+  {
+    id: 'diff',
+    label: 'M1.7  Diff',
+    blurb: 'Keyed diff — focus + caret in the input survive unrelated cell mutation; reordering the `<li>` list with `key:` moves DOM nodes instead of recreating them.',
+    setup() {
+      DiffMod.count.set(0)
+      DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date'])
+    },
+    thunk: () => DiffMod.Diff(),
+    controls: () => [
+      {
+        label: 'tick count',
+        run: () => DiffMod.count.set(DiffMod.count.get() + 1),
+      },
+      {
+        label: 'shuffle list',
+        run: () => {
+          const arr = [...DiffMod.items.get()]
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            const tmp = arr[i]
+            arr[i] = arr[j]
+            arr[j] = tmp
+          }
+          DiffMod.items.set(arr)
+        },
+      },
+      {
+        label: 'insert middle',
+        run: () => {
+          const arr = [...DiffMod.items.get()]
+          const fresh = `New ${Date.now() % 1000}`
+          arr.splice(Math.floor(arr.length / 2), 0, fresh)
+          DiffMod.items.set(arr)
+        },
+      },
+      {
+        label: 'remove first',
+        run: () => DiffMod.items.set(DiffMod.items.get().slice(1)),
+      },
+      {
+        label: 'reset',
+        run: () => {
+          DiffMod.count.set(0)
+          DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date'])
+        },
+      },
+    ],
   },
 ]
 

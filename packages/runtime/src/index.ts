@@ -37,6 +37,7 @@ export function renderToString(node: Child): string {
 function renderVNode(node: VNode): string {
   let propStr = ''
   for (const [k, v] of Object.entries(node.props)) {
+    if (k === 'key') continue
     if (v == null || v === false) continue
     // Event handlers and other functions have no SSR representation.
     if (typeof v === 'function') continue
@@ -95,9 +96,39 @@ const RAW_TEXT_ELEMENTS = new Set(['style', 'script'])
 // ─── Browser mount (CSR) ───────────────────────────────────────────────────
 //
 // Build real DOM from a vnode thunk and re-run the thunk whenever any Signal
-// it reads becomes stale. M1.5 uses a naive replace-children diff: every cell
-// change blows the container's children away and rebuilds. Keyed diffing is
-// future work.
+// it reads becomes stale. M1.7 upgrades this from naive replace-children to a
+// keyed vnode→DOM diff: same-tag elements are reused (focus / scroll / input
+// state / CSS animations survive), event listeners rebind only when the
+// handler reference changes, and reorders move existing nodes instead of
+// destroying them.
+
+type NormalizedChild = VNode | string | number
+
+interface ElInstance {
+  kind: 'el'
+  tag: string
+  /** Last-applied props snapshot — drives the next prop diff. */
+  props: Record<string, unknown>
+  el: Element
+  children: Instance[]
+  /** Currently-bound event listeners, keyed by lowercased event name. */
+  handlers: Record<string, EventListener>
+}
+
+interface TextInstance {
+  kind: 'text'
+  text: string
+  el: Text
+}
+
+type Instance = ElInstance | TextInstance
+
+/**
+ * Properties that must be set as DOM properties rather than HTML attributes
+ * — assigning to `.value` updates an input live, while `setAttribute('value', …)`
+ * only sets the initial value.
+ */
+const PROPERTY_PROPS = new Set(['value', 'checked', 'selected'])
 
 /**
  * Mount a reactive component into a DOM container.
@@ -109,9 +140,9 @@ const RAW_TEXT_ELEMENTS = new Set(['style', 'script'])
  * Browser-only — requires `document`. Use `renderToString` for SSR.
  */
 export function mount(thunk: () => Child, container: Element): () => void {
+  let mounted: Instance[] = []
   const render = () => {
-    while (container.firstChild) container.removeChild(container.firstChild)
-    appendChildTo(container, thunk())
+    mounted = patchChildren(container, mounted, [thunk()])
   }
   // The canonical TC39 Signal effect pattern: a Computed wraps the side
   // effect, and a Watcher schedules a re-pull on a microtask after any read
@@ -132,31 +163,44 @@ export function mount(thunk: () => Child, container: Element): () => void {
   }
 }
 
-function appendChildTo(parent: Node, child: Child): void {
-  if (child == null) return
-  if (typeof child === 'string') {
-    parent.appendChild(document.createTextNode(child))
-    return
-  }
-  if (typeof child === 'number') {
-    parent.appendChild(document.createTextNode(String(child)))
-    return
-  }
-  if (Array.isArray(child)) {
-    for (const c of child) appendChildTo(parent, c)
-    return
-  }
-  parent.appendChild(materialize(child))
+function flatten(raw: Child[]): NormalizedChild[] {
+  const out: NormalizedChild[] = []
+  for (const c of raw) flattenInto(out, c)
+  return out
 }
 
-function materialize(node: VNode): Element {
-  const el = document.createElement(node.tag)
-  for (const [k, v] of Object.entries(node.props)) {
+function flattenInto(out: NormalizedChild[], c: Child): void {
+  if (c == null) return
+  if (typeof c === 'string') {
+    out.push(c)
+    return
+  }
+  if (typeof c === 'number') {
+    out.push(c)
+    return
+  }
+  if (Array.isArray(c)) {
+    for (const cc of c) flattenInto(out, cc)
+    return
+  }
+  out.push(c)
+}
+
+function materializeInstance(child: NormalizedChild): Instance {
+  if (typeof child !== 'object') {
+    const text = String(child)
+    return { kind: 'text', text, el: document.createTextNode(text) }
+  }
+  const el = document.createElement(child.tag)
+  const handlers: Record<string, EventListener> = {}
+  for (const [k, v] of Object.entries(child.props)) {
+    if (k === 'key') continue
     if (v == null || v === false) continue
-    const eventName = matchEventProp(k)
-    if (eventName !== null) {
+    const ev = matchEventProp(k)
+    if (ev !== null) {
       if (typeof v === 'function') {
-        el.addEventListener(eventName, v as EventListener)
+        el.addEventListener(ev, v as EventListener)
+        handlers[ev] = v as EventListener
       }
       continue
     }
@@ -164,11 +208,206 @@ function materialize(node: VNode): Element {
       el.setAttribute(k, '')
       continue
     }
-    if (typeof v === 'function') continue // non-event function prop has no DOM mapping
-    el.setAttribute(k, String(v))
+    if (typeof v === 'function') continue
+    if (PROPERTY_PROPS.has(k)) {
+      ;(el as unknown as Record<string, unknown>)[k] = v
+    } else {
+      el.setAttribute(k, String(v))
+    }
   }
-  for (const c of node.children) appendChildTo(el, c)
-  return el
+  const children: Instance[] = []
+  for (const c of flatten(child.children)) {
+    const ci = materializeInstance(c)
+    el.appendChild(ci.el)
+    children.push(ci)
+  }
+  return { kind: 'el', tag: child.tag, props: child.props, el, children, handlers }
+}
+
+/**
+ * Diff two children lists rooted at `parentEl`, producing the new instance
+ * list in the order they should appear. Reuses old instances by `key:` prop
+ * (any key) or by index position when no keys are involved. Mismatched
+ * shapes are replaced via `materializeInstance`. DOM moves are issued at
+ * the end via `insertBefore`.
+ */
+function patchChildren(
+  parentEl: Element,
+  oldList: Instance[],
+  newRaw: Child[]
+): Instance[] {
+  const newFlat = flatten(newRaw)
+  const oldUsed = new Array(oldList.length).fill(false)
+  const newToOld = new Array<number>(newFlat.length).fill(-1)
+
+  // Pass 1 — keyed matches.
+  for (let ni = 0; ni < newFlat.length; ni++) {
+    const c = newFlat[ni]!
+    if (typeof c !== 'object') continue
+    const key = c.props['key']
+    if (key === undefined) continue
+    for (let oi = 0; oi < oldList.length; oi++) {
+      if (oldUsed[oi]) continue
+      const o = oldList[oi]!
+      if (o.kind !== 'el') continue
+      if (o.props['key'] !== key) continue
+      if (o.tag !== c.tag) continue
+      newToOld[ni] = oi
+      oldUsed[oi] = true
+      break
+    }
+  }
+
+  // Pass 2 — positional fallback for unkeyed slots that line up.
+  for (let ni = 0; ni < newFlat.length; ni++) {
+    if (newToOld[ni] !== -1) continue
+    if (ni >= oldList.length) break
+    if (oldUsed[ni]) continue
+    const c = newFlat[ni]!
+    const o = oldList[ni]!
+    if (typeof c !== 'object' && o.kind === 'text') {
+      newToOld[ni] = ni
+      oldUsed[ni] = true
+      continue
+    }
+    if (
+      typeof c === 'object' &&
+      o.kind === 'el' &&
+      o.tag === c.tag &&
+      o.props['key'] === c.props['key']
+    ) {
+      newToOld[ni] = ni
+      oldUsed[ni] = true
+    }
+  }
+
+  // Build the new instance list — reuse where matched, materialize where not.
+  const newInstances: Instance[] = new Array(newFlat.length)
+  for (let ni = 0; ni < newFlat.length; ni++) {
+    const oi = newToOld[ni]!
+    const c = newFlat[ni]!
+    if (oi >= 0) {
+      newInstances[ni] = patchInstance(oldList[oi]!, c, parentEl)
+    } else {
+      newInstances[ni] = materializeInstance(c)
+    }
+  }
+
+  // Remove old instances that didn't get reused.
+  for (let oi = 0; oi < oldList.length; oi++) {
+    if (!oldUsed[oi]) parentEl.removeChild(oldList[oi]!.el)
+  }
+
+  // Position pass — walk new list forward and insertBefore as needed. New
+  // instances aren't in the DOM yet, so this is also where they get
+  // appended. Existing instances that are already in the right slot get
+  // skipped via the `nextSibling` check, avoiding spurious DOM mutations.
+  let cursor: Node | null = parentEl.firstChild
+  for (const inst of newInstances) {
+    if (cursor === inst.el) {
+      cursor = inst.el.nextSibling
+    } else {
+      parentEl.insertBefore(inst.el, cursor)
+    }
+  }
+
+  return newInstances
+}
+
+function patchInstance(
+  oldInst: Instance,
+  newChild: NormalizedChild,
+  parentEl: Element
+): Instance {
+  // Type or shape change: text→el or el→text or different tag → replace.
+  if (typeof newChild !== 'object') {
+    const text = String(newChild)
+    if (oldInst.kind === 'text') {
+      if (oldInst.text !== text) {
+        oldInst.el.nodeValue = text
+        oldInst.text = text
+      }
+      return oldInst
+    }
+    const next: TextInstance = {
+      kind: 'text',
+      text,
+      el: document.createTextNode(text),
+    }
+    parentEl.replaceChild(next.el, oldInst.el)
+    return next
+  }
+  if (oldInst.kind !== 'el' || oldInst.tag !== newChild.tag) {
+    const next = materializeInstance(newChild)
+    parentEl.replaceChild(next.el, oldInst.el)
+    return next
+  }
+  patchProps(oldInst, newChild.props)
+  oldInst.children = patchChildren(oldInst.el, oldInst.children, newChild.children)
+  oldInst.props = newChild.props
+  return oldInst
+}
+
+function patchProps(inst: ElInstance, newProps: Record<string, unknown>): void {
+  const oldProps = inst.props
+  // Drop attributes/listeners no longer present.
+  for (const k of Object.keys(oldProps)) {
+    if (k === 'key') continue
+    if (k in newProps) continue
+    const ev = matchEventProp(k)
+    if (ev !== null) {
+      const old = inst.handlers[ev]
+      if (old) {
+        inst.el.removeEventListener(ev, old)
+        delete inst.handlers[ev]
+      }
+      continue
+    }
+    if (PROPERTY_PROPS.has(k)) {
+      ;(inst.el as unknown as Record<string, unknown>)[k] = ''
+    } else {
+      inst.el.removeAttribute(k)
+    }
+  }
+  for (const [k, v] of Object.entries(newProps)) {
+    if (k === 'key') continue
+    const ev = matchEventProp(k)
+    if (ev !== null) {
+      const old = inst.handlers[ev]
+      if (typeof v === 'function') {
+        if (old !== v) {
+          if (old) inst.el.removeEventListener(ev, old)
+          inst.el.addEventListener(ev, v as EventListener)
+          inst.handlers[ev] = v as EventListener
+        }
+      } else if (old) {
+        inst.el.removeEventListener(ev, old)
+        delete inst.handlers[ev]
+      }
+      continue
+    }
+    if (v == null || v === false) {
+      if (k in oldProps) {
+        if (PROPERTY_PROPS.has(k)) {
+          ;(inst.el as unknown as Record<string, unknown>)[k] = ''
+        } else {
+          inst.el.removeAttribute(k)
+        }
+      }
+      continue
+    }
+    if (typeof v === 'function') continue // non-event function — ignored on DOM
+    if (oldProps[k] === v) continue
+    if (v === true) {
+      inst.el.setAttribute(k, '')
+      continue
+    }
+    if (PROPERTY_PROPS.has(k)) {
+      ;(inst.el as unknown as Record<string, unknown>)[k] = v
+    } else {
+      inst.el.setAttribute(k, String(v))
+    }
+  }
 }
 
 /** `onClick` → `click`, `onInputChange` → `inputchange`. Returns null for non-event props. */
