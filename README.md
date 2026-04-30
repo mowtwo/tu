@@ -1,127 +1,142 @@
 # Tu (图)
 
-A reactive UI language with first-class signals, immutable-by-default state, and resumability-based SSR. Designed to compile cleanly to standard Web Components and play well with React / Vue / Svelte ecosystems.
+A reactive UI language. Trailing-closure DSL over HTML / CSS / state, scoped style blocks per component, top-level `let` auto-binds to TC39 Signals, types via TypeScript (Volar pattern), full LSP — hover, completion, goto-definition, rename, diagnostics.
 
-> **Status**: pre-alpha (v0.0.0). Compiler, runtime, type-system, and full LSP (diagnostics + hover + completion + definition + rename) are landed; SSR, CE wrappers, and the v0.1 release are next.
+> **Status**: pre-alpha (v0.0.0). The compiler, runtime, type system, full LSP, SSR (`renderToString` + client-side `hydrate`), and Custom Elements wrapper are all landed. Public preview is what this repo is.
 
-**Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md)
+**Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md) · [Examples](examples/) · [Playground](playground/)
 
-## Concept
+---
 
-- JSX replacement: trailing-closure DSL unifying HTML, CSS, and SVG in one syntax
-- Immutable-first: structural sharing, no `this`, no `class`, no `function` keyword
-- Reactivity: top-level `let` auto-binds to TC39 Signals
-- `?` operator: Rust-style early-exit propagation for nullable values
-- SSR via resumability — no hydration mismatch, no double-execute
-- Build targets: ESM, SSR, standard Custom Elements, `custom-elements.json` manifest, React / Vue / Svelte wrappers
+## A quick taste
 
-## Repository Layout
+```tu
+type Point = { x: number; y: number }
+
+export let origin: Point = { x: 0, y: 0 }
+export let snapshot = computed({ tag: "point", value: origin })
+
+export let App = () => .panel() {
+  h1 { "Hello, Tu!" }
+  p { "origin.x = " origin.x ", origin.y = " origin.y }
+
+  button(onClick: () => origin = { x: origin.x + 1, y: origin.y + 1 }) {
+    "bump"
+  }
+
+  style {
+    .panel { padding: 1rem; font-family: system-ui, sans-serif; }
+    .panel > h1 { color: #312e81; }
+  }
+}
+```
+
+What's happening:
+- `type Point = …` — a TS-style type alias; the RHS is captured verbatim and threaded into TS-mode emit so tsserver checks every use.
+- `let origin: Point = { x: 0, y: 0 }` — top-level `let` auto-binds to a `Signal.State<Point>` cell. Object literal as value.
+- `computed(…)` — a `Signal.Computed` cell. Reads of `origin` inside the body inject `.get()` automatically; the cell re-derives on mutation.
+- `.panel() { … }` — pug-shorthand: a `<div class="panel panel-tu-XXX">` plus children. The `XXX` is a per-component hash; the `style { … }` block's selectors get the same suffix, so `.panel` styles never bleed across components.
+- `origin.x` — postfix member access. `.` doesn't collide with prefix-dot ClassRef (`class: .card`) because they sit at different positions in the grammar.
+- `origin = { x: origin.x + 1, y: origin.y + 1 }` — assignment desugars to `origin.set(…)` when the target is a state cell.
+
+## Install + run a demo (60 seconds)
+
+```bash
+pnpm install
+pnpm build
+
+# Render a static greeting → HTML
+pnpm --filter @tu-examples/hello demo
+
+# Reactive counter (state cell + computed cell)
+pnpm --filter @tu-examples/counter demo
+
+# M5.6/7/8: object literals, return-type annotations, member access
+pnpm --filter @tu-examples/typed demo
+
+# Browser playground over every milestone demo
+pnpm --filter tu-playground dev
+```
+
+The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files via the [@tu/vite](packages/vite-tu) plugin. Edit any `.tu` file under `examples/` while the dev server is up and the page reloads.
+
+## Feature tour
+
+| Capability | Example | Status |
+|---|---|---|
+| Trailing-closure DSL for markup | `div(class: "row") { h1 { "hi" } p { x } }` | ✅ |
+| Top-level `let` → Signal cell | `let count = 0` (auto-wraps in `Signal.State`) | ✅ |
+| Computed cells | `let doubled = computed(count * 2)` | ✅ |
+| Style block + per-component scoping | `style { .card { … } }` + ClassRef `.card` | ✅ |
+| Pug-style class shorthand | `.card() { … }` → `<div class="card …">` | ✅ |
+| Multi-class shorthand | `.card.elevated() { … }` | ✅ |
+| `:global(.foo)` escape hatch | `style { :global(.legacy) { … } }` | ✅ |
+| Capitalized components are real functions | `Card("title") { children }` (no `h("Card", …)`) | ✅ |
+| `Fragment { … }` for multi-root returns | `Fragment { header { … } main { … } }` | ✅ |
+| Local `let` inside a block (plain const) | `() => { let g = "Hi, " + n; p { g } }` | ✅ |
+| Type aliases | `type Point = { x: number; y: number }` | ✅ |
+| Annotated bindings | `let count: number = 0` (wraps as `Signal.State<number>`) | ✅ |
+| Lambda return-type annotation | `(n: number): Point => { x: n, y: n }` | ✅ |
+| Object literals + member access | `let p = { x: 1 }; p.x` | ✅ |
+| Array literals | `let xs = [1, 2, 3]` | ✅ |
+| Cross-`.tu` imports + re-exports | `import { Card } from "./Card.tu"` | ✅ |
+| `tu check` CLI | type-check `.tu` files with code-frame output | ✅ |
+| LSP — diagnostics, hover, completion, goto-def, rename | `@tu/lsp` + `vscode-tu` | ✅ |
+| SSR | `renderToString(thunk())` | ✅ |
+| Hydration | `hydrate(thunk, container)` (focus / scroll / `<input>` value preserved) | ✅ |
+| Custom Elements wrapper | `defineCustomElement(thunk, "my-tag", { attributes })` | ✅ |
+| Source maps | per-token V3 maps in JS + TS emit | ✅ |
+| LIS-based keyed reorder | minimal moves on list reorders (Vue 3 / Inferno style) | ✅ |
+
+For everything that's been **deferred** (per-component HMR, static-HTML optimization, local reactivity, etc.) see [docs/DEFERRED.md](docs/DEFERRED.md).
+
+## Repository layout
 
 ```
 packages/
-├── compiler/    @tu/compiler   lexer, parser, type-mapper, codegen
-├── runtime/     @tu/runtime    ~3 KB Signal + DOM glue (h, renderToString, mount)
+├── compiler/    @tu/compiler   lexer, parser, codegen, source maps
+├── runtime/     @tu/runtime    Signal + DOM glue (h, mount, hydrate, renderToString, Fragment)
 ├── vite-tu/     @tu/vite       Vite plugin: load .tu files via the compiler
-├── lsp/         @tu/lsp        Volar-based language server
-├── vscode/      vscode-tu      VS Code extension (syntax + icon)
+├── lsp/         @tu/lsp        Language server (diagnostics + hover + completion + def + rename)
+├── vscode/      vscode-tu      VS Code extension (syntax + icon + LSP client)
 ├── cli/         @tu/cli        tu build / tu dev / tu check / tu fmt
-├── format/      @tu/format     formatter (Prettier plugin; dprint later)
+├── format/      @tu/format     formatter (Prettier plugin)
 ├── create-tu/   create-tu      project scaffold (npx create-tu-app)
 └── std/         @tu/std        standard library (placeholder)
 
-examples/
-docs/
-playground/
+examples/      hello, counter, todo, styled, scoped, clicker, diff, composition, typed, ssr
+docs/          LANGUAGE.md, DEFERRED.md
+playground/    Vite app — Tu-rendered chrome over every milestone demo
 ```
 
 ## Development
 
 ```bash
 pnpm install
-pnpm build
-pnpm test
-pnpm check
+pnpm build       # turbo build all packages
+pnpm test        # vitest across compiler, runtime, lsp, cli, vscode
+pnpm check       # tsc --noEmit across packages
 ```
 
-### Run the demos
+The compiler / runtime / LSP test suite covers ~280 cases across 7 files in `packages/compiler`, plus per-package suites for runtime, lsp, cli, and vscode-tu. The CLI's `tu check` integration test type-checks a real `.tu` file by spinning up the LSP shadow graph + a `ts.LanguageService`.
 
-```bash
-# M1.0 — static Greeting compiled and rendered
-pnpm --filter @tu-examples/hello demo
-pnpm --filter @tu-examples/hello demo Alice
-
-# M1.2 — reactive Counter: top-level let → Signal cell, computed cells auto-update
-pnpm --filter @tu-examples/counter demo
-
-# M1.3 — Todo: for / if / match expressions over a reactive list
-pnpm --filter @tu-examples/todo demo
-
-# M1.4 — Card: a component with a `style { ... }` block
-pnpm --filter @tu-examples/styled demo
-
-# M1.5 — Clicker: interactive counter, mounted into a jsdom-simulated browser
-pnpm --filter @tu-examples/clicker demo
-
-# M1.6 — playground: real-browser dev server, swaps between every milestone demo
-pnpm --filter tu-playground dev
-```
-
-The playground runs Vite over `examples/*/*.tu` source files via the `@tu/vite` plugin. Edit any `.tu` file under `examples/` while the dev server is up and the page reloads.
-
-### VS Code syntax highlighting (M1.1)
+### VS Code syntax highlighting + LSP
 
 ```bash
 pnpm --filter vscode-tu dev:install
 # Then in VS Code: Cmd+Shift+P → "Developer: Reload Window"
 ```
 
-After the reload, opening any `.tu` file gives you syntax highlighting, bracket matching, comment toggling, and the language icon. To remove later: `pnpm --filter vscode-tu dev:uninstall`.
+After the reload, opening any `.tu` file gives you syntax highlighting, diagnostics squiggles on type errors, hover (TS-style quick-info incl. JSDoc), completion (idents, params, HTML tags, ClassRefs, CSS properties), goto-definition (same-file + cross-`.tu`), and rename (workspace edits).
 
-Alternatively press **F5** in this workspace to launch a separate "Extension Development Host" window with the extension preloaded — preferred for iterating on the grammar.
+To remove the dev install later: `pnpm --filter vscode-tu dev:uninstall`. Or press **F5** in this workspace to launch a separate Extension Development Host window with the extension preloaded.
 
-## Roadmap
+## Status
 
-| Milestone | Goal | Status |
-|---|---|---|
-| M0 | Monorepo scaffold | ✅ |
-| M1.0 | Static `Greeting.tu` → ESM → HTML | ✅ |
-| M1.1 | VS Code syntax highlighting + file icon | ✅ |
-| M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | ✅ |
-| M1.3 | `if` / `for` expressions (originally `match` too; removed in M1.11) | ✅ |
-| M1.4 | `style { … }` block | ✅ |
-| M1.5 | Events + `mount()` (interactive components) | ✅ |
-| M1.6 | Vite plugin + browser playground | ✅ |
-| M1.7 | Keyed diff (focus-preserving + reorder) | ✅ |
-| M1.8 | Style scoping + `.card` symbolic refs + pug shorthand | ✅ |
-| M1.9 | Error UX: file:line:col + code frame, V3 source maps | ✅ |
-| M1.10 | Module visibility: private-by-default + `export let` | ✅ |
-| M1.11 | Drop `match` (TC39 Pattern Matching collision) | ✅ |
-| M2 | Type system via TypeScript + `.d.ts` emit (V1: erasure-only) | ✅ |
-| M2.1 | Cross-`.tu` `import { X } from "./other.tu"` + re-exports | ✅ |
-| M3 V1 | LSP — diagnostics via TypeScript Compiler API | ✅ |
-| M3.1 | LSP — cross-`.tu` import resolution | ✅ |
-| M3.2 | Token-level diagnostic ranges + per-token V3 source maps | ✅ |
-| M3.3 | LSP hover (type + JSDoc at cursor) | ✅ |
-| M3.4 | LSP completion (idents, params, cross-`.tu` imports) | ✅ |
-| M3.5 | LSP goto-definition (same-file + cross-`.tu`) | ✅ |
-| M3.6 | `tu check` CLI — type-check `.tu` files with code-frame output | ✅ |
-| M3.7 | LanguageService cache (single-slot, mtime-aware) | ✅ |
-| M3.8 | LSP rename (cross-`.tu` workspace edits) | ✅ |
-| M3.9 | Synthesized `${Name}Props` interfaces in TS emit | ✅ |
-| M2.2 | Annotated `let X: T = …` declarations | ✅ |
-| M2.3 | Cross-`.tu` import classification (reactivity fix) | ✅ |
-| M2.4 | Type aliases (`type X = …`) + lex `\| & ; [ ]` | ✅ |
-| M2.5 | Array literals `[a, b, c]` + Todo.tu owns its controls | ✅ |
-| M1.12 | Pug-shorthand multi-class + `tag:` override | ✅ |
-| M1.13 | `:global(.foo)` CSS escape hatch | ✅ |
-| M1.14 | Counter.tu owns its own `+`/`−`/`reset` buttons | ✅ |
-| M1.15 | LIS-based keyed reorder (Vue/Inferno-style) | ✅ |
-| M4 V1 | Client-side `hydrate(thunk, container)` for SSR | ✅ |
-| M4.1 | `defineCustomElement(thunk, tagName)` runtime helper | ✅ |
-| M4 | Framework wrapper targets (React / Vue / Svelte / Solid) | … |
-| M5 | Dev server polish + project template | … |
-| M6 | Docs + playground + v0.1 alpha release | … |
+Tu is **pre-alpha**. The language and runtime are usable end-to-end — every example in this repo runs, the LSP gives a real IDE experience, and the test suite passes — but APIs may change before v0.1. Issues / PRs welcome; expect rough edges.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the milestone numbering, deferred backlog, and PR shape work.
 
 ## License
 
-MIT
+[MIT](LICENSE)
