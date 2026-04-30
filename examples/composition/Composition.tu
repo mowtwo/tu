@@ -6,7 +6,7 @@
 //     `Card("title", [children])` — the trailing block becomes the
 //     final positional argument.
 //   • Component lambdas conventionally take `children` as the last
-//     parameter. The annotation `(children: VNode[])` resolves the
+//     parameter. The annotation `(children: Child[])` resolves the
 //     `VNode` type via the auto-injected runtime import.
 //   • `Fragment { … }` (from @tu/runtime) lets a component return
 //     multiple sibling vnodes without an enclosing wrapper element.
@@ -16,7 +16,7 @@
 import { Fragment } from "@tu/runtime"
 
 // Layout component: renders a header + the children + a footer.
-export let Layout = (title: string, children: VNode[]) => Fragment {
+export let Layout = (title: string, children: Child[]) => Fragment {
   header(class: .header) { h1 { title } }
   .body() { children }
   footer(class: .footer) { "© 2026" }
@@ -29,7 +29,7 @@ export let Layout = (title: string, children: VNode[]) => Fragment {
 }
 
 // Card with a derived greeting via a local `let` inside the body.
-export let Card = (name: string, children: VNode[]) => {
+export let Card = (name: string, children: Child[]) => {
   let greeting = "Hello, " + name + "!"
   .card() {
     h2 { greeting }

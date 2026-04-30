@@ -252,16 +252,20 @@ The component lambda conventionally takes `children` as its last
 positional parameter:
 
 ```tu
-let Card = (name: string, children: VNode[]) => .card() {
+let Card = (name: string, children: Child[]) => .card() {
   h2 { "Hello, " name "!" }
   children
 }
 ```
 
-`children` is an array of vnodes; the runtime's flatten step splices
-them into the parent's children list at render time. `VNode` is auto-
-imported from `@tu/runtime` in TS-mode emit, so the annotation resolves
-without an explicit user import.
+`children` is an array of children that the runtime's flatten step
+splices into the parent's children list at render time. **Use `Child[]`
+(not `VNode[]`)** for the type — `Child = VNode | string | number | null
+| undefined | Child[]` reflects the runtime contract, and a component
+body that ends in a `style` block returns an array fragment, which
+`VNode[]` would reject. Both `Child` and `VNode` are auto-imported from
+`@tu/runtime` in TS-mode emit, so the annotation resolves without an
+explicit user import.
 
 ### Fragment
 
@@ -271,7 +275,7 @@ sibling vnodes without an enclosing wrapper element (React's `<>…</>`):
 ```tu
 import { Fragment } from "@tu/runtime"
 
-let Layout = (title: string, children: VNode[]) => Fragment {
+let Layout = (title: string, children: Child[]) => Fragment {
   header { h1 { title } }
   main { children }
   footer { "© 2026" }
