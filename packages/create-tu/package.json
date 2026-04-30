@@ -1,6 +1,6 @@
 {
   "name": "create-tu",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Scaffold a new Tu project. Used as `npm create tu` or `npx create-tu`.",
   "keywords": [
     "tu",
