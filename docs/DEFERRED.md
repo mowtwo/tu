@@ -8,11 +8,8 @@ A living list of every "leave for later" decision made during a milestone, with 
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
 | `:global(.foo)` escape hatch for unscoped selectors | M1.8 | M1.9+ | Today every `.identifier` selector inside a scoped component's style block gets hashed. There's no way to opt a single selector out — needs a `:global(...)` wrapper or similar. |
-| Multi-class pug shorthand `.foo.bar()` | M1.8 | post-M1.8 | M1.8 V1 only supports a single class in the shorthand. |
-| Pug-shorthand tag override `.foo(tag: "section")` | M1.8 | post-M1.8 | M1.8 V1 always desugars to `div`. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
 | Counter.tu and Todo.tu need their own buttons (currently the playground chrome supplies them) | M1.6 | when adding event-handler-rich examples | The .tu source in those examples has no `onClick` — playground main.js wires controls externally. Better demo when the `.tu` itself owns the buttons. |
-| Token-level (vs per-statement) source maps | M1.9 | post-M2 | M1.9 ships per-top-level-statement mappings — enough to point browser stack traces at the right `.tu` block, not at the right column inside it. Per-token mappings need a stateful emit pipeline; deferred until codegen is refactored to one. |
 | Local reactivity (per-cell-read subscriptions) | M1.7 | M2+ | Keyed diff is cheap, but the component thunk still re-runs in full on every cell mutation. Solid-style per-binding patches that only touch the affected text node / attribute are a deeper rework — needs a different compiler IR that wraps each cell read in its own reactive scope. |
 | LIS-based move minimization in keyed reorder | M1.7 | post-M1.7 | Current `patchChildren` uses a simple "walk forward, insertBefore as needed" pass — correct, but moves more nodes than strictly necessary on long-range reorders. Replace with longest-increasing-subsequence to skip in-place items. |
 | Suspense / async components | M1.7 | M2+ | No async story yet. |
@@ -21,10 +18,21 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Type vs value namespace | M1.10 | when `type X = …` lands | M2 V1 ships without user-facing type aliases, so the namespace question doesn't bite yet. Revisit when adding TS-style `type` declarations to Tu's surface. |
 | Synthesize component-prop interfaces in TS emit | M2 | M3 / LSP polish | M2 V1 lets tsserver INFER prop types from the lambda body. For richer IDE hover ("CardProps { title: string; body: string }") synthesize an explicit interface per exported component lambda. |
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
-| Annotated `let X: type = …` declarations | M2 | when needed | Tu currently has lambda-param annotations only. Adding type annotations on let-decls lets users override TS inference (rare but useful for opaque cells). |
-| LSP V2: rename | M3 V1 | post-M3 | Completion landed in M3.4 and goto-definition in M3.5. Rename remains — it needs symbol-graph traversal across all open shadows + applyEdits round-trips through `mapTSRangeToSource` for every reference. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M2.2
+
+- ~~Annotated `let X: type = …` declarations~~ — landed: parser captures the raw source slice between `:` and `=` (depth-tracked across `()` / `{}` / `<…>` so generic args don't terminate the type early). The slice is plumbed through `LetDecl.type` and emitted by codegen in TS mode only — JS mode continues to erase types. Wrapping rules match the value: lambdas pass the annotation through to the const directly, state cells emit `Signal.State<T>`, computed cells emit `Signal.Computed<T>`. Lets users override TS inference for opaque cells (`let total: BigDecimal = computed(...)`) and document component shapes (`let App: () => VNode = …`).
+
+## Closed in M1.12
+
+- ~~Multi-class pug shorthand `.foo.bar()`~~ — landed: parser greedily consumes a `.foo.bar.baz` chain. Single-ref → `ClassRef` (unchanged). Multi-ref → a `+`-chain interleaved with `" "` StringLits, so codegen emits `(("foo-tu-h" + " ") + "bar-tu-h")` and the runtime sees a space-joined class string. Same chain works in non-shorthand position too: `class: .foo.bar` is now valid.
+- ~~Pug-shorthand tag override `.foo(tag: "section")`~~ — landed: the `tag:` prop is special-cased inside `parsePugShorthandTail` — extracted from the args, validated as a `StringLit`, and used as the synthetic TagCall's tag. Default stays `div` when omitted. The `tag:` prop is consumed (never emitted as an HTML attribute) and a non-literal value (e.g. `tag: someExpr`) throws a parse error since the tag is a compile-time decision.
+
+## Closed in M3.8
+
+- ~~LSP V2: rename~~ — landed: `renameAtTuPosition` calls `LanguageService.findRenameLocations` and groups the results by `fileName`, mapping each TS textSpan back through the **target** shadow's `tokenMappings` so cross-`.tu` references receive the same edit as the local declaration. The new identifier is validated against Tu's identifier rules (`/^[A-Za-z_$][A-Za-z0-9_$]*$/`) before any TS work, so a malformed rename never produces broken sources. LSP server advertises `renameProvider: true` and assembles `WorkspaceEdit { changes }` from the per-file edit groups. Verified end-to-end: renaming `count` rewrites both decl and read; renaming `Card` from a call-site rewrites the import + call in `App.tu` AND the declaration in `Card.tu`.
 
 ## Closed in M3.7
 
@@ -49,6 +57,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 ## Closed in M3.2
 
 - ~~LSP V2: token-level diagnostic ranges~~ — landed: every AST node now carries `start` / `end` byte offsets (plus per-feature anchors like `nameStart` / `tagStart` / `calleeStart`). Codegen was refactored from string-returning emit to a streaming buffer that records a `TokenMapping { jsStart, jsEnd, srcStart, srcEnd }` for each emitted leaf token (idents, literals, callee names, param names, class refs). `compileToTSWithMap` returns the full `TokenMapping[]` alongside the V3 map; the LSP's `mapTSRangeToSource` finds the tightest TokenMapping containing the diagnostic's TS span and uses its source range. Squiggles now bracket the offending token (e.g. just `42` for an arg-type mismatch, or `"not a number"` for a state-cell assign) instead of the whole `let` header. Per-statement mapping remains as the fallback for diagnostics that land inside synthetic emit (`.get()`, runtime import). Same plumbing also enables the M3 hover work — every source token has a known TS counterpart now.
+- ~~Token-level (vs per-statement) source maps~~ — landed as a side-effect of token-level diagnostics: `buildV3Map` now folds the same `TokenMapping[]` into the V3 `mappings` field as additional segments, so browser stack traces (and any tool that consumes the standard source map) resolve to the precise source token's start. Per-statement segments remain as anchors for emit regions that have no token (synthetic `.get()`, runtime import, control-flow scaffolding).
 
 ## Closed in M3.1
 

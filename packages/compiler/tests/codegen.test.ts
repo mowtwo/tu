@@ -243,6 +243,45 @@ describe('codegen', () => {
     `)).toThrow(/class ref \.card used outside a scoped component/)
   })
 
+  it('multi-class pug-shorthand `.foo.bar()` produces a space-joined class binding', () => {
+    const js = compile(`
+      let App = () => {
+        .card.shadow() { "hi" }
+        style {
+          .card { padding: 1rem; }
+          .shadow { box-shadow: 0 1px 4px black; }
+        }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    // The runtime should see a single string at runtime: `card-tu-h bar-tu-h`.
+    expect(js).toContain(`(("card-tu-${hash}" + " ") + "shadow-tu-${hash}")`)
+    expect(js).toContain('h("div'); // tag is still default `div`
+  })
+
+  it('pug-shorthand `tag:` prop overrides the default `div` tag', () => {
+    const js = compile(`
+      let App = () => {
+        .card(tag: "section") { "hi" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    expect(js).toContain('h("section"')
+    expect(js).not.toContain('h("div"')
+    // The class prop is still bound and the `tag:` prop is consumed (not emitted).
+    expect(js).toMatch(/"class": "card-tu-[a-f0-9]{6}"/)
+    expect(js).not.toContain('"tag": ')
+  })
+
+  it('rejects a non-string-literal `tag:` prop in pug shorthand', () => {
+    expect(() => compile(`
+      let App = () => {
+        .card(tag: someExpr) { "hi" }
+        style { .card { padding: 1rem; } }
+      }
+    `)).toThrow(/tag: prop must be a string literal/)
+  })
+
   it('compiles `.foo() { children }` pug-shorthand to a div with the scoped class', () => {
     const js = compile(`
       let App = () => {

@@ -49,6 +49,14 @@ export interface LetDecl extends Ranged {
    *  token-level diagnostics that target only the binding name. */
   nameStart: number
   nameEnd: number
+  /** Raw text of the type annotation between `:` and `=`, if the user
+   *  supplied one (`let X: number = 0`). Captured as raw source bytes so it
+   *  pipes through to the TS emit verbatim — Tu doesn't parse types itself.
+   *  For lambdas the annotation is the const's type directly; for state /
+   *  computed cells the codegen wraps it as `Signal.State<T>` / `Signal.Computed<T>`. */
+  type?: string
+  typeStart?: number
+  typeEnd?: number
 }
 
 export type Expr =

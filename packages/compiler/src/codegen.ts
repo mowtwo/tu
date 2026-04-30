@@ -254,6 +254,14 @@ class Codegen {
       this.write(`${prefix} `)
       // Mark the bound name so a TS error on `count` lands on the source `count`.
       this.mark(decl.nameStart, decl.nameEnd, () => this.write(decl.name))
+      // M2.2: emit a TS type annotation when the user supplied one. Lambdas
+      // pass through as-is; state / computed cells get the declared type
+      // wrapped in their Signal box so the variable's actual type matches.
+      if (this.tsMode && decl.type !== undefined) {
+        if (kind === 'function') this.write(`: ${decl.type}`)
+        else if (kind === 'computed') this.write(`: Signal.Computed<${decl.type}>`)
+        else this.write(`: Signal.State<${decl.type}>`)
+      }
       this.write(' = ')
       if (kind === 'function') {
         this.emitExpr(decl.value)

@@ -132,9 +132,19 @@ export class Parser {
   private parseLetDecl(start: number, exported: boolean): LetDecl {
     this.expect(TokenKind.Let)
     const nameTok = this.expect(TokenKind.Ident)
+    let type: string | undefined
+    let typeStart: number | undefined
+    let typeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilEquals()
+      type = span.text
+      typeStart = span.start
+      typeEnd = span.end
+    }
     this.expect(TokenKind.Equals)
     const value = this.parseExpr()
-    return {
+    const decl: LetDecl = {
       kind: 'LetDecl',
       exported,
       name: nameTok.text,
@@ -144,6 +154,48 @@ export class Parser {
       nameStart: nameTok.start,
       nameEnd: nameTok.end,
     }
+    if (type !== undefined) {
+      decl.type = type
+      decl.typeStart = typeStart!
+      decl.typeEnd = typeEnd!
+    }
+    return decl
+  }
+
+  /**
+   * Read tokens until the top-level `=` that opens the let-decl's RHS, while
+   * tracking nesting depth across `()` / `{}` / `<…>` so a generic argument
+   * with a default (rare in TS, theoretically possible) doesn't terminate
+   * the type early. Returns the raw source slice — Tu doesn't parse types
+   * itself; the TS compiler does.
+   */
+  private parseRawTypeUntilEquals(): { text: string; start: number; end: number } {
+    const start = this.peek().start
+    let depth = 0
+    let end = start
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) {
+        throw this.error(`unexpected EOF in type annotation`)
+      }
+      if (depth === 0 && t.kind === TokenKind.Equals) break
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.Lt
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.Gt
+      ) {
+        depth--
+      }
+      end = t.end
+      this.pos++
+    }
+    return { text: this.source.slice(start, end).trim(), start, end }
   }
 
   // Pratt-style precedence climber for binary expressions, with a
@@ -201,40 +253,67 @@ export class Parser {
   }
 
   /**
-   * Parse a `.foo` form. Three shapes:
-   *   `.foo`          → ClassRef (used as e.g. `class: .foo`)
-   *   `.foo(...)`     → pug-shorthand tag-call: desugars to `div(class: .foo, ...)`
-   *   `.foo { ... }`  → pug-shorthand tag-call with no extra props
+   * Parse a `.foo[.bar.baz…]` form. Shapes:
+   *   `.foo`           → ClassRef (used as e.g. `class: .foo`)
+   *   `.foo.bar`       → space-joined class binding (BinaryExpr chain)
+   *   `.foo(...)`      → pug-shorthand tag-call: desugars to `div(class: .foo, ...)`
+   *   `.foo.bar(...)`  → pug-shorthand tag-call with multi-class binding
+   *   `.foo { ... }`   → pug-shorthand tag-call with no extra props
+   *   `.foo(tag: "section")` → pug-shorthand with overridden tag (default `div`)
    *
    * In the pug-shorthand cases, an explicit `class:` prop in the args is a
-   * compile error — the shorthand already binds class.
+   * compile error — the shorthand already binds class. The `tag:` prop is
+   * special-cased: it's extracted from the args (must be a string literal)
+   * and becomes the synthetic TagCall's tag.
    */
   private parseClassRefOrPugShorthand(): Expr {
-    const dotTok = this.expect(TokenKind.Dot)
-    const nameTok = this.expect(TokenKind.Ident)
-    const ref: ClassRef = {
-      kind: 'ClassRef',
-      name: nameTok.text,
-      start: dotTok.start,
-      end: nameTok.end,
-    }
+    const refs = this.parseClassRefChain()
     const next = this.peek().kind
     if (next === TokenKind.LParen || (next === TokenKind.LBrace && !this.noBraceBlock)) {
-      return this.parsePugShorthandTail(ref)
+      return this.parsePugShorthandTail(refs)
     }
-    return ref
+    return joinClassRefs(refs)
   }
 
-  private parsePugShorthandTail(classRef: ClassRef): TagCall {
-    const props: Prop[] = [{ name: 'class', value: classRef }]
+  /** Greedy chain: `.foo.bar.baz` → three ClassRefs. Caller decides how to use them. */
+  private parseClassRefChain(): ClassRef[] {
+    const refs: ClassRef[] = []
+    do {
+      const dotTok = this.expect(TokenKind.Dot)
+      const nameTok = this.expect(TokenKind.Ident)
+      refs.push({
+        kind: 'ClassRef',
+        name: nameTok.text,
+        start: dotTok.start,
+        end: nameTok.end,
+      })
+    } while (this.peek().kind === TokenKind.Dot)
+    return refs
+  }
+
+  private parsePugShorthandTail(classRefs: ClassRef[]): TagCall {
+    const classExpr = joinClassRefs(classRefs)
+    const props: Prop[] = [{ name: 'class', value: classExpr }]
+    let tag = 'div'
+    let tagStart = classRefs[0]!.start
+    let tagEnd = classRefs[0]!.end
     if (this.peek().kind === TokenKind.LParen) {
       this.expect(TokenKind.LParen)
       while (this.peek().kind !== TokenKind.RParen) {
         const p = this.parseProp()
         if (p.name === 'class') {
-          throw this.error(`pug-shorthand .${classRef.name}(...) already binds class:; remove the explicit class prop`)
+          throw this.error(`pug-shorthand .${classRefs[0]!.name}(...) already binds class:; remove the explicit class prop`)
         }
-        props.push(p)
+        if (p.name === 'tag') {
+          if (p.value.kind !== 'StringLit') {
+            throw this.error(`pug-shorthand tag: prop must be a string literal (e.g. tag: "section")`)
+          }
+          tag = p.value.value
+          tagStart = p.value.start
+          tagEnd = p.value.end
+        } else {
+          props.push(p)
+        }
         if (this.peek().kind === TokenKind.Comma) this.pos++
       }
       this.expect(TokenKind.RParen)
@@ -253,15 +332,13 @@ export class Parser {
     }
     return {
       kind: 'TagCall',
-      tag: 'div',
+      tag,
       props,
       children,
-      start: classRef.start,
+      start: classRefs[0]!.start,
       end: endTok.end,
-      // The "tag" is synthesized — the source has no `div` token, so anchor
-      // the tag range on the class ref so a TS error on `div` lands on `.foo`.
-      tagStart: classRef.start,
-      tagEnd: classRef.end,
+      tagStart,
+      tagEnd,
     }
   }
 
@@ -556,4 +633,42 @@ export class Parser {
 
 export function parse(tokens: Token[], source: string = '', filename?: string): Program {
   return new Parser(tokens, source, filename).parseProgram()
+}
+
+/**
+ * Combine N ClassRefs into a single expression. One ref → bare ClassRef; many
+ * refs → a `+` chain interleaved with " " StringLits, which the codegen emits
+ * as `("foo-tu-h" + " " + "bar-tu-h")` so the runtime sees a space-joined
+ * class string. Anchored on the first ref's source start so error reporting
+ * still points at the source.
+ */
+function joinClassRefs(refs: ClassRef[]): Expr {
+  if (refs.length === 1) return refs[0]!
+  let acc: Expr = refs[0]!
+  for (let i = 1; i < refs.length; i++) {
+    const ref = refs[i]!
+    const space: StringLit = {
+      kind: 'StringLit',
+      value: ' ',
+      start: ref.start,
+      end: ref.start,
+    }
+    acc = {
+      kind: 'BinaryExpr',
+      op: '+',
+      left: acc,
+      right: space,
+      start: acc.start,
+      end: space.end,
+    }
+    acc = {
+      kind: 'BinaryExpr',
+      op: '+',
+      left: acc,
+      right: ref,
+      start: acc.start,
+      end: ref.end,
+    }
+  }
+  return acc
 }

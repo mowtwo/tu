@@ -13,6 +13,8 @@ import {
   Range,
   TextDocuments,
   TextDocumentSyncKind,
+  TextEdit,
+  WorkspaceEdit,
   type DiagnosticRelatedInformation,
 } from 'vscode-languageserver/node.js'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +22,7 @@ import { completionsAtTuPosition } from './completion.js'
 import { definitionAtTuPosition } from './definition.js'
 import { checkTuSource, type TuDiagnostic } from './diagnostics.js'
 import { hoverAtTuPosition } from './hover.js'
+import { renameAtTuPosition } from './rename.js'
 
 const connection = createConnection(ProposedFeatures.all)
 const documents = new TextDocuments(TextDocument)
@@ -29,6 +32,7 @@ connection.onInitialize(() => ({
     textDocumentSync: TextDocumentSyncKind.Incremental,
     hoverProvider: true,
     definitionProvider: true,
+    renameProvider: true,
     completionProvider: {
       // No `triggerCharacters` — VS Code auto-invokes completion on
       // identifier-typing already, and the only Tu punctuation that could
@@ -230,6 +234,40 @@ connection.onCompletion((params): CompletionItem[] => {
     })
   } catch {
     return []
+  }
+})
+
+connection.onRenameRequest((params): WorkspaceEdit | null => {
+  const doc = documents.get(params.textDocument.uri)
+  if (!doc) return null
+  const filename = params.textDocument.uri.startsWith('file://')
+    ? fileURLToPath(params.textDocument.uri)
+    : params.textDocument.uri
+  const text = doc.getText()
+  try {
+    const edits = renameAtTuPosition(
+      text,
+      filename,
+      params.position.line,
+      params.position.character,
+      params.newName
+    )
+    if (edits.length === 0) return null
+    const changes: Record<string, TextEdit[]> = {}
+    for (const e of edits) {
+      const list = changes[e.uri] ?? []
+      list.push({
+        range: {
+          start: { line: e.line, character: e.col },
+          end: { line: e.line, character: e.col + e.length },
+        },
+        newText: e.newText,
+      })
+      changes[e.uri] = list
+    }
+    return { changes }
+  } catch {
+    return null
   }
 })
 

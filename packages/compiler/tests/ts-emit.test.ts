@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { compileToTS, compileToTSWithMap } from '../src/index.js'
+import { compile, compileToTS, compileToTSWithMap } from '../src/index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..', '..', '..')
@@ -23,6 +23,33 @@ describe('compileToTS — type-annotation preservation', () => {
   it('emits names alone for params with no `: type` annotation', () => {
     const ts = compileToTS('export let f = (x) => p { x }')
     expect(ts).toContain('export const f = (x) =>')
+  })
+
+  it('M2.2: state-cell let with `: T` wraps the annotation as Signal.State<T>', () => {
+    const ts = compileToTS('export let count: number = 0')
+    expect(ts).toContain('export const count: Signal.State<number> = new Signal.State(0)')
+  })
+
+  it('M2.2: computed-cell let with `: T` wraps as Signal.Computed<T>', () => {
+    const ts = compileToTS(`
+      export let count = 0
+      export let doubled: number = computed(count * 2)
+    `)
+    expect(ts).toContain('export const doubled: Signal.Computed<number> = new Signal.Computed')
+  })
+
+  it('M2.2: lambda let with `: T` annotates the const directly (no wrap)', () => {
+    const ts = compileToTS('export let App: () => string = () => "hi"')
+    expect(ts).toContain('export const App: () => string = () =>')
+    expect(ts).not.toContain('Signal.State<')
+  })
+
+  it('M2.2: type annotation is erased from the JS-mode output', () => {
+    // compile() (NOT compileToTS) erases types — JS doesn't get `: number`.
+    const js = compile('export let count: number = 0')
+    expect(js).toContain('export const count = new Signal.State(0)')
+    expect(js).not.toContain(': number')
+    expect(js).not.toContain(': Signal.State')
   })
 
   it('still threads source maps through the TS output', () => {
