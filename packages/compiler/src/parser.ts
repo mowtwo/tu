@@ -878,17 +878,44 @@ export class Parser {
   /**
    * Parse a component invocation: `Callee([args]) [{ children }]`. Both
    * the args list and the children block are optional independently.
-   * Lowers to a `CallExpr` whose `children` (if present) the codegen
-   * emits as the last positional argument array.
+   *
+   * M6.1: components accept TWO calling conventions:
+   *   1. **Named-arg** (HTML-tag style): `Card(title: "hi", footer: …)`
+   *      → `namedArgs: Prop[]`. Codegen emits a single props object.
+   *   2. **Positional** (legacy): `Card("hi", body)` → `args: Expr[]`.
+   *      Codegen emits `Card("hi", body)` unchanged for back-compat.
+   *
+   * The two forms are detected by peeking at the first arg shape: an
+   * `Ident :` opener triggers the named-arg path; anything else falls
+   * through to positional.
    */
   private parseComponentCall(nameTok: Token, hasParens: boolean): CallExpr {
     const args: Expr[] = []
+    let namedArgs: Prop[] | undefined
     let endTok: Token = nameTok
     if (hasParens) {
       this.expect(TokenKind.LParen)
-      while (this.peek().kind !== TokenKind.RParen) {
-        args.push(this.parseExpr())
-        if (this.peek().kind === TokenKind.Comma) this.pos++
+      // Detect named-arg shape: `Ident :` at args head means caller is
+      // using HTML-tag-style named props. Mirrors `peekCallShape` for
+      // lowercase tag-calls but anchored on a capitalized callee so it
+      // can't collide with positional calls of plain functions.
+      const t1 = this.peek()
+      const t2 = this.tokens[this.pos + 1]
+      const looksNamed =
+        t1.kind === TokenKind.Ident &&
+        t2 !== undefined &&
+        t2.kind === TokenKind.Colon
+      if (looksNamed) {
+        namedArgs = []
+        while (this.peek().kind !== TokenKind.RParen) {
+          namedArgs.push(this.parseProp())
+          if (this.peek().kind === TokenKind.Comma) this.pos++
+        }
+      } else {
+        while (this.peek().kind !== TokenKind.RParen) {
+          args.push(this.parseExpr())
+          if (this.peek().kind === TokenKind.Comma) this.pos++
+        }
       }
       endTok = this.expect(TokenKind.RParen)
     }
@@ -910,6 +937,7 @@ export class Parser {
       calleeStart: nameTok.start,
       calleeEnd: nameTok.end,
     }
+    if (namedArgs !== undefined) result.namedArgs = namedArgs
     if (children !== undefined) result.children = children
     return result
   }

@@ -426,6 +426,45 @@ describe('parser', () => {
     expect(lambda.returnType).toBeUndefined()
   })
 
+  it('M6.1: component named-arg call → namedArgs (not args)', () => {
+    const tree = ast('let App = () => Card(title: "hi", footer: "x")')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'CallExpr',
+      callee: 'Card',
+      namedArgs: [
+        { name: 'title', value: { kind: 'StringLit', value: 'hi' } },
+        { name: 'footer', value: { kind: 'StringLit', value: 'x' } },
+      ],
+    })
+    expect((lambda.body as { args: unknown[] }).args).toHaveLength(0)
+  })
+
+  it('M6.1: component named-arg + trailing children block', () => {
+    const tree = ast('let App = () => Card(title: "hi") { p { "body" } }')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'CallExpr',
+      callee: 'Card',
+      namedArgs: [{ name: 'title', value: { kind: 'StringLit', value: 'hi' } }],
+      children: [{ kind: 'TagCall', tag: 'p' }],
+    })
+  })
+
+  it('M6.1: positional component call stays positional (BC)', () => {
+    const tree = ast('let App = () => Card("hi", "body")')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'CallExpr',
+      callee: 'Card',
+      args: [
+        { kind: 'StringLit', value: 'hi' },
+        { kind: 'StringLit', value: 'body' },
+      ],
+    })
+    expect((lambda.body as { namedArgs?: unknown }).namedArgs).toBeUndefined()
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

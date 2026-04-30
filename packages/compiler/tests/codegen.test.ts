@@ -490,6 +490,31 @@ describe('codegen', () => {
     expect(js).toContain('x&lt;y&gt;&amp;z')
   })
 
+  it('M6.1: component named-arg call emits a single props object', () => {
+    const js = compile(`
+      let Card = (props) => p { "x" }
+      let App = () => Card(title: "hi", footer: "x")
+    `)
+    expect(js).toContain('Card({ "title": "hi", "footer": "x" })')
+  })
+
+  it('M6.1: named-arg call + trailing children merges into the props object', () => {
+    const js = compile(`
+      let Card = (props) => div { "x" }
+      let App = () => Card(title: "hi") { p { "body" } }
+    `)
+    expect(js).toContain('Card({ "title": "hi", "children": [h("p", {}, ["body"])] })')
+  })
+
+  it('M6.1: positional component call still works (BC)', () => {
+    const js = compile(`
+      let Card = (label: string) => p { label }
+      let App = () => Card("hi")
+    `)
+    expect(js).toContain('Card("hi")')
+    expect(js).not.toContain('Card({')
+  })
+
   it('M5.6: object literal as a let-decl value emits the matching JS object', () => {
     const js = compile('let p = { x: 1, y: 2 }')
     expect(js).toContain('const p = new Signal.State({ x: 1, y: 2 })')

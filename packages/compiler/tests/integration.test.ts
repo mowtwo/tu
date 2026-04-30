@@ -339,6 +339,44 @@ describe('compile + render end-to-end', () => {
     expect(html).toContain(`<style>.${klass} { padding: 1rem; }`)
   })
 
+  it('M6.1: component named-arg call delivers props as a single object', async () => {
+    const html = await compileAndRun(
+      `
+        export let Card = (props) => .panel() {
+          h1 { props.title }
+          p { props.body }
+          style { .panel { padding: 1rem; } }
+        }
+        export let App = () => Card(title: "Hello", body: "World")
+      `,
+      (mod) => {
+        const App = mod['App'] as () => unknown
+        return renderToString(App() as never)
+      }
+    )
+    expect(html).toContain('<h1>Hello</h1>')
+    expect(html).toContain('<p>World</p>')
+  })
+
+  it('M6.1: named-arg + trailing children round-trips via props.children', async () => {
+    const html = await compileAndRun(
+      `
+        export let Layout = (props) => .layout() {
+          header { props.title }
+          props.children
+          style { .layout { padding: 1rem; } }
+        }
+        export let App = () => Layout(title: "Tu") { p { "body" } }
+      `,
+      (mod) => {
+        const App = mod['App'] as () => unknown
+        return renderToString(App() as never)
+      }
+    )
+    expect(html).toContain('<header>Tu</header>')
+    expect(html).toContain('<p>body</p>')
+  })
+
   it('lambda params shadow same-named top-level cells', async () => {
     const result = await compileAndRun(
       `

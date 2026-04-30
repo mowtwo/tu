@@ -782,11 +782,37 @@ class Codegen {
     // Mark the callee so an error on the function lands on its source ident.
     this.mark(node.calleeStart, node.calleeEnd, () => this.write(node.callee))
     this.write('(')
+    // M6.1 named-arg call: `Card(title: "hi", footer: …) { children }`
+    // emits a single props object `Card({ title: "hi", footer: …,
+    // children: [...] })`. The receiver lambda destructures the object;
+    // every prop is optional by construction.
+    if (node.namedArgs !== undefined) {
+      this.write('{ ')
+      for (let i = 0; i < node.namedArgs.length; i++) {
+        if (i > 0) this.write(', ')
+        const p = node.namedArgs[i]!
+        this.write(`${JSON.stringify(p.name)}: `)
+        this.emitExpr(p.value)
+      }
+      if (node.children !== undefined) {
+        if (node.namedArgs.length > 0) this.write(', ')
+        this.write('"children": [')
+        for (let i = 0; i < node.children.length; i++) {
+          if (i > 0) this.write(', ')
+          this.emitExpr(node.children[i]!)
+        }
+        this.write(']')
+      }
+      this.write(' }')
+      this.write(')')
+      return
+    }
+    // Legacy positional call (M5.x BC).
     for (let i = 0; i < node.args.length; i++) {
       if (i > 0) this.write(', ')
       this.emitExpr(node.args[i]!)
     }
-    // Component invocations carry a trailing children array (M5 V1). Emit
+    // Component invocations carry a trailing children array. Emit
     // it as the last positional argument so a `let Card = (..., children)`
     // lambda can receive it.
     if (node.children !== undefined) {

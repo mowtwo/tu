@@ -193,13 +193,19 @@ export interface CallExpr extends Ranged {
   calleeStart: number
   calleeEnd: number
   /**
+   * **M6.1 named-arg call form.** `Card(title: "hi", footer: () => …)`
+   * parses each `name: value` pair into this list. Codegen emits
+   * `Card({ title: "hi", footer: …, children: [...] })`. Either `args`
+   * (legacy positional) OR `namedArgs` (M6.1) is non-empty, never both.
+   */
+  namedArgs?: Prop[]
+  /**
    * Trailing children block, present only for **component** invocations
-   * (capitalized callee). The compiler emits these as the last positional
-   * argument: `Callee(...args, [...children])`. Components by convention
-   * accept a final `children` parameter to receive this array.
-   *
-   * Plain function calls (lowercase callees that aren't HTML tags) stay
-   * `children: undefined` — they don't accept a trailing block.
+   * (capitalized callee). For positional callsites the compiler emits
+   * these as the last positional argument: `Callee(...args, [...children])`.
+   * For named callsites (M6.1), they're merged into the props object as
+   * `children: [...]`. Plain function calls (lowercase callees that
+   * aren't HTML tags) stay `children: undefined`.
    */
   children?: Child[]
 }

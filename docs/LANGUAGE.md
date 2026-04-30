@@ -274,23 +274,42 @@ call instead.
 
 ### Component invocation
 
-```tu
-import { Card } from "./Card.tu"
+Components support **two calling conventions** (M6.1):
 
-let App = () => Card("Alice") {
+**1. Named-arg form** — props delivered as a single object, like HTML:
+
+```tu
+let App = () => Card(title: "Alice", footer: "© 2026") {
   p { "Body content" }
 }
 ```
 
-The component lambda conventionally takes `children` as its last
-positional parameter:
+The receiver gets a single `props` arg; trailing children block is
+auto-merged in as `props.children`:
+
+```tu
+let Card = (props) => .card() {
+  h2 { props.title }
+  props.children
+  if (props.footer) { footer { props.footer } }
+}
+```
+
+All props are optional by construction — call `Card()`, `Card(title:
+"x")`, or `Card(title: "x") { p { "body" } }` all work.
+
+**2. Positional form** — legacy M5.x shape, kept for backward compat:
 
 ```tu
 let Card = (name: string, children: Child[]) => .card() {
   h2 { "Hello, " name "!" }
   children
 }
+let App = () => Card("Alice") { p { "Body content" } }
 ```
+
+The parser disambiguates by peeking the first token after `(`: an
+`Ident :` opener triggers named-arg; anything else stays positional.
 
 `children` is an array of children that the runtime's flatten step
 splices into the parent's children list at render time. **Use `Child[]`
