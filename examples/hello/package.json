@@ -1,0 +1,17 @@
+{
+  "name": "@tu-examples/hello",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1.0 demo: a static Greeting component compiled and rendered to HTML.",
+  "scripts": {
+    "demo": "node run.mjs",
+    "build": "echo 'hello example: built on demand by run.mjs'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
+  }
+}

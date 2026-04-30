@@ -23,6 +23,15 @@ importers:
 
   examples/counter: {}
 
+  examples/hello:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
   examples/todo: {}
 
   packages/cli:
