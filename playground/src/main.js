@@ -22,16 +22,11 @@ const demos = [
   {
     id: 'counter',
     label: 'M1.2  Counter',
-    blurb: '`let count = 0` auto-binds to a Signal cell. `computed(...)` cells re-derive on mutation. Use the buttons in the header to mutate.',
+    blurb: '`let count = 0` auto-binds to a Signal cell. `computed(...)` cells re-derive on mutation. M1.14: Counter.tu now owns its `+` / `−` / `reset` buttons via private `inc / dec / reset` lambdas — no external wiring.',
     setup() {
       CounterMod.count.set(0)
     },
     thunk: () => CounterMod.Counter(),
-    controls: () => [
-      { label: 'count.set(5)', run: () => CounterMod.count.set(5) },
-      { label: 'count.set(15)', run: () => CounterMod.count.set(15) },
-      { label: 'reset', run: () => CounterMod.count.set(0) },
-    ],
   },
   {
     id: 'todo',

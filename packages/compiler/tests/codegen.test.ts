@@ -228,6 +228,40 @@ describe('codegen', () => {
     expect(js).toContain(`.card-tu-${hash} .legacy-global`)
   })
 
+  it('M1.13: :global(.foo) opts a selector out of per-component scoping', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { "hi" }
+        style {
+          .card { padding: 1rem; }
+          :global(.legacy-modal) { z-index: 9999; }
+        }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    // The scoped selector keeps its hash.
+    expect(js).toContain(`.card-tu-${hash} { padding: 1rem; }`)
+    // The :global wrapper is stripped; the inner class stays unhashed.
+    expect(js).toContain('.legacy-modal { z-index: 9999; }')
+    expect(js).not.toContain(':global(')
+    expect(js).not.toContain('.legacy-modal-tu-')
+  })
+
+  it('M1.13: :global(...) inside a compound selector strips only the wrapper', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { "hi" }
+        style {
+          .card { padding: 1rem; }
+          .card :global(.icon) { color: red; }
+        }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    expect(js).toContain(`.card-tu-${hash} .icon { color: red; }`)
+    expect(js).not.toContain('.icon-tu-')
+  })
+
   it('throws on a class ref to a class not declared in this component', () => {
     expect(() => compile(`
       let X = () => {

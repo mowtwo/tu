@@ -252,4 +252,42 @@ describe('keyed diff — list reorder by `key:`', () => {
     expect(dom.window.document.getElementById('li-c')!).toBe(beforeC)
     expect(dom.window.document.getElementById('li-b')).toBeNull()
   })
+
+  it('M1.15: LIS pass moves only swapped endpoints, leaves the stable middle alone', async () => {
+    // Old: [A B C D E]; new: [E B C D A] swaps A↔E. Items B, C, D form the
+    // longest increasing subsequence by old-index; pre-LIS the simple
+    // forward pass moved every item, now only A and E should move.
+    const items = new Signal.State(['a', 'b', 'c', 'd', 'e'].map((id) => ({ id })))
+    mount(
+      () =>
+        h(
+          'ul',
+          {},
+          items.get().map((it) => h('li', { key: it.id, id: `li-${it.id}` }, []))
+        ),
+      root()
+    )
+    const before = ['a', 'b', 'c', 'd', 'e'].map(
+      (id) => dom.window.document.getElementById(`li-${id}`)!
+    )
+    // Spy on the parent ul's insertBefore to count actual DOM moves.
+    const ul = root().firstChild as Element
+    const realInsertBefore = ul.insertBefore.bind(ul)
+    let moveCount = 0
+    ul.insertBefore = ((node: Node, ref: Node | null) => {
+      moveCount++
+      return realInsertBefore(node, ref)
+    }) as typeof ul.insertBefore
+    items.set([{ id: 'e' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'a' }])
+    await flush()
+    // Identities preserved across the swap.
+    const after = ['a', 'b', 'c', 'd', 'e'].map(
+      (id) => dom.window.document.getElementById(`li-${id}`)!
+    )
+    for (let i = 0; i < 5; i++) expect(after[i]).toBe(before[i])
+    // Order in DOM matches the new logical order.
+    expect([...ul.children].map((c) => c.id)).toEqual(['li-e', 'li-b', 'li-c', 'li-d', 'li-a'])
+    // Pre-LIS this would be 4 moves; LIS reduces to exactly 2 (A and E).
+    expect(moveCount).toBe(2)
+  })
 })

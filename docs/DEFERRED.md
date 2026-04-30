@@ -7,11 +7,9 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Item | Introduced | Target | Notes |
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
-| `:global(.foo)` escape hatch for unscoped selectors | M1.8 | M1.9+ | Today every `.identifier` selector inside a scoped component's style block gets hashed. There's no way to opt a single selector out — needs a `:global(...)` wrapper or similar. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
-| Counter.tu and Todo.tu need their own buttons (currently the playground chrome supplies them) | M1.6 | when adding event-handler-rich examples | The .tu source in those examples has no `onClick` — playground main.js wires controls externally. Better demo when the `.tu` itself owns the buttons. |
+| Todo.tu needs its own controls | M1.6 | when array literals land | Counter.tu owned its buttons in M1.14, but Todo.tu can't yet because Tu has no array literal / spread syntax — it can't construct a fresh items list inline. Revisit when adding `[a, b, c]` literals. |
 | Local reactivity (per-cell-read subscriptions) | M1.7 | M2+ | Keyed diff is cheap, but the component thunk still re-runs in full on every cell mutation. Solid-style per-binding patches that only touch the affected text node / attribute are a deeper rework — needs a different compiler IR that wraps each cell read in its own reactive scope. |
-| LIS-based move minimization in keyed reorder | M1.7 | post-M1.7 | Current `patchChildren` uses a simple "walk forward, insertBefore as needed" pass — correct, but moves more nodes than strictly necessary on long-range reorders. Replace with longest-increasing-subsequence to skip in-place items. |
 | Suspense / async components | M1.7 | M2+ | No async story yet. |
 | Imported names are always classified as functions in codegen | M2.1 | M3 (LSP / type-aware) | Codegen has no way to tell whether an imported name is a function, a Signal cell, or a plain value, so it defaults to "function" (emits as plain ident, no `.get()` injection). Importing a Signal cell directly therefore breaks reactivity at the use site. Workaround: in the source module, export a getter (`export let getCount = () => count.get()`) instead of the cell. Real fix needs the M3 type-aware emit pass. |
 | Default export (`export default …`) | M1.10 | TBD | Tu's no-`function`-keyword aesthetic argues against it; revisit when component-as-file becomes idiomatic. |
@@ -20,6 +18,18 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M1.14
+
+- ~~Counter.tu owns its buttons~~ — landed: Counter.tu now declares private `inc / dec / reset` lambdas and wires them via `onClick:` props on three buttons inside the component body. The playground's external `controls: () => [...]` block was deleted. The SSR run.mjs continues to demonstrate external mutation (`mod.count.set(5)` from JS), so both interactive and out-of-band paths are exercised. Todo.tu is left externally-driven for now — without Tu array literals, the .tu source can't build a fresh `items` list in-place; tracked in a narrowed open row.
+
+## Closed in M1.15
+
+- ~~LIS-based move minimization in keyed reorder~~ — landed: `patchChildren` replaces the forward `insertBefore` pass with a patience-sort longest-increasing-subsequence over `newToOld[]`. Items whose old indices form an increasing subsequence (the stable middle) skip movement; the position pass walks right-to-left and `insertBefore`s only the others. Verified with a regression test: swapping list endpoints `[A B C D E] → [E B C D A]` was 4 moves before, exactly 2 (A and E) now. Same algorithm as Vue 3 / Inferno, O(n log n).
+
+## Closed in M1.13
+
+- ~~`:global(.foo)` escape hatch for unscoped selectors~~ — landed: scanner skips class tokens inside `:global(...)` regions (depth-tracked across nested parens) so they're never registered as "declared" classes for the component's hash. The rewriter strips the wrapper itself, emitting `.legacy` (unhashed) where the source had `:global(.legacy)`. Compound selectors mix freely: `.card :global(.icon)` becomes `.card-tu-h .icon`.
 
 ## Closed in M2.2
 

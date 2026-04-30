@@ -306,20 +306,67 @@ function patchChildren(
     if (!oldUsed[oi]) parentEl.removeChild(oldList[oi]!.el)
   }
 
-  // Position pass — walk new list forward and insertBefore as needed. New
-  // instances aren't in the DOM yet, so this is also where they get
-  // appended. Existing instances that are already in the right slot get
-  // skipped via the `nextSibling` check, avoiding spurious DOM mutations.
-  let cursor: Node | null = parentEl.firstChild
-  for (const inst of newInstances) {
-    if (cursor === inst.el) {
-      cursor = inst.el.nextSibling
-    } else {
-      parentEl.insertBefore(inst.el, cursor)
+  // Position pass — LIS-based: items that already form a longest-increasing
+  // subsequence by old-index are stable (they don't need to move); only the
+  // others get `insertBefore`. Walk right-to-left so each insertBefore uses
+  // the next-stable instance as the anchor. Fresh instances (oi === -1) are
+  // never in the LIS by construction, so they always get inserted.
+  const lis = longestIncreasingSubseq(newToOld)
+  let nextAnchor: Node | null = null
+  for (let i = newInstances.length - 1; i >= 0; i--) {
+    const inst = newInstances[i]!
+    if (newToOld[i] === -1 || !lis.has(i)) {
+      parentEl.insertBefore(inst.el, nextAnchor)
     }
+    nextAnchor = inst.el
   }
 
   return newInstances
+}
+
+/**
+ * Patience-sort LIS: given `newToOld` (where `-1` marks freshly-materialized
+ * items that should never be considered stable), return the set of indices
+ * `i` whose `newToOld[i]` participates in a longest increasing subsequence.
+ *
+ * Indices in the returned set are positions whose DOM element is already in
+ * the correct relative order — patchChildren skips them in the position
+ * pass. Everything else needs an `insertBefore`.
+ *
+ * Reference: https://en.wikipedia.org/wiki/Patience_sorting (the same
+ * algorithm Vue 3 / Inferno use). O(n log n).
+ */
+function longestIncreasingSubseq(arr: readonly number[]): Set<number> {
+  const n = arr.length
+  if (n === 0) return new Set()
+  // tails[k] = index in `arr` of the smallest possible tail of an increasing
+  // subsequence of length k + 1. Stored as indices (not values) so we can
+  // reconstruct the path via `prev`.
+  const tails: number[] = []
+  const prev: number[] = new Array(n).fill(-1)
+  for (let i = 0; i < n; i++) {
+    const x = arr[i]!
+    if (x < 0) continue // fresh instance; never stable
+    let lo = 0
+    let hi = tails.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (arr[tails[mid]!]! < x) lo = mid + 1
+      else hi = mid
+    }
+    if (lo > 0) prev[i] = tails[lo - 1]!
+    tails[lo] = i
+  }
+  // Reconstruct the path back from the longest run's tail.
+  const out = new Set<number>()
+  let cur: number | undefined = tails[tails.length - 1]
+  while (cur !== undefined && cur >= 0) {
+    out.add(cur)
+    const p = prev[cur]
+    if (p === undefined || p < 0) break
+    cur = p
+  }
+  return out
 }
 
 function patchInstance(

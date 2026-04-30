@@ -671,10 +671,13 @@ interface ClassToken {
   name: string
 }
 
+const GLOBAL_PREFIX = ':global('
+
 /**
  * Scan a CSS text for `.classname` selector tokens. Skips over `"…"` / `'…'`
- * strings and `/* … *​/` block comments so a `.foo` inside string content or
- * a comment is not considered a class declaration.
+ * strings, `/* … *​/` block comments, and the interior of `:global(...)`
+ * escape-hatch wrappers — those classes stay unscoped at runtime, so we
+ * neither register them as "declared" nor rewrite them at emit time.
  */
 function scanCssClasses(css: string): ClassToken[] {
   const out: ClassToken[] = []
@@ -697,6 +700,10 @@ function scanCssClasses(css: string): ClassToken[] {
       if (i < css.length) i++
       continue
     }
+    if (css.startsWith(GLOBAL_PREFIX, i)) {
+      i = skipGlobalInterior(css, i)
+      continue
+    }
     if (c === '.' && i + 1 < css.length && isClassFirst(css.charAt(i + 1))) {
       const start = i
       i++ // skip the dot
@@ -707,6 +714,25 @@ function scanCssClasses(css: string): ClassToken[] {
     i++
   }
   return out
+}
+
+/**
+ * `i` points at the leading `:` of `:global(`. Find the matching `)` and
+ * return the index of the next char to scan — past the `)`. Tracks paren
+ * depth so a nested `:is(...)` inside `:global(...)` doesn't terminate
+ * the wrapper early.
+ */
+function skipGlobalInterior(css: string, start: number): number {
+  let depth = 1
+  let j = start + GLOBAL_PREFIX.length
+  while (j < css.length && depth > 0) {
+    const cc = css.charAt(j)
+    if (cc === '(') depth++
+    else if (cc === ')') depth--
+    if (depth === 0) break
+    j++
+  }
+  return j + 1 // past the matching `)`
 }
 
 function isClassFirst(c: string): boolean {
@@ -726,20 +752,60 @@ function findCssClasses(css: string): Set<string> {
 /**
  * Rewrite `.declaredClass` selectors in `css` to `.declaredClass-tu-{hash}`.
  * Class names not in `declared` are left untouched (referring to global CSS).
+ *
+ * Also strips `:global(...)` wrappers from the output: the wrapper itself is
+ * dropped while the contents pass through verbatim. Combined with the
+ * scanner skipping global interiors, this gives the user an explicit
+ * escape hatch for an otherwise-scoped selector.
  */
 function rewriteCss(css: string, declared: Set<string>, hash: string): string {
-  if (declared.size === 0) return css
-  const tokens = scanCssClasses(css)
-  if (tokens.length === 0) return css
   let out = ''
-  let cursor = 0
-  for (const tok of tokens) {
-    if (!declared.has(tok.name)) continue
-    out += css.slice(cursor, tok.end)
-    out += `-tu-${hash}`
-    cursor = tok.end
+  let i = 0
+  while (i < css.length) {
+    const c = css.charAt(i)
+    if (c === '/' && css.charAt(i + 1) === '*') {
+      const end = css.indexOf('*/', i + 2)
+      if (end < 0) {
+        out += css.slice(i)
+        break
+      }
+      out += css.slice(i, end + 2)
+      i = end + 2
+      continue
+    }
+    if (c === '"' || c === "'") {
+      const quote = c
+      const start = i
+      i++
+      while (i < css.length && css.charAt(i) !== quote) {
+        if (css.charAt(i) === '\\') i++
+        i++
+      }
+      if (i < css.length) i++
+      out += css.slice(start, i)
+      continue
+    }
+    if (css.startsWith(GLOBAL_PREFIX, i)) {
+      // Strip the wrapper — emit the inner body as-is. Nested classes are
+      // intentionally left unscoped (that's what :global means).
+      const innerStart = i + GLOBAL_PREFIX.length
+      const wrapperEnd = skipGlobalInterior(css, i)
+      out += css.slice(innerStart, wrapperEnd - 1) // exclude the trailing `)`
+      i = wrapperEnd
+      continue
+    }
+    if (c === '.' && i + 1 < css.length && isClassFirst(css.charAt(i + 1))) {
+      const start = i
+      i++ // skip dot
+      while (i < css.length && isClassPart(css.charAt(i))) i++
+      const name = css.slice(start + 1, i)
+      out += '.' + name
+      if (declared.has(name)) out += `-tu-${hash}`
+      continue
+    }
+    out += c
+    i++
   }
-  out += css.slice(cursor)
   return out
 }
 
