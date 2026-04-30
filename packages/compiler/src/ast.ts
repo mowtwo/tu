@@ -11,6 +11,8 @@ export interface LetDecl {
   exported: boolean
   name: string
   value: Expr
+  /** Source byte offset of the `let` keyword — drives source-map mappings + error reporting. */
+  start: number
 }
 
 export type Expr =

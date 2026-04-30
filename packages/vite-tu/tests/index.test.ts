@@ -71,4 +71,19 @@ describe('@tu/vite', () => {
     expect(result).not.toBeNull()
     expect(result!.code).toContain('export const X')
   })
+
+  it('load() returns a V3 source map alongside the code', async () => {
+    const file = join(tmp, 'M.tu')
+    writeFileSync(file, 'let count = 0\n')
+    const plugin = tu()
+    const load = plugin.load as (
+      this: unknown,
+      id: string
+    ) => Promise<{ code: string; map: { version: number; sources: string[]; sourcesContent: string[] } } | null>
+    const result = await load.call({}, file)
+    expect(result).not.toBeNull()
+    expect(result!.map.version).toBe(3)
+    expect(result!.map.sources).toEqual([file])
+    expect(result!.map.sourcesContent[0]).toContain('let count = 0')
+  })
 })

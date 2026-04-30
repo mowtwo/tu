@@ -24,6 +24,7 @@ import type {
   StyleBlock,
   TagCall,
 } from './ast.js'
+import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
 
 const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
@@ -53,7 +54,11 @@ export class Parser {
    * the trailing block is the loop body, not a tag-call on `iter`.
    */
   private noBraceBlock = false
-  constructor(private readonly tokens: Token[]) {}
+  constructor(
+    private readonly tokens: Token[],
+    private readonly source: string = '',
+    private readonly filename?: string
+  ) {}
 
   parseProgram(): Program {
     const body: Stmt[] = []
@@ -71,11 +76,12 @@ export class Parser {
   }
 
   private parseLetDecl(): LetDecl {
+    const start = this.peek().start
     this.expect(TokenKind.Let)
     const name = this.expect(TokenKind.Ident).text
     this.expect(TokenKind.Equals)
     const value = this.parseExpr()
-    return { kind: 'LetDecl', exported: true, name, value }
+    return { kind: 'LetDecl', exported: true, name, value, start }
   }
 
   // Pratt-style precedence climber for binary expressions, with a
@@ -409,10 +415,10 @@ export class Parser {
 
   private error(msg: string): SyntaxError {
     const t = this.peek()
-    return new SyntaxError(`${msg} at offset ${t.start}`)
+    return new SyntaxError(formatError(this.source, t.start, msg, this.filename))
   }
 }
 
-export function parse(tokens: Token[]): Program {
-  return new Parser(tokens).parseProgram()
+export function parse(tokens: Token[], source: string = '', filename?: string): Program {
+  return new Parser(tokens, source, filename).parseProgram()
 }

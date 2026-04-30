@@ -20,6 +20,7 @@ describe('parser', () => {
           exported: true,
           name: 'x',
           value: { kind: 'StringLit', value: 'hi' },
+          start: 0,
         },
       ],
     })
@@ -70,6 +71,7 @@ describe('parser', () => {
             "exported": true,
             "kind": "LetDecl",
             "name": "App",
+            "start": 7,
             "value": {
               "body": {
                 "body": [
@@ -120,9 +122,9 @@ describe('parser', () => {
     `)
   })
 
-  it('reports errors with offset', () => {
+  it('reports errors with line:col + a code frame', () => {
     expect(() => ast('let')).toThrow(/expected Ident/)
-    expect(() => ast('let x =')).toThrow(/at offset/)
+    expect(() => ast('let x =')).toThrow(/at line 1, col/)
   })
 
   it('parses an if expression with else branch', () => {

@@ -1,4 +1,4 @@
-import { compile } from '@tu/compiler'
+import { compileWithMap } from '@tu/compiler'
 import { readFile } from 'node:fs/promises'
 import type { Plugin } from 'vite'
 
@@ -38,7 +38,11 @@ export default function tu(options: TuPluginOptions = {}): Plugin {
       const cleanId = id.split('?', 1)[0] ?? id
       if (!include.test(cleanId)) return null
       const src = await readFile(cleanId, 'utf-8')
-      return { code: compile(src), map: null }
+      // Pass the resolved file path as the filename so compile errors carry
+      // a clickable location and the source map's `sources` field resolves
+      // back to the original `.tu` file in browser stack traces.
+      const { code, map } = compileWithMap(src, { filename: cleanId })
+      return { code, map }
     },
     handleHotUpdate(ctx) {
       // Trigger a full module invalidation when a .tu file changes; Vite's

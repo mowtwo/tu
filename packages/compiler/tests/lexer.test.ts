@@ -65,11 +65,11 @@ describe('lexer', () => {
   })
 
   it('throws on unterminated string', () => {
-    expect(() => tokenize('"abc')).toThrow(/Unterminated string/)
+    expect(() => tokenize('"abc')).toThrow(/unterminated string/)
   })
 
   it('throws on unexpected character', () => {
-    expect(() => tokenize('@')).toThrow(/Unexpected character/)
+    expect(() => tokenize('@')).toThrow(/unexpected character/)
   })
 
   it('records source offsets', () => {
@@ -121,7 +121,7 @@ describe('lexer', () => {
   })
 
   it('throws on bare !', () => {
-    expect(() => tokenize('!')).toThrow(/Unexpected character/)
+    expect(() => tokenize('!')).toThrow(/unexpected character/)
   })
 
   it('lexes a `.` as Dot (used by class refs)', () => {

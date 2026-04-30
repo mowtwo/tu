@@ -1,3 +1,4 @@
+import { formatError } from './diagnostics.js'
 import { KEYWORDS, TokenKind, type Token } from './tokens.js'
 
 export class Lexer {
@@ -6,7 +7,7 @@ export class Lexer {
   private styleSeen = false
   /** True when an Ident `style` was followed by `{`; next token is the CssText body. */
   private cssPending = false
-  constructor(private readonly src: string) {}
+  constructor(private readonly src: string, private readonly filename?: string) {}
 
   tokenize(): Token[] {
     const out: Token[] = []
@@ -93,7 +94,9 @@ export class Lexer {
         return this.punct(TokenKind.Percent, start, 1)
     }
 
-    throw new SyntaxError(`Unexpected character ${JSON.stringify(ch)} at offset ${start}`)
+    throw new SyntaxError(
+      formatError(this.src, start, `unexpected character ${JSON.stringify(ch)}`, this.filename)
+    )
   }
 
   private punct(kind: TokenKind, start: number, len: number): Token {
@@ -197,7 +200,7 @@ export class Lexer {
       }
     }
     if (this.pos >= this.src.length) {
-      throw new SyntaxError(`Unterminated string starting at offset ${start}`)
+      throw new SyntaxError(formatError(this.src, start, `unterminated string`, this.filename))
     }
     this.pos++ // closing quote
     return {
@@ -251,6 +254,6 @@ function isIdentPart(ch: string): boolean {
   return isIdentStart(ch) || (ch >= '0' && ch <= '9')
 }
 
-export function tokenize(src: string): Token[] {
-  return new Lexer(src).tokenize()
+export function tokenize(src: string, filename?: string): Token[] {
+  return new Lexer(src, filename).tokenize()
 }
