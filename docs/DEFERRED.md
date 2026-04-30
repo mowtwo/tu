@@ -5,6 +5,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 ## Open
 
 | Item | Introduced | Target | Notes |
+| LSP completion / hover for CSS inside `style { … }` | M3.10 | post-M3 | Tu's `style { … }` body is preserved verbatim and the LSP doesn't (yet) embed a CSS language server, so users get no completions / hover / diagnostics for properties, values, or media queries. Wiring up `vscode-css-languageservice` against the captured CSS span is the natural next step. |
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
@@ -14,6 +15,14 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.10
+
+- ~~Tu-aware completion (HTML tags + ClassRefs)~~ — landed: `completionsAtTuPosition` now augments tsserver's results with two Tu-specific sources. (1) HTML tag names appear when the cursor is at expression-head — detected by tokenizing up to the cursor and checking that the previous token is one of `{`, `(`, `,`, `=`, `:`, `=>`, or `else`. (2) Declared class names appear when the cursor sits right after a `.` inside a scoped component — found by parsing the source (with a placeholder-retry for incomplete forms like `class: .`) and looking up the host LetDecl's style-block classes via the new `getScopedClassMap` export from `@tu/compiler`. Existing tsserver-based completions stay; this only adds items, deduped by label. CSS-content completion inside `style { … }` is split out as a fresh open row for later.
+
+## Closed in M2.5 (empty-array widening)
+
+- ~~`let xs = []` inferred as `Signal.State<never[]>`~~ — landed: codegen detects empty `ArrayLit` initializers (without an explicit type annotation) and emits `new Signal.State<any[]>(…)` / `new Signal.Computed<any[]>(…)` so subsequent `.set(["a", "b"])` and `for item in xs` calls don't trip on `never` inference. Explicit annotations (`let xs: number[] = []`) take precedence — the annotation fully determines the type.
 
 ## Closed in M4 V1
 

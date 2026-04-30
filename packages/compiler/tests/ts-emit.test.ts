@@ -52,6 +52,21 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain(': Signal.State')
   })
 
+  it('M2.5: empty-array state init widens to `Signal.State<any[]>` to keep .set() open', () => {
+    // Pre-fix: `let xs = []` inferred as Signal.State<never[]>; later
+    // `xs.set(["a"])` errored with "Type 'string' not assignable to never".
+    const ts = compileToTS('export let xs = []')
+    expect(ts).toContain('export const xs = new Signal.State<any[]>([])')
+  })
+
+  it('M2.5: explicit type annotation overrides the empty-array widening', () => {
+    const ts = compileToTS('export let xs: number[] = []')
+    // The annotation supplies the type — codegen should NOT also force `any[]`.
+    expect(ts).toContain('export const xs: Signal.State<number[]>')
+    expect(ts).toContain('new Signal.State([])')
+    expect(ts).not.toContain('new Signal.State<any[]>')
+  })
+
   it('M2.4: top-level `type X = …` emits a TS type alias', () => {
     const ts = compileToTS('type Pair = { x: number, y: number }')
     expect(ts).toContain('type Pair = { x: number, y: number }')

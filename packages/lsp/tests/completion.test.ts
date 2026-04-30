@@ -57,9 +57,58 @@ describe('completionsAtTuPosition — completion at a .tu cursor position', () =
     expect(completionsAtTuPosition(src, join(tmp, 'broken.tu'), 0, 10)).toEqual([])
   })
 
-  it('returns [] when the cursor lands outside any token', () => {
+  it('returns [] when the cursor lands outside any token AND outside expression context', () => {
     const src = 'export let count = 0'
-    // Col 6 — whitespace between `export` and `let`.
+    // Col 6 — whitespace between `export` and `let`. The char immediately
+    // before is `t` (an ident char), so the heuristic doesn't classify
+    // this as expression-head; tsserver also returns no items.
     expect(completionsAtTuPosition(src, join(tmp, 'ws.tu'), 0, 6)).toEqual([])
+  })
+
+  it('M3.10: surfaces HTML tag names at expression head', () => {
+    // Cursor right after `=> ` — the char immediately before is a space,
+    // which the heuristic treats as expression-head. HTML tags should be
+    // augmented in.
+    const src = 'export let App = () => '
+    const items = completionsAtTuPosition(src, join(tmp, 'tags.tu'), 0, 23)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('div')
+    expect(labels).toContain('p')
+    expect(labels).toContain('button')
+    expect(labels).toContain('h1')
+    // And the existing detail string surfaces the tag-call mapping.
+    const div = items.find((i) => i.label === 'div')!
+    expect(div.detail).toMatch(/h\("div"/)
+  })
+
+  it('M3.10: surfaces declared classes after `.` inside a scoped component', () => {
+    const src = [
+      'export let App = () => {',
+      '  div(class: ) { "hi" }',
+      '  style { .card { padding: 1rem } .shadow { box-shadow: 0 0 4px } }',
+      '}',
+    ].join('\n')
+    // Place cursor right after the `:` and a `.` we'll insert virtually.
+    // Actually use a real source with the dot already in place:
+    const src2 = [
+      'export let App = () => {',
+      '  div(class: .) { "hi" }',
+      '  style { .card { padding: 1rem } .shadow { box-shadow: 0 0 4px } }',
+      '}',
+    ].join('\n')
+    // Cursor on line 1, col 14 — right after the `.` in `class: .)`.
+    const items = completionsAtTuPosition(src2, join(tmp, 'classes.tu'), 1, 14)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('card')
+    expect(labels).toContain('shadow')
+  })
+
+  it('M3.10: HTML tags do not duplicate user idents already returned by tsserver', () => {
+    // User declared a `div` of their own (rare but legal). tsserver
+    // returns it; our augmentation must not add a second `div` entry.
+    const src = ['export let div = 1', 'export let App = () => '].join('\n')
+    const items = completionsAtTuPosition(src, join(tmp, 'dup.tu'), 1, 23)
+    const divs = items.filter((i) => i.label === 'div')
+    expect(divs).toHaveLength(1)
   })
 })

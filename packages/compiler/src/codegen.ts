@@ -190,10 +190,34 @@ export function classifyTopLevel(value: Expr): CellKind {
   return classifyValue(value)
 }
 
+/**
+ * Empty-array literal at the cell-init site? Used by codegen to widen
+ * `Signal.State` / `Signal.Computed` to `<unknown[]>` so a later assign
+ * of a real array isn't blocked by tsserver's `never[]` inference of the
+ * literal.
+ */
+function isEmptyArray(expr: Expr | undefined): boolean {
+  return expr?.kind === 'ArrayLit' && expr.elements.length === 0
+}
+
 function classifyValue(expr: Expr): CellKind {
   if (expr.kind === 'Lambda') return 'function'
   if (expr.kind === 'CallExpr' && expr.callee === 'computed') return 'computed'
   return 'state'
+}
+
+/**
+ * Public — for the LSP's ClassRef completion. Returns a map from
+ * component name to the set of class names declared in that component's
+ * `style { … }` block. Mirrors the internal `analyzeScopedComponents`
+ * but drops the per-component hash (which IDE consumers don't need).
+ */
+export function getScopedClassMap(program: Program): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  for (const [name, ctx] of analyzeScopedComponents(program)) {
+    out.set(name, ctx.declared)
+  }
+  return out
 }
 
 function analyzeScopedComponents(program: Program): Map<string, ScopeCtx> {
@@ -329,14 +353,24 @@ class Codegen {
       if (kind === 'computed') {
         const v = decl.value as CallExpr
         const arg = v.args[0]
-        this.write('new Signal.Computed(() => ')
+        // Widen empty `computed([])` to `Signal.Computed<any[]>` so
+        // assignments / reads / iteration aren't blocked by tsserver's
+        // `never[]` inference. `any[]` (vs `unknown[]`) keeps `for item in`
+        // ergonomic — users wanting tighter types should annotate.
+        const wrapper =
+          this.tsMode && decl.type === undefined && isEmptyArray(arg)
+            ? 'new Signal.Computed<any[]>(() => '
+            : 'new Signal.Computed(() => '
+        this.write(wrapper)
         if (arg) this.emitExpr(arg)
         else this.write('undefined')
         this.write(')')
         return
       }
       // state
-      this.write('new Signal.State(')
+      const widenEmpty =
+        this.tsMode && decl.type === undefined && isEmptyArray(decl.value)
+      this.write(widenEmpty ? 'new Signal.State<any[]>(' : 'new Signal.State(')
       this.emitExpr(decl.value)
       this.write(')')
     } finally {

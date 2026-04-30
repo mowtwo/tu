@@ -1,5 +1,6 @@
+import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu/compiler'
 import { getOrCreateSession } from './lsp-session.js'
-import { mapSourceLineColToTS } from './source-map.js'
+import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
 export interface TuCompletionItem {
   /** Text shown in the completion list. */
@@ -17,14 +18,98 @@ export interface TuCompletionItem {
 }
 
 /**
- * Resolve completions for a `(line, col)` cursor in a `.tu` source. Reuses
- * the cached LanguageService when possible (see lsp-session.ts).
+ * The HTML tag names Tu's tag-call DSL renders into via `h(tag, ...)`.
+ * Drives expression-head completion since tsserver — which only sees the
+ * TS shadow — has no notion of "tags are completable here." Curated for
+ * day-to-day UI work; users wanting more should `// @ts-ignore` or
+ * extend.
+ */
+const HTML_TAGS: readonly string[] = [
+  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio',
+  'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button',
+  'canvas', 'caption', 'cite', 'code', 'col', 'colgroup',
+  'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt',
+  'em', 'embed',
+  'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html',
+  'i', 'iframe', 'img', 'input', 'ins',
+  'kbd',
+  'label', 'legend', 'li', 'link',
+  'main', 'map', 'mark', 'meta', 'meter',
+  'nav', 'noscript',
+  'object', 'ol', 'optgroup', 'option', 'output',
+  'p', 'param', 'picture', 'pre', 'progress',
+  'q',
+  'rb', 'rp', 'rt', 'rtc', 'ruby',
+  's', 'samp', 'script', 'section', 'select', 'slot', 'small', 'source', 'span',
+  'strong', 'style', 'sub', 'summary', 'sup',
+  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time',
+  'title', 'tr', 'track',
+  'u', 'ul',
+  'var', 'video',
+  'wbr',
+]
+
+/**
+ * Resolve completions for a `(line, col)` cursor in a `.tu` source. Three
+ * sources merged into one list:
  *
- * Returns `[]` when no completions are available. `inclusiveEnd` mapping
- * lets cursors at exactly `srcEnd` of an identifier (the typical
- * mid-typing position) still resolve to that token.
+ *   1. tsserver `getCompletionsAtPosition` — user idents, params, imported
+ *      names, etc. (the bulk of what users see).
+ *   2. HTML tag names — when the cursor is at an expression head, since
+ *      Tu compiles `div { … }` into an `h("div", …)` call that tsserver
+ *      can't surface as a completion.
+ *   3. Scoped-component class refs — when the cursor sits right after a
+ *      `.` inside a component that owns a `style { … }` block.
+ *
+ * (1) handled by the cached LanguageService (M3.7); (2) and (3) are the
+ * Tu-aware augmentation added in M3.10.
  */
 export function completionsAtTuPosition(
+  source: string,
+  filename: string,
+  line: number,
+  col: number
+): TuCompletionItem[] {
+  const out: TuCompletionItem[] = []
+  const tsItems = tsCompletions(source, filename, line, col)
+  out.push(...tsItems)
+
+  const ctx = analyzeCursorContext(source, line, col)
+  if (ctx === null) return out
+
+  if (ctx.kind === 'class-ref') {
+    for (const cls of ctx.declared) {
+      out.push({
+        label: cls,
+        kind: 'property',
+        // Lead with `0` so declared classes outrank tsserver's lexically
+        // similar suggestions in the merged list.
+        sortText: '0_' + cls,
+      })
+    }
+    return out
+  }
+
+  if (ctx.kind === 'expression-head') {
+    const seen = new Set(out.map((c) => c.label))
+    for (const tag of HTML_TAGS) {
+      if (seen.has(tag)) continue
+      out.push({
+        label: tag,
+        kind: 'function',
+        // High sortText so HTML tags appear AFTER user-defined idents but
+        // still in the list (most users want their own names first).
+        sortText: '8_' + tag,
+        detail: `Tu tag-call: emits h("${tag}", …)`,
+      })
+    }
+  }
+
+  return out
+}
+
+function tsCompletions(
   source: string,
   filename: string,
   line: number,
@@ -52,4 +137,129 @@ export function completionsAtTuPosition(
     sortText: e.sortText,
     ...(e.insertText !== undefined ? { insertText: e.insertText } : {}),
   }))
+}
+
+interface ClassRefContext {
+  kind: 'class-ref'
+  /** Class names declared in the surrounding scoped component's style block. */
+  declared: string[]
+}
+
+interface ExpressionHeadContext {
+  kind: 'expression-head'
+}
+
+type CursorContext = ClassRefContext | ExpressionHeadContext
+
+/**
+ * Find the previous non-whitespace token before the cursor and use it to
+ * classify what the user is plausibly typing. Token-based (not char-based)
+ * so keywords like `let` don't masquerade as identifiers we should follow,
+ * and so `Signal.State` doesn't trigger a ClassRef context.
+ *
+ * Cheap and never the SOLE source of completions — tsserver still runs
+ * underneath; this only ADDS Tu-specific items (HTML tags, ClassRefs).
+ */
+function analyzeCursorContext(source: string, line: number, col: number): CursorContext | null {
+  const offset = lineColToOffset(source, line, col)
+  if (offset === null) return null
+  let tokens: Token[]
+  try {
+    tokens = tokenize(source)
+  } catch {
+    return null
+  }
+
+  // `prev` = index of the last token whose `end <= offset`.
+  let prev = -1
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i]!.end <= offset && tokens[i]!.kind !== TokenKind.Eof) prev = i
+    else break
+  }
+
+  // If the cursor sits right at the end of an in-progress Ident, the
+  // "preceding context" is what came BEFORE that ident — step back one.
+  let realPrev = prev
+  if (
+    prev >= 0 &&
+    tokens[prev]!.kind === TokenKind.Ident &&
+    tokens[prev]!.end === offset
+  ) {
+    realPrev = prev - 1
+  }
+  // Mid-ident (cursor inside an Ident span) — `prev` already points at
+  // the token before the Ident, which is what we want.
+
+  if (realPrev < 0) return null
+  const prevTok = tokens[realPrev]!
+
+  if (prevTok.kind === TokenKind.Dot) {
+    // Tu's `.foo` is a ClassRef in expression position. Skip if the dot
+    // looks like member access (preceded by an Ident with no whitespace
+    // between) — Tu doesn't support that today, but if/when it does, we
+    // don't want to confuse the user with class names there.
+    const beforeDot = realPrev > 0 ? tokens[realPrev - 1]! : null
+    if (
+      beforeDot &&
+      beforeDot.kind === TokenKind.Ident &&
+      beforeDot.end === prevTok.start
+    ) {
+      return null
+    }
+    const classes = collectScopedClassesAt(source, offset)
+    if (!classes) return null
+    return { kind: 'class-ref', declared: [...classes].sort() }
+  }
+
+  if (
+    prevTok.kind === TokenKind.LBrace ||
+    prevTok.kind === TokenKind.LParen ||
+    prevTok.kind === TokenKind.Comma ||
+    prevTok.kind === TokenKind.Equals ||
+    prevTok.kind === TokenKind.Colon ||
+    prevTok.kind === TokenKind.FatArrow ||
+    prevTok.kind === TokenKind.Else
+  ) {
+    return { kind: 'expression-head' }
+  }
+  return null
+}
+
+/**
+ * Find the top-level component LetDecl whose source range contains
+ * `offset`, and return the declared class names from its style block (if
+ * any). Returns `null` when the offset isn't inside any scoped
+ * component.
+ *
+ * If the source fails to parse (very common while the user is mid-typing
+ * — `class: .` is incomplete Tu), we insert a placeholder ident at the
+ * cursor and retry. The placeholder makes the surrounding form valid
+ * without affecting the host lookup, since the inserted char is the
+ * cursor position itself.
+ */
+function collectScopedClassesAt(source: string, offset: number): Set<string> | null {
+  let program
+  try {
+    program = parse(tokenize(source), source)
+  } catch {
+    const patched = source.slice(0, offset) + 'X' + source.slice(offset)
+    try {
+      program = parse(tokenize(patched), patched)
+    } catch {
+      return null
+    }
+  }
+  let host: LetDecl | null = null
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    // The patched source may have shifted ranges by one byte; use a `<=`
+    // upper bound so the cursor at-or-just-before the close still hits.
+    if (offset >= stmt.start && offset <= stmt.end) {
+      host = stmt
+      break
+    }
+  }
+  if (!host) return null
+  const map = getScopedClassMap(program)
+  return map.get(host.name) ?? null
 }
