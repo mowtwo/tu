@@ -178,22 +178,6 @@ describe('parser', () => {
     })
   })
 
-  it('parses match with literal and wildcard arms', () => {
-    const tree = ast(`
-      let x = match (n) {
-        0 => "zero"
-        _ => "other"
-      }
-    `)
-    const v = (tree.body[0] as { value: unknown }).value as {
-      kind: string
-      arms: { pattern: { kind: string } }[]
-    }
-    expect(v.kind).toBe('MatchExpr')
-    expect(v.arms[0]?.pattern.kind).toBe('PatLit')
-    expect(v.arms[1]?.pattern.kind).toBe('PatWild')
-  })
-
   it('parses `style { … }` as a StyleBlock with raw CSS preserved', () => {
     const tree = ast('let X = style { .card { color: red; } }')
     const v = (tree.body[0] as { value: unknown }).value as { kind: string; css: string }

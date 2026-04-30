@@ -26,7 +26,6 @@ export type Expr =
   | Block
   | IfExpr
   | ForExpr
-  | MatchExpr
   | StyleBlock
   | AssignExpr
   | ClassRef
@@ -69,7 +68,6 @@ export type Child =
   | Ident
   | IfExpr
   | ForExpr
-  | MatchExpr
   | StyleBlock
   | ClassRef
 
@@ -118,21 +116,6 @@ export interface ForExpr {
   item: string
   iter: Expr
   body: Block
-}
-
-export interface MatchExpr {
-  kind: 'MatchExpr'
-  scrutinee: Expr
-  arms: MatchArm[]
-}
-
-export type MatchPattern =
-  | { kind: 'PatLit'; value: StringLit | NumberLit }
-  | { kind: 'PatWild' }
-
-export interface MatchArm {
-  pattern: MatchPattern
-  body: Expr
 }
 
 /**

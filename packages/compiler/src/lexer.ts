@@ -227,9 +227,6 @@ export class Lexer {
       this.pos++
     }
     const text = this.src.slice(start, this.pos)
-    if (text === '_') {
-      return { kind: TokenKind.Underscore, text, start, end: this.pos }
-    }
     const kw = KEYWORDS[text]
     return {
       kind: kw ?? TokenKind.Ident,

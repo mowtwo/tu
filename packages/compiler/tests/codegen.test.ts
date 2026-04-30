@@ -99,18 +99,6 @@ describe('codegen', () => {
     expect(js).toContain('Array.from(items.get(), (item) => (h("li", {}, [item])))')
   })
 
-  it('emits a match expression as IIFE with strict-equality ternary chain', () => {
-    const js = compile(`
-      let n = 0
-      let label = computed(match (n) {
-        0 => "zero"
-        1 => "one"
-        _ => "other"
-      })
-    `)
-    expect(js).toContain('((__m) => __m === 0 ? "zero" : __m === 1 ? "one" : "other")(n.get())')
-  })
-
   it('emits === / !== for Tu == / !=', () => {
     const js = compile(`
       let a = 1

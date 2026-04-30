@@ -12,9 +12,6 @@ import type {
   IfExpr,
   Lambda,
   LetDecl,
-  MatchArm,
-  MatchExpr,
-  MatchPattern,
   NumberLit,
   Param,
   Program,
@@ -124,7 +121,6 @@ export class Parser {
     if (k === TokenKind.LBrace && !this.noBraceBlock) return this.parseBlock()
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
-    if (k === TokenKind.Match) return this.parseMatchExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
     return this.parsePrimary()
   }
@@ -243,45 +239,6 @@ export class Parser {
     }
     const body = this.parseBlock()
     return { kind: 'ForExpr', item, iter, body }
-  }
-
-  private parseMatchExpr(): MatchExpr {
-    this.expect(TokenKind.Match)
-    this.expect(TokenKind.LParen)
-    const scrutinee = this.parseExpr()
-    this.expect(TokenKind.RParen)
-    this.expect(TokenKind.LBrace)
-    const arms: MatchArm[] = []
-    while (this.peek().kind !== TokenKind.RBrace) {
-      arms.push(this.parseMatchArm())
-      if (this.peek().kind === TokenKind.Comma) this.pos++
-    }
-    this.expect(TokenKind.RBrace)
-    return { kind: 'MatchExpr', scrutinee, arms }
-  }
-
-  private parseMatchArm(): MatchArm {
-    const pattern = this.parseMatchPattern()
-    this.expect(TokenKind.FatArrow)
-    const body = this.parseExpr()
-    return { pattern, body }
-  }
-
-  private parseMatchPattern(): MatchPattern {
-    const t = this.peek()
-    if (t.kind === TokenKind.Underscore) {
-      this.pos++
-      return { kind: 'PatWild' }
-    }
-    if (t.kind === TokenKind.Number) {
-      this.pos++
-      return { kind: 'PatLit', value: { kind: 'NumberLit', value: t.value as number } }
-    }
-    if (t.kind === TokenKind.String) {
-      this.pos++
-      return { kind: 'PatLit', value: { kind: 'StringLit', value: t.value as string } }
-    }
-    throw this.error(`expected match pattern (literal or _)`)
   }
 
   private parsePrimary(): Expr {

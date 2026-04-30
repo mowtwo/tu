@@ -36,7 +36,7 @@ const demos = [
   {
     id: 'todo',
     label: 'M1.3  Todo',
-    blurb: 'Control flow: `for item in items`, `if (count > 0)`, `match (count) { 0 => ..., _ => ... }`. The header buttons swap the items list.',
+    blurb: 'Control flow: `for item in items`, plus chained `if (count == 0) … else if (count == 1) … else …` for the pluralized label. The header buttons swap the items list.',
     setup() {
       TodoMod.items.set([])
       TodoMod.count.set(0)

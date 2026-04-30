@@ -48,7 +48,7 @@
     "keyword": {
       "patterns": [
         {
-          "match": "\\b(let|export|import|from|as|if|else|for|of|in|where|order|by|take|skip|match|computed|effect|watch|server|client|stream|defer|async|await)\\b",
+          "match": "\\b(let|export|import|from|as|if|else|for|of|in|where|order|by|take|skip|computed|effect|watch|server|client|stream|defer|async|await)\\b",
           "name": "keyword.control.tu"
         }
       ]

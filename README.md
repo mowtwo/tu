@@ -85,7 +85,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.0 | Static `Greeting.tu` → ESM → HTML | ✅ |
 | M1.1 | VS Code syntax highlighting + file icon | ✅ |
 | M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | ✅ |
-| M1.3 | `if` / `for` / `match` expressions | ✅ |
+| M1.3 | `if` / `for` expressions (originally `match` too; removed in M1.11) | ✅ |
 | M1.4 | `style { … }` block | ✅ |
 | M1.5 | Events + `mount()` (interactive components) | ✅ |
 | M1.6 | Vite plugin + browser playground | ✅ |
@@ -93,6 +93,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.8 | Style scoping + `.card` symbolic refs + pug shorthand | ✅ |
 | M1.9 | Error UX: file:line:col + code frame, V3 source maps | ✅ |
 | M1.10 | Module visibility: private-by-default + `export let` | ✅ |
+| M1.11 | Drop `match` (TC39 Pattern Matching collision) | ✅ |
 | M2 | Type system via TypeScript (Volar pattern) + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |

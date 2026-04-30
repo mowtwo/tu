@@ -3,7 +3,6 @@ export enum TokenKind {
   Ident,
   String,
   Number,
-  Underscore,
   /** Raw CSS text inside a `style { … }` block; lexed in CSS mode. */
   CssText,
   // punctuation
@@ -36,7 +35,6 @@ export enum TokenKind {
   Else,
   For,
   In,
-  Match,
   // misc
   Eof,
 }
@@ -58,5 +56,4 @@ export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   else: TokenKind.Else,
   for: TokenKind.For,
   in: TokenKind.In,
-  match: TokenKind.Match,
 })

@@ -79,13 +79,12 @@ describe('lexer', () => {
   })
 
   it('lexes control-flow keywords', () => {
-    const tokens = tokenize('if else for in match')
+    const tokens = tokenize('if else for in')
     expect(tokens.map((t) => t.kind)).toEqual([
       TokenKind.If,
       TokenKind.Else,
       TokenKind.For,
       TokenKind.In,
-      TokenKind.Match,
       TokenKind.Eof,
     ])
   })
@@ -113,9 +112,13 @@ describe('lexer', () => {
     ])
   })
 
-  it('lexes lone underscore as Underscore (not Ident)', () => {
+  it('lexes a lone underscore as a regular Ident', () => {
+    // M1.11 dropped the `Underscore` token (its only consumer was `match`,
+    // which collided with TC39 Pattern Matching). `_` and `_foo` both lex
+    // as Ident now — `_` is a perfectly valid JS identifier.
     const tokens = tokenize('_ _x')
-    expect(tokens[0]?.kind).toBe(TokenKind.Underscore)
+    expect(tokens[0]?.kind).toBe(TokenKind.Ident)
+    expect(tokens[0]?.text).toBe('_')
     expect(tokens[1]?.kind).toBe(TokenKind.Ident)
     expect(tokens[1]?.text).toBe('_x')
   })

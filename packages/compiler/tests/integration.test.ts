@@ -166,16 +166,14 @@ describe('compile + render end-to-end', () => {
     expect(result.five).toBe('<div><p>positive: 5</p></div>')
   })
 
-  it('renders a match expression reactively, with wildcard fallback', async () => {
+  it('renders a chained if/else label reactively (replacement for the removed match form)', async () => {
     const result = await compileAndRun(
       `
         export let n = 0
         export let App = () => p {
-          match (n) {
-            0 => "zero"
-            1 => "one"
-            _ => "many"
-          }
+          if (n == 0) { "zero" }
+          else if (n == 1) { "one" }
+          else { "many" }
         }
       `,
       (mod) => {
