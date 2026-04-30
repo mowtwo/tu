@@ -16,18 +16,6 @@ export let label = computed(
   else { "many items" }
 )
 
-
-let B = (props:string,a:Child)=>{
-  fragement {
-    "11"
-    "222"
-    div() {
-      "333"
-    }
-  }
-}
-
-
 let setEmpty = () => {
   items = []
   count = 0
@@ -59,10 +47,6 @@ export let Todo = () => {
 
     d
 
-    B ("") {
-        "abc"
-    }
-
     if (count > 0) {
       ul {
         for item in items {
@@ -79,8 +63,5 @@ export let Todo = () => {
       button(onClick: setMany) { "three items" }
       button(onClick: () => { items = ["buy milk", "walk the dog", "write Tu", "call mom"]; count = 4 }) { "four items" }
     }
-  }
-  style {
-    .div::after {}
   }
 }

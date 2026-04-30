@@ -7,6 +7,7 @@ import * as CardMod from '../../examples/styled/Card.tu'
 import * as ClickerMod from '../../examples/clicker/Clicker.tu'
 import * as DiffMod from '../../examples/diff/Diff.tu'
 import * as ScopedMod from '../../examples/scoped/Scoped.tu'
+import * as CompositionMod from '../../examples/composition/Composition.tu'
 
 // Each demo: id, label, blurb, render thunk that returns a Tu vnode (or array
 // fragment). Some demos (counter / todo) seed their state cells before mount
@@ -60,6 +61,13 @@ const demos = [
     blurb: 'Two components both declare a `.card` style. Symbolic class refs (`.card()` shorthand and `class: .card`) get a per-component hash suffix in markup AND CSS, so the rules don\'t bleed across components.',
     setup() {},
     thunk: () => ScopedMod.Scoped(),
+  },
+  {
+    id: 'composition',
+    label: 'M5    Composition',
+    blurb: 'Capitalized components compile as real function calls (not `h("Card", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component\'s `children` argument. `Fragment` from `@tu/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell), useful for derivations and closures.',
+    setup() {},
+    thunk: () => CompositionMod.App(),
   },
   {
     id: 'diff',
