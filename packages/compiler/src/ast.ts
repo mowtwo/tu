@@ -101,6 +101,15 @@ export interface Lambda extends Ranged {
   kind: 'Lambda'
   params: Param[]
   body: Expr
+  /**
+   * Optional return-type annotation between `)` and `=>` — `(x: number):
+   * string => …`. Captured as a raw source slice (depth-tracked across
+   * `()` / `{}` / `[]` / `<…>`) and emitted verbatim in TS mode; erased
+   * in JS mode. Mirrors how `LetDecl.type` and `Param.type` work.
+   */
+  returnType?: string
+  returnTypeStart?: number
+  returnTypeEnd?: number
 }
 
 export interface Param extends Ranged {

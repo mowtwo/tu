@@ -137,6 +137,17 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain('interface ')
   })
 
+  it('M5.7: lambda return-type annotation preserved in TS emit', () => {
+    const ts = compileToTS('export let f = (x: number): string => "ok"')
+    expect(ts).toContain('export const f = (x: number): string => "ok"')
+  })
+
+  it('M5.7: lambda return-type erased in JS emit', () => {
+    const js = compile('export let f = (x: number): string => "ok"')
+    expect(js).toContain('export const f = (x) => "ok"')
+    expect(js).not.toContain(': string')
+  })
+
   it('M5.6: object literal preserved verbatim in TS emit', () => {
     const ts = compileToTS('export let p = { x: 1, y: 2 }')
     expect(ts).toContain('export const p = new Signal.State({ x: 1, y: 2 })')
@@ -226,6 +237,13 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       type Point = { x: number; y: number }
       export let origin: Point = { x: 0, y: 0 }
       export let make = (n: number) => { x: n, y: n }
+    `)
+  })
+
+  it('M5.7: typechecks a lambda return-type annotation against an alias', () => {
+    check(`
+      type Point = { x: number; y: number }
+      export let make = (n: number): Point => { x: n, y: n }
     `)
   })
 

@@ -525,7 +525,11 @@ class Codegen {
           this.write(`: ${p.type}`)
         }
       }
-      this.write(') => ')
+      this.write(')')
+      if (this.tsMode && node.returnType !== undefined) {
+        this.write(`: ${node.returnType}`)
+      }
+      this.write(' => ')
       // An object literal directly after `=>` is grammatically ambiguous
       // with a function-body block in JS — wrap it in parens so the parser
       // sees an expression, not a labeled-statement block.

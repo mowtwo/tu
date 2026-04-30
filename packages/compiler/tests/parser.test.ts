@@ -325,6 +325,30 @@ describe('parser', () => {
     expect(() => ast('let App = () => div { { x: 1 } }')).toThrow(/ObjectLit as child/)
   })
 
+  it('parses lambda return-type annotation `(x): T => …`', () => {
+    const tree = ast('let f = (x: number): string => x')
+    const lambda = (tree.body[0] as { value: unknown }).value as {
+      kind: string
+      params: { name: string; type?: string }[]
+      returnType?: string
+    }
+    expect(lambda.kind).toBe('Lambda')
+    expect(lambda.params[0]).toMatchObject({ name: 'x', type: 'number' })
+    expect(lambda.returnType).toBe('string')
+  })
+
+  it('parses lambda return-type spanning generics + nested braces', () => {
+    const tree = ast('let f = (): Map<string, { v: number }> => x')
+    const lambda = (tree.body[0] as { value: { returnType?: string } }).value
+    expect(lambda.returnType).toBe('Map<string, { v: number }>')
+  })
+
+  it('keeps `returnType` undefined when no annotation is given', () => {
+    const tree = ast('let f = (x) => x')
+    const lambda = (tree.body[0] as { value: { returnType?: unknown } }).value
+    expect(lambda.returnType).toBeUndefined()
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

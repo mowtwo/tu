@@ -189,10 +189,13 @@ Pratt precedence: `* / %` > `+ -` > comparison > equality.
 (x: number) => x + 1
 (name: string, age: number) => p { name }
 () => p { "hi" }
+(x: number): string => "ok"               // return-type annotation
+(): Map<string, { v: number }> => empty   // generics + nested types OK
 ```
 
-The body is any expression (including a Block). Param type annotations
-preserve through TS-mode emission for inference. JS-mode strips them.
+The body is any expression (including a Block). Param and return type
+annotations preserve through TS-mode emission for inference. JS-mode
+strips both.
 
 ### Calls
 

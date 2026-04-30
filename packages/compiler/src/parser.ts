@@ -527,15 +527,67 @@ export class Parser {
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
     this.expect(TokenKind.RParen)
+    let returnType: string | undefined
+    let returnTypeStart: number | undefined
+    let returnTypeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilFatArrow()
+      returnType = span.text
+      returnTypeStart = span.start
+      returnTypeEnd = span.end
+    }
     this.expect(TokenKind.FatArrow)
     const body = this.parseExpr()
-    return {
+    const lambda: Lambda = {
       kind: 'Lambda',
       params,
       body,
       start: lparen.start,
       end: body.end,
     }
+    if (returnType !== undefined) {
+      lambda.returnType = returnType
+      lambda.returnTypeStart = returnTypeStart!
+      lambda.returnTypeEnd = returnTypeEnd!
+    }
+    return lambda
+  }
+
+  /**
+   * Same depth-tracked raw-type read as `parseRawTypeUntilEquals`, but the
+   * terminator is `=>` (FatArrow) at depth 0. Used by the optional
+   * lambda return-type annotation: `(x: number): string => …`.
+   */
+  private parseRawTypeUntilFatArrow(): { text: string; start: number; end: number } {
+    const start = this.peek().start
+    let depth = 0
+    let end = start
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) {
+        throw this.error(`unexpected EOF in lambda return-type annotation`)
+      }
+      if (depth === 0 && t.kind === TokenKind.FatArrow) break
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
+        t.kind === TokenKind.Lt
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
+        t.kind === TokenKind.Gt
+      ) {
+        depth--
+      }
+      end = t.end
+      this.pos++
+    }
+    return { text: this.source.slice(start, end).trim(), start, end }
   }
 
   private parseParam(): Param {
