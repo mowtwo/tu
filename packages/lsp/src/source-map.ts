@@ -182,11 +182,32 @@ function tightestContaining(
   tokens: TokenMapping[],
   jsOffset: number
 ): TokenMapping | undefined {
+  return tightestOnAxis(tokens, jsOffset, 'js')
+}
+
+/**
+ * Mirror of `tightestContaining` but on the source axis: find the tightest
+ * TokenMapping whose `[srcStart, srcEnd)` contains `srcOffset`.
+ */
+function tightestContainingSrc(
+  tokens: TokenMapping[],
+  srcOffset: number
+): TokenMapping | undefined {
+  return tightestOnAxis(tokens, srcOffset, 'src')
+}
+
+function tightestOnAxis(
+  tokens: TokenMapping[],
+  offset: number,
+  axis: 'js' | 'src'
+): TokenMapping | undefined {
   let best: TokenMapping | undefined
   let bestWidth = Number.POSITIVE_INFINITY
   for (const t of tokens) {
-    if (t.jsStart <= jsOffset && jsOffset < t.jsEnd) {
-      const w = t.jsEnd - t.jsStart
+    const start = axis === 'js' ? t.jsStart : t.srcStart
+    const end = axis === 'js' ? t.jsEnd : t.srcEnd
+    if (start <= offset && offset < end) {
+      const w = end - start
       if (w < bestWidth) {
         best = t
         bestWidth = w
@@ -200,4 +221,72 @@ function lineColAtIfPossible(source: string, offset: number): { line: number; co
   if (offset < 0 || offset > source.length) return undefined
   const lc = lineColAt(source, offset)
   return { line: lc.line - 1, col: lc.col - 1 }
+}
+
+/**
+ * Convert a 0-based (line, col) in `source` to a 0-based byte offset, or
+ * `null` if the position is outside the file. Counterpart to `lineColAt`'s
+ * 1-based coordinates — the LSP layer works in 0-based throughout, so the
+ * conversion happens here.
+ */
+export function lineColToOffset(
+  source: string,
+  line: number,
+  col: number
+): number | null {
+  if (line < 0 || col < 0) return null
+  let curLine = 0
+  let lineStart = 0
+  for (let i = 0; i < source.length; i++) {
+    if (curLine === line) {
+      const lineEnd = source.indexOf('\n', lineStart)
+      const eol = lineEnd < 0 ? source.length : lineEnd
+      if (lineStart + col > eol) return null
+      return lineStart + col
+    }
+    if (source.charAt(i) === '\n') {
+      curLine++
+      lineStart = i + 1
+    }
+  }
+  // After the loop: either we never reached `line` (out of range), or the
+  // request lands past the last newline on the trailing line.
+  if (curLine === line) {
+    if (lineStart + col > source.length) return null
+    return lineStart + col
+  }
+  return null
+}
+
+/**
+ * Reverse map: given a `(line, col)` in the `.tu` source, find the TS byte
+ * offset of the corresponding location in the generated code, plus the
+ * source-side range of the token that covered the cursor.
+ *
+ * Returns `null` when no TokenMapping contains the cursor — typically
+ * whitespace, a punctuation token (`=`, `=>`, `(`), or a Tu keyword (`let`,
+ * `if`, `for`). The hover layer treats `null` as "no info available".
+ *
+ * The TS offset is `jsStart + (srcOffset - srcStart)`, clamped to the JS
+ * span end. For most tokens the JS and source widths match identically (the
+ * codegen emits the source ident verbatim), so the cursor's interior offset
+ * is preserved — pointing at the `n` of `count` lands inside `count` in the
+ * generated code, not at its start. For tokens with mismatched widths
+ * (e.g. ClassRef `.foo` → `"foo-tu-abc123"`) the offset clamps and the
+ * type-checker still resolves the token from any interior position.
+ */
+export function mapSourceLineColToTS(
+  tokens: TokenMapping[],
+  source: string,
+  line: number,
+  col: number
+): { tsOffset: number; tokenSrcStart: number; tokenSrcEnd: number } | null {
+  const srcOffset = lineColToOffset(source, line, col)
+  if (srcOffset === null) return null
+  const tok = tightestContainingSrc(tokens, srcOffset)
+  if (!tok) return null
+  const interior = srcOffset - tok.srcStart
+  const jsWidth = tok.jsEnd - tok.jsStart
+  const tsOffset = tok.jsStart + Math.min(interior, Math.max(0, jsWidth - 1))
+  return { tsOffset, tokenSrcStart: tok.srcStart, tokenSrcEnd: tok.srcEnd }
 }

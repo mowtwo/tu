@@ -1,6 +1,6 @@
 import { compileToTSWithMap } from '@tu/compiler'
 import { describe, expect, it } from 'vitest'
-import { decodeMappings, mapToSource } from '../src/source-map.js'
+import { decodeMappings, mapSourceLineColToTS, mapToSource } from '../src/source-map.js'
 
 describe('decodeMappings — V3 VLQ round-trip', () => {
   it('round-trips a single statement at the top of the file', () => {
@@ -63,5 +63,58 @@ describe('mapToSource — generated → source position lookup', () => {
     const mapped = mapToSource(segs, last.genLine + 10, 0)
     expect(mapped.line).toBe(last.srcLine)
     expect(mapped.col).toBe(last.srcCol)
+  })
+})
+
+describe('mapSourceLineColToTS — source → TS reverse lookup', () => {
+  function compile(src: string) {
+    const { code, tokenMappings } = compileToTSWithMap(src, { filename: 'r.tu' })
+    return { code, tokenMappings, src }
+  }
+
+  it('lands the cursor inside the corresponding identifier in TS', () => {
+    // `count` ident appears in both source and TS — a cursor mid-name must
+    // map to a TS offset whose surrounding chars are still `count`.
+    const { code, tokenMappings, src } = compile(
+      'export let count = 0\nexport let App = () => p { count }'
+    )
+    // Hover on the `n` (col 28) inside `count` on line 1.
+    const result = mapSourceLineColToTS(tokenMappings, src, 1, 28)
+    expect(result).not.toBeNull()
+    // Verify the TS offset is inside a `count` substring.
+    const slice = code.slice(result!.tsOffset, result!.tsOffset + 4)
+    expect(slice.startsWith('coun') || slice.startsWith('ount') || slice === 'unt)' || slice === 'nt.g').toBe(true)
+    // Token range covers `count` (5 chars).
+    expect(result!.tokenSrcEnd - result!.tokenSrcStart).toBe(5)
+  })
+
+  it('returns null when the cursor is on whitespace or a keyword', () => {
+    const { tokenMappings, src } = compile('export let x = 1')
+    // `e` in `export` — Tu keyword, no TokenMapping.
+    expect(mapSourceLineColToTS(tokenMappings, src, 0, 0)).toBeNull()
+    // The space between `export` and `let`.
+    expect(mapSourceLineColToTS(tokenMappings, src, 0, 6)).toBeNull()
+    // The `=` operator.
+    expect(mapSourceLineColToTS(tokenMappings, src, 0, 13)).toBeNull()
+  })
+
+  it('returns null when (line, col) is outside the source bounds', () => {
+    const { tokenMappings, src } = compile('export let x = 1')
+    expect(mapSourceLineColToTS(tokenMappings, src, 999, 0)).toBeNull()
+    expect(mapSourceLineColToTS(tokenMappings, src, -1, 0)).toBeNull()
+  })
+
+  it('tightest token wins when an inner ident is nested inside an outer call', () => {
+    // `count.get()` is wrapped by the surrounding `let` decl's value range,
+    // but the `count` Ident has its own narrow TokenMapping. The cursor
+    // pointed at the `c` of `count` should resolve to the inner Ident's
+    // src-end (i.e. cover only `count`, not the whole expression).
+    const { tokenMappings, src } = compile(
+      'export let count = 0\nexport let g = computed(count + 1)'
+    )
+    // line 1, col 24 is the `c` of `count` inside computed(...).
+    const r = mapSourceLineColToTS(tokenMappings, src, 1, 24)
+    expect(r).not.toBeNull()
+    expect(r!.tokenSrcEnd - r!.tokenSrcStart).toBe(5)
   })
 })

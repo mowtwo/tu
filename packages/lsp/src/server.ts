@@ -4,6 +4,8 @@ import {
   createConnection,
   Diagnostic,
   DiagnosticSeverity,
+  Hover,
+  MarkupKind,
   ProposedFeatures,
   Range,
   TextDocuments,
@@ -12,6 +14,7 @@ import {
 } from 'vscode-languageserver/node.js'
 import { fileURLToPath } from 'node:url'
 import { checkTuSource, type TuDiagnostic } from './diagnostics.js'
+import { hoverAtTuPosition } from './hover.js'
 
 const connection = createConnection(ProposedFeatures.all)
 const documents = new TextDocuments(TextDocument)
@@ -19,6 +22,7 @@ const documents = new TextDocuments(TextDocument)
 connection.onInitialize(() => ({
   capabilities: {
     textDocumentSync: TextDocumentSyncKind.Incremental,
+    hoverProvider: true,
   },
   serverInfo: {
     name: '@tu/lsp',
@@ -165,6 +169,33 @@ documents.onDidClose((e) => {
   debounceTimers.delete(e.document.uri)
   // Clear stale diagnostics for closed documents.
   void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] })
+})
+
+connection.onHover((params): Hover | null => {
+  const doc = documents.get(params.textDocument.uri)
+  if (!doc) return null
+  const filename = params.textDocument.uri.startsWith('file://')
+    ? fileURLToPath(params.textDocument.uri)
+    : params.textDocument.uri
+  const text = doc.getText()
+  try {
+    const info = hoverAtTuPosition(text, filename, params.position.line, params.position.character)
+    if (!info) return null
+    const value =
+      '```typescript\n' +
+      info.contents +
+      '\n```' +
+      (info.documentation ? '\n\n' + info.documentation : '')
+    const start = { line: info.line, character: info.col }
+    const end = advance(text, info.line, info.col, info.length)
+    return {
+      contents: { kind: MarkupKind.Markdown, value },
+      range: { start, end },
+    }
+  } catch {
+    // Defensive: never crash the server. A hover failure just means no info.
+    return null
+  }
 })
 
 documents.listen(connection)
