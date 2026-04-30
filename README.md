@@ -4,6 +4,8 @@ A reactive UI language with first-class signals, immutable-by-default state, and
 
 > **Status**: pre-alpha (v0.0.0). Compiler, runtime, type-system, and full LSP (diagnostics + hover + completion + definition + rename) are landed; SSR, CE wrappers, and the v0.1 release are next.
 
+**Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md)
+
 ## Concept
 
 - JSX replacement: trailing-closure DSL unifying HTML, CSS, and SVG in one syntax
