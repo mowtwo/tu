@@ -106,7 +106,33 @@ importers:
 
   packages/std: {}
 
+  packages/vite-tu:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../compiler
+    devDependencies:
+      vite:
+        specifier: ^7.0.0
+        version: 7.3.2(@types/node@22.19.17)
+
   packages/vscode: {}
+
+  playground:
+    dependencies:
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../packages/runtime
+    devDependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../packages/compiler
+      '@tu/vite':
+        specifier: workspace:*
+        version: link:../packages/vite-tu
+      vite:
+        specifier: ^7.0.0
+        version: 7.3.2(@types/node@22.19.17)
 
 packages:
 

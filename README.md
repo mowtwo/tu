@@ -18,7 +18,8 @@ A reactive UI language with first-class signals, immutable-by-default state, and
 ```
 packages/
 ├── compiler/    @tu/compiler   lexer, parser, type-mapper, codegen
-├── runtime/     @tu/runtime    ~3 KB Signal + DOM glue
+├── runtime/     @tu/runtime    ~3 KB Signal + DOM glue (h, renderToString, mount)
+├── vite-tu/     @tu/vite       Vite plugin: load .tu files via the compiler
 ├── lsp/         @tu/lsp        Volar-based language server
 ├── vscode/      vscode-tu      VS Code extension (syntax + icon)
 ├── cli/         @tu/cli        tu build / tu dev / tu check / tu fmt
@@ -58,7 +59,12 @@ pnpm --filter @tu-examples/styled demo
 
 # M1.5 — Clicker: interactive counter, mounted into a jsdom-simulated browser
 pnpm --filter @tu-examples/clicker demo
+
+# M1.6 — playground: real-browser dev server, swaps between every milestone demo
+pnpm --filter tu-playground dev
 ```
+
+The playground runs Vite over `examples/*/*.tu` source files via the `@tu/vite` plugin. Edit any `.tu` file under `examples/` while the dev server is up and the page reloads.
 
 ### VS Code syntax highlighting (M1.1)
 
@@ -82,6 +88,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.3 | `if` / `for` / `match` expressions | ✅ |
 | M1.4 | `style { … }` block | ✅ |
 | M1.5 | Events + `mount()` (interactive components) | ✅ |
+| M1.6 | Vite plugin + browser playground | ✅ |
 | M2 | Type inference + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |
