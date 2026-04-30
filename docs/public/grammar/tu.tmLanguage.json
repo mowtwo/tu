@@ -1,0 +1,136 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Tu",
+  "scopeName": "source.tu",
+  "fileTypes": ["tu"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#style-block" },
+    { "include": "#keyword" },
+    { "include": "#constant" },
+    { "include": "#type-primitive" },
+    { "include": "#operator" },
+    { "include": "#prop-key" },
+    { "include": "#tag-call" },
+    { "include": "#component-name" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "match": "//.*$",
+          "name": "comment.line.double-slash.tu"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.tu",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "match": "\\\\(n|t|r|\"|\\\\)",
+          "name": "constant.character.escape.tu"
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b\\d+(\\.\\d+)?\\b",
+          "name": "constant.numeric.tu"
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "match": "\\b(let|export|import|from|as|if|else|for|of|in|where|order|by|take|skip|computed|effect|watch|server|client|stream|defer|async|await)\\b",
+          "name": "keyword.control.tu"
+        }
+      ]
+    },
+    "constant": {
+      "patterns": [
+        {
+          "match": "\\b(true|false|null|undefined)\\b",
+          "name": "constant.language.tu"
+        }
+      ]
+    },
+    "type-primitive": {
+      "patterns": [
+        {
+          "match": "(?<=:\\s*)\\b(string|number|boolean|any|unknown|void|never)\\b",
+          "name": "support.type.primitive.tu"
+        }
+      ]
+    },
+    "operator": {
+      "patterns": [
+        {
+          "match": "=>|\\?\\?|\\?\\.|\\?|\\.\\.\\.?=?|[+\\-*/%=!<>&|]=?",
+          "name": "keyword.operator.tu"
+        }
+      ]
+    },
+    "prop-key": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_-]*)(?=\\s*:)",
+          "name": "entity.other.attribute-name.tu"
+        }
+      ]
+    },
+    "tag-call": {
+      "patterns": [
+        {
+          "comment": "HTML-style lowercase tags in tag-call position: `div(`, `h1 {`, `button(onClick: …)`. Colored with the standard HTML tag scope.",
+          "match": "\\b([a-z][a-zA-Z0-9-]*)\\b(?=\\s*[\\({])",
+          "name": "entity.name.tag.tu"
+        },
+        {
+          "comment": "Capitalized identifiers in tag-call position are user components (`Card { … }`, `Greeting('World')`). Use the JSX-style `support.class.component` scope so themes that distinguish components colorize them in line with `<Card />` in JSX.",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b(?=\\s*[\\({])",
+          "name": "support.class.component.tu"
+        }
+      ]
+    },
+    "component-name": {
+      "patterns": [
+        {
+          "comment": "Capitalized identifiers NOT in call position — bare references to components / functions (e.g. `onClick: dec` if `dec` were capitalized, or `Card` passed as a value). Tu's user-defined types are functions, not classes, so use the function scope rather than `entity.name.type` (which themes color like a class).",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b",
+          "name": "entity.name.function.tu"
+        }
+      ]
+    },
+    "identifier": {
+      "patterns": [
+        {
+          "match": "\\b[a-z_$][a-zA-Z0-9_$]*\\b",
+          "name": "variable.other.tu"
+        }
+      ]
+    },
+    "style-block": {
+      "begin": "\\b(style)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.tu" },
+        "2": { "name": "punctuation.section.embedded.begin.tu" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.embedded.end.tu" }
+      },
+      "name": "meta.embedded.block.css.tu",
+      "contentName": "source.css",
+      "patterns": [
+        { "include": "source.css" }
+      ]
+    }
+  }
+}

@@ -1,9 +1,28 @@
 {
   "name": "@tu/compiler",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Tu compiler — lexer, parser, type-mapper, codegen.",
-  "type": "module",
+  "keywords": [
+    "tu",
+    "tu-lang",
+    "compiler",
+    "parser",
+    "codegen",
+    "reactive",
+    "signals"
+  ],
+  "author": "mow2",
   "license": "MIT",
+  "homepage": "https://mowtwo.github.io/tu/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mowtwo/tu.git",
+    "directory": "packages/compiler"
+  },
+  "bugs": {
+    "url": "https://github.com/mowtwo/tu/issues"
+  },
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,11 +31,17 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

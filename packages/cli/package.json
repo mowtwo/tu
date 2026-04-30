@@ -1,21 +1,39 @@
 {
   "name": "@tu/cli",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Tu command-line interface — tu build / dev / check / fmt.",
-  "type": "module",
+  "keywords": [
+    "tu",
+    "tu-lang",
+    "cli"
+  ],
+  "author": "mow2",
   "license": "MIT",
+  "homepage": "https://mowtwo.github.io/tu/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mowtwo/tu.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/mowtwo/tu/issues"
+  },
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "tu": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
-  "bin": {
-    "tu": "./dist/cli.js"
-  },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -25,5 +43,8 @@
   "dependencies": {
     "@tu/compiler": "workspace:*",
     "@tu/lsp": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

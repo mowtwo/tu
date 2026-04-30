@@ -1,19 +1,43 @@
 {
   "name": "create-tu",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Scaffold a new Tu project. Used as `npm create tu` or `npx create-tu`.",
-  "type": "module",
+  "keywords": [
+    "tu",
+    "tu-lang",
+    "create",
+    "scaffold",
+    "starter"
+  ],
+  "author": "mow2",
   "license": "MIT",
+  "homepage": "https://mowtwo.github.io/tu/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mowtwo/tu.git",
+    "directory": "packages/create-tu"
+  },
+  "bugs": {
+    "url": "https://github.com/mowtwo/tu/issues"
+  },
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "create-tu": "./dist/index.js"
   },
-  "files": ["dist", "templates", "README.md"],
+  "files": [
+    "dist",
+    "templates",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

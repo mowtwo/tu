@@ -36,6 +36,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Package the VS Code extension into a .vsix so the docs site can offer
+      # it as a direct download (until vscode-tu lands on the Marketplace).
+      # `vsce package` is idempotent; `--no-dependencies` skips re-running
+      # workspace cross-deps (we already built them).
+      - name: Build packages (so vscode-tu can bundle compiled deps)
+        run: pnpm build
+
+      - name: Package VS Code extension
+        run: |
+          npx --yes @vscode/vsce package --no-dependencies --skip-license -o vscode-tu-latest.vsix
+        working-directory: packages/vscode
+
+      - name: Stage install artifacts into docs/public
+        run: |
+          mkdir -p docs/public/install
+          cp packages/vscode/vscode-tu-latest.vsix docs/public/install/
+          # Refresh the grammar copy too so it's always in sync.
+          mkdir -p docs/public/grammar
+          cp packages/vscode/syntaxes/tu.tmLanguage.json docs/public/grammar/
+
       - name: Build VitePress site
         run: pnpm --filter tu-docs build
 

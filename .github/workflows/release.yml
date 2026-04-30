@@ -1,0 +1,78 @@
+name: Release
+
+# Triggered by pushing a tag of the form `v0.1.0`, `v0.1.0-alpha.0`, etc.
+# The tag name does NOT have to match the version in package.json — the
+# workflow uses whatever's currently in the workspace package.json files
+# at the tagged commit. (Practical pattern: bump versions, commit, tag,
+# push tag.)
+#
+# Required secrets:
+#   NPM_TOKEN — npm automation token (`npm token create --automation`).
+#               Automation tokens skip 2FA, which is what makes this
+#               workflow possible.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # for creating the GitHub release entry
+  id-token: write   # for npm provenance (if user opts in later)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Type-check
+        run: pnpm check
+
+      - name: Publish to npm (alpha tag for prereleases, latest otherwise)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Pick the dist-tag based on the version. Anything containing a
+          # hyphen (e.g. 0.1.0-alpha.0) is a prerelease and goes to the
+          # `alpha` tag; clean semver goes to `latest`.
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG_VERSION" == *-* ]]; then
+            DIST_TAG="alpha"
+          else
+            DIST_TAG="latest"
+          fi
+          echo "Publishing with dist-tag: $DIST_TAG"
+          pnpm -r publish \
+            --access public \
+            --tag "$DIST_TAG" \
+            --no-git-checks \
+            --filter '@tu/*' \
+            --filter 'create-tu'
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
