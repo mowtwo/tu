@@ -10,12 +10,14 @@ import type {
   ForExpr,
   Ident,
   IfExpr,
+  ImportDecl,
   Lambda,
   LetDecl,
   NumberLit,
   Param,
   Program,
   Prop,
+  ReExportDecl,
   Stmt,
   StringLit,
   StyleBlock,
@@ -67,15 +69,52 @@ export class Parser {
 
   private parseStmt(): Stmt {
     const start = this.peek().start
+    if (this.peek().kind === TokenKind.Import) {
+      return this.parseImportDecl(start)
+    }
     let exported = false
     if (this.peek().kind === TokenKind.Export) {
       this.pos++
       exported = true
+      // `export { … } from "…"` re-export form. The opening `{` after
+      // `export` (with no `let`) is the discriminator — distinct from
+      // `export let` and from a tag-call like `export {` (no such form
+      // exists at top level).
+      if (this.peek().kind === TokenKind.LBrace) {
+        return this.parseReExportDecl(start)
+      }
     }
     if (this.peek().kind === TokenKind.Let) {
       return this.parseLetDecl(start, exported)
     }
-    throw this.error(`expected 'let' or 'export let'`)
+    throw this.error(`expected 'let', 'export let', 'import', or 'export {…} from …'`)
+  }
+
+  private parseImportDecl(start: number): ImportDecl {
+    this.expect(TokenKind.Import)
+    this.expect(TokenKind.LBrace)
+    const names: string[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      names.push(this.expect(TokenKind.Ident).text)
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    this.expect(TokenKind.RBrace)
+    this.expect(TokenKind.From)
+    const sourceTok = this.expect(TokenKind.String)
+    return { kind: 'ImportDecl', names, source: sourceTok.value as string, start }
+  }
+
+  private parseReExportDecl(start: number): ReExportDecl {
+    this.expect(TokenKind.LBrace)
+    const names: string[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      names.push(this.expect(TokenKind.Ident).text)
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    this.expect(TokenKind.RBrace)
+    this.expect(TokenKind.From)
+    const sourceTok = this.expect(TokenKind.String)
+    return { kind: 'ReExportDecl', names, source: sourceTok.value as string, start }
   }
 
   private parseLetDecl(start: number, exported: boolean): LetDecl {

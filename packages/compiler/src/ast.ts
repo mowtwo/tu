@@ -3,7 +3,34 @@ export interface Program {
   body: Stmt[]
 }
 
-export type Stmt = LetDecl
+export type Stmt = LetDecl | ImportDecl | ReExportDecl
+
+/**
+ * `import { name1, name2 } from "./path.tu"` — V1 supports named imports
+ * only. Default imports and `* as ns` namespace imports are intentionally
+ * left out; they pair with feature work that hasn't landed yet (default
+ * exports, member access).
+ */
+export interface ImportDecl {
+  kind: 'ImportDecl'
+  names: string[]
+  source: string
+  /** Source byte offset of the `import` keyword. */
+  start: number
+}
+
+/**
+ * `export { name1, name2 } from "./other.tu"` — re-exports a set of names
+ * from another module without binding them locally. Compiler emits the
+ * same form in JS / TS.
+ */
+export interface ReExportDecl {
+  kind: 'ReExportDecl'
+  names: string[]
+  source: string
+  /** Source byte offset of the `export` keyword. */
+  start: number
+}
 
 export interface LetDecl {
   kind: 'LetDecl'

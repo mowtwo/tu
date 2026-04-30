@@ -31,6 +31,8 @@ export enum TokenKind {
   // keywords
   Let,
   Export,
+  Import,
+  From,
   If,
   Else,
   For,
@@ -52,6 +54,8 @@ export interface Token {
 export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   let: TokenKind.Let,
   export: TokenKind.Export,
+  import: TokenKind.Import,
+  from: TokenKind.From,
   if: TokenKind.If,
   else: TokenKind.Else,
   for: TokenKind.For,
