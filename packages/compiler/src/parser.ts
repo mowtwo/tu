@@ -17,6 +17,8 @@ import type {
   LetDecl,
   LocalLet,
   NumberLit,
+  ObjectLit,
+  ObjectProp,
   Param,
   Program,
   Prop,
@@ -340,12 +342,75 @@ export class Parser {
   private parsePrefix(): Expr {
     const k = this.peek().kind
     if (k === TokenKind.LParen) return this.parseLambda()
-    if (k === TokenKind.LBrace && !this.noBraceBlock) return this.parseBlock()
+    if (k === TokenKind.LBrace && !this.noBraceBlock) {
+      return this.peekObjectLitShape() ? this.parseObjectLit() : this.parseBlock()
+    }
     if (k === TokenKind.LBracket) return this.parseArrayLit()
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
     return this.parsePrimary()
+  }
+
+  /**
+   * Decide whether a `{` at the current position opens an ObjectLit instead
+   * of a Block. Triggered by:
+   *   `{ }`              — empty object literal (Block-as-undefined was an
+   *                        unused shape)
+   *   `{ Ident :`        — `{ x: 1 }`
+   *   `{ String :`       — `{ "data-id": 1 }`
+   * Anything else (including `{ x }`, `{ let y = 1; y }`, `{ tag(...) }`)
+   * stays a Block. Shorthand / computed-key / spread shapes parse as Block
+   * today and are tracked in docs/DEFERRED.md.
+   */
+  private peekObjectLitShape(): boolean {
+    const t1 = this.tokens[this.pos + 1]
+    if (!t1) return false
+    if (t1.kind === TokenKind.RBrace) return true
+    const t2 = this.tokens[this.pos + 2]
+    if (!t2 || t2.kind !== TokenKind.Colon) return false
+    return t1.kind === TokenKind.Ident || t1.kind === TokenKind.String
+  }
+
+  private parseObjectLit(): ObjectLit {
+    const lbrace = this.expect(TokenKind.LBrace)
+    const properties: ObjectProp[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      properties.push(this.parseObjectProp())
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    const rbrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'ObjectLit',
+      properties,
+      start: lbrace.start,
+      end: rbrace.end,
+    }
+  }
+
+  private parseObjectProp(): ObjectProp {
+    const keyTok = this.peek()
+    let key: string
+    let keyKind: 'ident' | 'string'
+    if (keyTok.kind === TokenKind.Ident) {
+      key = keyTok.text
+      keyKind = 'ident'
+    } else if (keyTok.kind === TokenKind.String) {
+      key = keyTok.value as string
+      keyKind = 'string'
+    } else {
+      throw this.error(`expected object-literal key (identifier or string), got ${TokenKind[keyTok.kind]}`)
+    }
+    this.pos++
+    this.expect(TokenKind.Colon)
+    const value = this.parseExpr()
+    return {
+      key,
+      keyKind,
+      value,
+      keyStart: keyTok.start,
+      keyEnd: keyTok.end,
+    }
   }
 
   private parseArrayLit(): ArrayLit {
@@ -849,7 +914,12 @@ export class Parser {
     // assignments. Using parseExpr lets binary arithmetic (e.g. `count + 1`)
     // and control-flow expressions (`if`, `for`, `match`) appear inline.
     const e = this.parseExpr()
-    if (e.kind === 'Lambda' || e.kind === 'Block' || e.kind === 'AssignExpr') {
+    if (
+      e.kind === 'Lambda' ||
+      e.kind === 'Block' ||
+      e.kind === 'AssignExpr' ||
+      e.kind === 'ObjectLit'
+    ) {
       throw this.error(`unexpected ${e.kind} as child`)
     }
     return e

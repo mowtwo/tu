@@ -379,6 +379,47 @@ describe('codegen', () => {
     )
   })
 
+  it('M5.6: object literal as a let-decl value emits the matching JS object', () => {
+    const js = compile('let p = { x: 1, y: 2 }')
+    expect(js).toContain('const p = new Signal.State({ x: 1, y: 2 })')
+  })
+
+  it('M5.6: empty object literal emits as `{}`', () => {
+    const js = compile('let p = {}')
+    expect(js).toContain('const p = new Signal.State({})')
+  })
+
+  it('M5.6: object literal in a lambda return slot stays unwrapped', () => {
+    const js = compile('let make = () => { x: 1, y: 2 }')
+    expect(js).toContain('const make = () => ({ x: 1, y: 2 })')
+  })
+
+  it('M5.6: object-literal property values get cell `.get()` injection on idents', () => {
+    const js = compile(`
+      let count = 0
+      let snapshot = computed({ now: count })
+    `)
+    expect(js).toContain('Signal.Computed(() => ({ now: count.get() }))')
+  })
+
+  it('M5.6: string keys are emitted quoted', () => {
+    const js = compile('let p = { "data-id": 7 }')
+    expect(js).toContain('const p = new Signal.State({ "data-id": 7 })')
+  })
+
+  it('M5.6: nested object literal round-trips', () => {
+    const js = compile('let p = { outer: { inner: 1 } }')
+    expect(js).toContain('const p = new Signal.State({ outer: { inner: 1 } })')
+  })
+
+  it('M5.6: object literal as positional arg to a function call', () => {
+    const js = compile(`
+      let make = (opts) => opts
+      let p = make({ x: 1 })
+    `)
+    expect(js).toContain('const p = new Signal.State(make({ x: 1 }))')
+  })
+
   it('M2.5: nested array of class refs round-trips through scoped components', () => {
     const js = compile(`
       let App = () => {

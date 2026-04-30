@@ -95,6 +95,7 @@ export type Expr =
   | AssignExpr
   | ClassRef
   | ArrayLit
+  | ObjectLit
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -171,6 +172,7 @@ export type Child =
   | StyleBlock
   | ClassRef
   | ArrayLit
+  | ObjectLit
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -271,6 +273,33 @@ export interface AssignExpr extends Ranged {
 export interface ArrayLit extends Ranged {
   kind: 'ArrayLit'
   elements: Expr[]
+}
+
+/**
+ * `{ key: value, "k-2": expr }` — object literal. Disambiguated from a
+ * `Block` by lookahead: an opener of `{ }`, `{ Ident :`, or `{ String :`
+ * triggers ObjectLit, anything else (including `{ x }` and `{ stmt; … }`)
+ * stays a Block. Shorthand (`{ x }`), computed keys (`{ [k]: v }`), and
+ * spread (`{ ...rest }`) are tracked in `docs/DEFERRED.md`.
+ */
+export interface ObjectLit extends Ranged {
+  kind: 'ObjectLit'
+  properties: ObjectProp[]
+}
+
+/**
+ * One `key: value` pair inside an `ObjectLit`. The key is captured as an
+ * already-decoded string. `keyKind` lets codegen choose between bare-ident
+ * emit (`{ x: 1 }`) and quoted emit (`{ "data-id": 1 }`); also lets future
+ * IDE features know when a key was a string literal vs identifier.
+ */
+export interface ObjectProp {
+  key: string
+  keyKind: 'ident' | 'string'
+  value: Expr
+  /** Source byte range of the key token (used for token-level mapping). */
+  keyStart: number
+  keyEnd: number
 }
 
 /**

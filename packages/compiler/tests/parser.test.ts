@@ -259,6 +259,72 @@ describe('parser', () => {
     expect(lambda.body.body).toHaveLength(2)
   })
 
+  it('parses `{ x: 1, y: 2 }` as ObjectLit', () => {
+    const tree = ast('let p = { x: 1, y: 2 }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ObjectLit',
+      properties: [
+        { key: 'x', keyKind: 'ident', value: { kind: 'NumberLit', value: 1 } },
+        { key: 'y', keyKind: 'ident', value: { kind: 'NumberLit', value: 2 } },
+      ],
+    })
+  })
+
+  it('parses empty `{}` as an empty ObjectLit (not a Block)', () => {
+    const tree = ast('let p = {}')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ObjectLit',
+      properties: [],
+    })
+  })
+
+  it('parses string keys: `{ "data-id": 7 }`', () => {
+    const tree = ast('let p = { "data-id": 7 }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ObjectLit',
+      properties: [
+        { key: 'data-id', keyKind: 'string', value: { kind: 'NumberLit', value: 7 } },
+      ],
+    })
+  })
+
+  it('keeps `{ x }` as a Block (single-ident is NOT shorthand sugar)', () => {
+    // Shorthand-property sugar collides with the more common "block last
+    // expression returns its value" idiom; tracked in DEFERRED.
+    const tree = ast('let f = () => { x }')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'Block',
+      body: [{ kind: 'Ident', name: 'x' }],
+    })
+  })
+
+  it('keeps `{ let y = 1; y }` as a Block (LocalLet is the disambiguator)', () => {
+    const tree = ast('let f = () => { let y = 1; y }')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({ kind: 'Block' })
+  })
+
+  it('parses nested object literal as a property value', () => {
+    const tree = ast('let p = { outer: { inner: 1 } }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ObjectLit',
+      properties: [
+        {
+          key: 'outer',
+          value: {
+            kind: 'ObjectLit',
+            properties: [{ key: 'inner', value: { kind: 'NumberLit', value: 1 } }],
+          },
+        },
+      ],
+    })
+  })
+
+  it('rejects an object literal as a tag-call child', () => {
+    expect(() => ast('let App = () => div { { x: 1 } }')).toThrow(/ObjectLit as child/)
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

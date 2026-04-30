@@ -12,6 +12,7 @@ import type {
   IfExpr,
   Lambda,
   LocalLet,
+  ObjectLit,
   Program,
   Prop,
   Stmt,
@@ -389,8 +390,17 @@ class Codegen {
             ? 'new Signal.Computed<any[]>(() => '
             : 'new Signal.Computed(() => '
         this.write(wrapper)
-        if (arg) this.emitExpr(arg)
-        else this.write('undefined')
+        if (arg) {
+          // Same arrow-body ambiguity guard as emitLambda: `() => { … }` reads
+          // as a block, not an object literal — paren-wrap to disambiguate.
+          if (arg.kind === 'ObjectLit') {
+            this.write('(')
+            this.emitExpr(arg)
+            this.write(')')
+          } else {
+            this.emitExpr(arg)
+          }
+        } else this.write('undefined')
         this.write(')')
         return
       }
@@ -461,6 +471,9 @@ class Codegen {
       case 'ArrayLit':
         this.emitArrayLit(expr)
         return
+      case 'ObjectLit':
+        this.emitObjectLit(expr)
+        return
     }
   }
 
@@ -471,6 +484,27 @@ class Codegen {
       this.emitExpr(node.elements[i]!)
     }
     this.write(']')
+  }
+
+  private emitObjectLit(node: ObjectLit): void {
+    if (node.properties.length === 0) {
+      this.write('{}')
+      return
+    }
+    this.write('{ ')
+    for (let i = 0; i < node.properties.length; i++) {
+      if (i > 0) this.write(', ')
+      const p = node.properties[i]!
+      // Quote string keys (and ident keys that aren't valid JS identifiers,
+      // though the parser only accepts valid Ident tokens for the ident case
+      // so we trust those). Mark the key span so cross-language navigation
+      // lands on the source key.
+      const emitted = p.keyKind === 'string' ? JSON.stringify(p.key) : p.key
+      this.mark(p.keyStart, p.keyEnd, () => this.write(emitted))
+      this.write(': ')
+      this.emitExpr(p.value)
+    }
+    this.write(' }')
   }
 
   private emitLambda(node: Lambda): void {
@@ -492,7 +526,16 @@ class Codegen {
         }
       }
       this.write(') => ')
-      this.emitExpr(node.body)
+      // An object literal directly after `=>` is grammatically ambiguous
+      // with a function-body block in JS — wrap it in parens so the parser
+      // sees an expression, not a labeled-statement block.
+      if (node.body.kind === 'ObjectLit') {
+        this.write('(')
+        this.emitExpr(node.body)
+        this.write(')')
+      } else {
+        this.emitExpr(node.body)
+      }
     } finally {
       this.shadowed.pop()
     }
@@ -850,6 +893,9 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'ArrayLit':
       for (const e of expr.elements) collectClassRefs(e, out)
       return
+    case 'ObjectLit':
+      for (const p of expr.properties) collectClassRefs(p.value, out)
+      return
     default:
       return
   }
@@ -896,6 +942,9 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'ArrayLit':
       for (const e of expr.elements) collectStyleBlockBodies(e, out)
+      return
+    case 'ObjectLit':
+      for (const p of expr.properties) collectStyleBlockBodies(p.value, out)
       return
     default:
       return

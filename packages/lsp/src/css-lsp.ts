@@ -167,6 +167,9 @@ function visitStyleBlocks(
     case 'ArrayLit':
       for (const c of e.elements as { kind: string }[]) visitStyleBlocks(c, hit)
       return
+    case 'ObjectLit':
+      for (const p of e.properties as { value: { kind: string } }[]) visitStyleBlocks(p.value, hit)
+      return
     case 'CallExpr':
       for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
       if (Array.isArray(e.children)) {

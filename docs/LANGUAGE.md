@@ -145,14 +145,27 @@ export let f = (type: string) => p { type }
 ### Literals
 
 ```tu
-"a string"   // StringLit
-42           // NumberLit
-[1, 2, 3]    // ArrayLit
-[]           // empty ArrayLit
+"a string"           // StringLit
+42                   // NumberLit
+[1, 2, 3]            // ArrayLit
+[]                   // empty ArrayLit
+{ x: 1, y: 2 }       // ObjectLit
+{ "data-id": 7 }     // ObjectLit with string key
+{}                   // empty ObjectLit
 ```
 
 Strings support common escapes: `\n`, `\t`, `\r`, `\"`, `\\`. Numbers are
 integers only at the syntactic level (decimal-point parsing not in V1).
+
+`{ … }` is disambiguated against the block form (see [Blocks](#blocks)):
+an opener of `{ }`, `{ Ident :`, or `{ String :` parses as an object
+literal. Anything else (`{ x }`, `{ let y = 1; y }`, `{ tag(...) }`) stays
+a Block. Shorthand (`{ x }` → `{ x: x }`), computed keys (`{ [k]: v }`),
+and spread (`{ ...rest }`) aren't recognized yet — see `docs/DEFERRED.md`.
+
+When an object literal appears immediately after `=>` in a lambda body, the
+codegen wraps it in parens (`() => ({ x: 1 })`) so JS doesn't read it as a
+block.
 
 ### Identifiers
 
@@ -202,7 +215,10 @@ parse as call expressions. The result is whatever the function returns.
 
 Blocks compile to an IIFE when there are 2+ statements (each non-final
 statement evaluated for side effects, the final one is the block's value).
-A 1-statement block compiles to `(stmt)`. An empty block is `(undefined)`.
+A 1-statement block compiles to `(stmt)`. Note that `{}` parses as an
+empty **object literal**, not an empty block — write a one-statement block
+explicitly (e.g. `{ undefined }`) if you really mean "evaluate to
+undefined."
 
 ---
 

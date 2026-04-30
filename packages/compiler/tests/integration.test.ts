@@ -262,6 +262,38 @@ describe('compile + render end-to-end', () => {
     expect(html).toContain(`.${classes[1]} { color: blue; }`)
   })
 
+  it('object literal round-trips through a let-decl and survives a state update', async () => {
+    const result = await compileAndRun(
+      `
+        export let point = { x: 1, y: 2 }
+        export let label = computed({ tag: "p", value: point })
+      `,
+      (mod) => {
+        const point = mod['point'] as SignalCell<{ x: number; y: number }>
+        const label = mod['label'] as SignalCell<{ tag: string; value: { x: number; y: number } }>
+        const before = label.get()
+        point.set({ x: 9, y: 9 })
+        const after = label.get()
+        return { before, after }
+      }
+    )
+    expect(result.before).toEqual({ tag: 'p', value: { x: 1, y: 2 } })
+    expect(result.after).toEqual({ tag: 'p', value: { x: 9, y: 9 } })
+  })
+
+  it('object literal returned from a lambda body works without paren-wrap by user', async () => {
+    const result = await compileAndRun(
+      `
+        export let make = (n: number) => { x: n, doubled: n * 2 }
+      `,
+      (mod) => {
+        const make = mod['make'] as (n: number) => { x: number; doubled: number }
+        return make(7)
+      }
+    )
+    expect(result).toEqual({ x: 7, doubled: 14 })
+  })
+
   it('lambda params shadow same-named top-level cells', async () => {
     const result = await compileAndRun(
       `

@@ -14,6 +14,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+| Object-literal shorthand / computed keys / spread | M5.6 | TBD | M5.6 ships `{ key: value }` (and `{ "string-key": value }`). Shorthand `{ x }` stays a `Block` (last-expression-returns idiom wins), `{ [expr]: v }` and `{ ...rest }` aren't recognized yet. Add when a real use case appears — most TS-style object work is doable today via explicit `key: value`. |
 
 ## Closed in M3.13
 

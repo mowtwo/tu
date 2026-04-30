@@ -137,6 +137,19 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain('interface ')
   })
 
+  it('M5.6: object literal preserved verbatim in TS emit', () => {
+    const ts = compileToTS('export let p = { x: 1, y: 2 }')
+    expect(ts).toContain('export const p = new Signal.State({ x: 1, y: 2 })')
+  })
+
+  it('M5.6: typed state-cell with object literal wraps as Signal.State<T>', () => {
+    const ts = compileToTS(`
+      type Point = { x: number; y: number }
+      export let p: Point = { x: 1, y: 2 }
+    `)
+    expect(ts).toContain('export const p: Signal.State<Point> = new Signal.State({ x: 1, y: 2 })')
+  })
+
   it('still threads source maps through the TS output', () => {
     const { code, map } = compileToTSWithMap(
       'export let G = (name: string) => p { name }',
@@ -205,6 +218,14 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       export let count = 0
       export let doubled = computed(count * 2)
       export let App = () => p { "count = " count " doubled = " doubled }
+    `)
+  })
+
+  it('M5.6: typechecks a typed object literal driven by a type alias', () => {
+    check(`
+      type Point = { x: number; y: number }
+      export let origin: Point = { x: 0, y: 0 }
+      export let make = (n: number) => { x: n, y: n }
     `)
   })
 
