@@ -146,9 +146,60 @@ export function mount(thunk: () => Child, container: Element): () => void {
   const render = () => {
     mounted = patchChildren(container, mounted, [thunk()])
   }
-  // The canonical TC39 Signal effect pattern: a Computed wraps the side
-  // effect, and a Watcher schedules a re-pull on a microtask after any read
-  // signal becomes stale.
+  return startReactive(render, () => {
+    for (const inst of mounted) {
+      if (inst.el.parentNode === container) container.removeChild(inst.el)
+    }
+    mounted = []
+  })
+}
+
+/**
+ * Adopt an SSR-rendered DOM tree under `container` and wire it up to a
+ * reactive `thunk`. The first render does NOT create or move elements —
+ * existing children are walked in lockstep with the thunk's first-frame
+ * vnode tree, picking up event listeners and DOM-property props (which
+ * SSR can't serialize) along the way. Subsequent renders use the normal
+ * `patchChildren` diff.
+ *
+ * Whitespace-only text nodes between elements (incidental from pretty-
+ * printed SSR HTML) are skipped during hydration. Structural mismatches —
+ * a tag name that doesn't line up, a missing or extra node — fall back to
+ * materializing the offending vnode from scratch and emit a `console.warn`
+ * marker so the user knows their server output drifted from the client
+ * thunk's first frame.
+ *
+ * Returns the same `stop()` shape as `mount()`.
+ *
+ * M4 V1 — pre-resumability hydration. A Qwik-style fully-resumable shape
+ * (no client-side first-frame thunk re-execution) is deferred.
+ */
+export function hydrate(thunk: () => Child, container: Element): () => void {
+  let mounted: Instance[] = []
+  let firstRun = true
+  const render = () => {
+    if (firstRun) {
+      firstRun = false
+      const existing = Array.from(container.childNodes)
+      mounted = hydrateChildren(container, [thunk()], existing)
+      return
+    }
+    mounted = patchChildren(container, mounted, [thunk()])
+  }
+  return startReactive(render, () => {
+    for (const inst of mounted) {
+      if (inst.el.parentNode === container) container.removeChild(inst.el)
+    }
+    mounted = []
+  })
+}
+
+/**
+ * Shared reactive driver: wraps `render` in a Signal.Computed + Watcher,
+ * pulls once for the initial run, and returns a stop closure that combines
+ * the unwatch with whatever DOM cleanup the caller specifies.
+ */
+function startReactive(render: () => void, stop: () => void): () => void {
   const c = new Signal.Computed(() => {
     render()
   })
@@ -162,12 +213,7 @@ export function mount(thunk: () => Child, container: Element): () => void {
   c.get() // initial render
   return () => {
     w.unwatch(c)
-    for (const inst of mounted) {
-      if (inst.el.parentNode === container) {
-        container.removeChild(inst.el)
-      }
-    }
-    mounted = []
+    stop()
   }
 }
 
@@ -230,6 +276,174 @@ function materializeInstance(child: NormalizedChild): Instance {
     children.push(ci)
   }
   return { kind: 'el', tag: child.tag, props: child.props, el, children, handlers }
+}
+
+/**
+ * Walk a list of pre-existing DOM nodes (the SSR output) under `parentEl`
+ * in lockstep with a vnode list, producing Tu Instance objects that ADOPT
+ * those existing DOM nodes — no `createElement` / `appendChild` for the
+ * stable case. Listeners and DOM-property props (which SSR can't carry)
+ * are applied during this walk.
+ *
+ * Whitespace-only text nodes are skipped (browsers parse pretty-printed
+ * HTML with incidental text between tags). Structural mismatches log a
+ * warning and fall back to materializing the offending vnode.
+ */
+function hydrateChildren(
+  parentEl: Element,
+  newRaw: Child[],
+  initialNodes: readonly Node[]
+): Instance[] {
+  const newFlat = flatten(newRaw)
+  const out: Instance[] = []
+  // Mutable working list — supports splice for the text-node split case
+  // (adjacent text vnodes that SSR coalesced into one DOM Text node).
+  const nodes: Node[] = [...initialNodes]
+  let i = 0
+
+  for (const child of newFlat) {
+    // Whitespace-only text nodes between elements are incidental SSR
+    // formatting; only skip them when the vnode we're consuming is itself
+    // an element (a text vnode might genuinely BE the whitespace).
+    if (typeof child === 'object') {
+      while (
+        i < nodes.length &&
+        nodes[i]!.nodeType === 3 /* TEXT_NODE */ &&
+        isPureWhitespace(nodes[i]!.nodeValue ?? '')
+      ) {
+        i++
+      }
+    }
+    const node = nodes[i]
+
+    if (typeof child !== 'object') {
+      const text = String(child)
+      if (node && node.nodeType === 3 /* TEXT_NODE */) {
+        const textNode = node as Text
+        const existing = textNode.nodeValue ?? ''
+        if (existing === text) {
+          out.push({ kind: 'text', text, el: textNode })
+        } else if (existing.startsWith(text)) {
+          // SSR fused this text with the following sibling's text into one
+          // Text node. Split: keep `text` in `textNode`, spawn a tail Text
+          // node carrying the rest so the next iteration can claim it.
+          textNode.nodeValue = text
+          const tail = document.createTextNode(existing.slice(text.length))
+          parentEl.insertBefore(tail, textNode.nextSibling)
+          nodes.splice(i + 1, 0, tail)
+          out.push({ kind: 'text', text, el: textNode })
+        } else {
+          warnHydrationMismatch(
+            `text drift: ${JSON.stringify(truncate(existing))} vs ${JSON.stringify(truncate(text))}`
+          )
+          textNode.nodeValue = text
+          out.push({ kind: 'text', text, el: textNode })
+        }
+        i++
+      } else {
+        warnHydrationMismatch(`expected text node, got ${describeNode(node)}`)
+        const newText = document.createTextNode(text)
+        if (node) parentEl.insertBefore(newText, node)
+        else parentEl.appendChild(newText)
+        nodes.splice(i, 0, newText)
+        out.push({ kind: 'text', text, el: newText })
+        i++
+      }
+      continue
+    }
+
+    if (
+      node &&
+      node.nodeType === 1 /* ELEMENT_NODE */ &&
+      (node as Element).tagName.toLowerCase() === child.tag.toLowerCase()
+    ) {
+      out.push(hydrateElement(node as Element, child))
+      i++
+    } else {
+      warnHydrationMismatch(`expected <${child.tag}>, got ${describeNode(node)}`)
+      const inst = materializeInstance(child)
+      if (node) parentEl.insertBefore(inst.el, node)
+      else parentEl.appendChild(inst.el)
+      nodes.splice(i, 0, inst.el)
+      out.push(inst)
+      i++
+    }
+  }
+
+  // Drain remaining unclaimed nodes (skip whitespace; remove anything else).
+  while (i < nodes.length) {
+    const leftover = nodes[i]!
+    if (
+      leftover.nodeType === 3 &&
+      isPureWhitespace(leftover.nodeValue ?? '')
+    ) {
+      i++
+      continue
+    }
+    if (leftover.parentNode === parentEl) parentEl.removeChild(leftover)
+    i++
+  }
+
+  return out
+}
+
+function truncate(s: string): string {
+  return s.length > 40 ? s.slice(0, 40) + '…' : s
+}
+
+function hydrateElement(el: Element, child: VNode): ElInstance {
+  const handlers: Record<string, EventListener> = {}
+  for (const [k, v] of Object.entries(child.props)) {
+    if (k === 'key') continue
+    const ev = matchEventProp(k)
+    if (ev !== null) {
+      // Event handlers can't survive SSR — bind them now.
+      if (typeof v === 'function') {
+        el.addEventListener(ev, v as EventListener)
+        handlers[ev] = v as EventListener
+      }
+      continue
+    }
+    if (PROPERTY_PROPS.has(k) && v != null && v !== false) {
+      // SSR emits `value=`/`checked=` as attributes only; the live DOM
+      // property still needs to be set (otherwise an input's `.value` is
+      // empty string until the user types).
+      ;(el as unknown as Record<string, unknown>)[k] = v
+    }
+    // All other props (class, id, data-*, etc.) are already in the DOM
+    // via attributes from renderToString — leave them alone.
+  }
+  const childNodes = Array.from(el.childNodes)
+  const grandchildren = hydrateChildren(el, child.children, childNodes)
+  return {
+    kind: 'el',
+    tag: child.tag,
+    props: child.props,
+    el,
+    children: grandchildren,
+    handlers,
+  }
+}
+
+function isPureWhitespace(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c !== 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) return false
+  }
+  return true
+}
+
+function describeNode(n: Node | undefined): string {
+  if (!n) return 'no node'
+  if (n.nodeType === 1) return `<${(n as Element).tagName.toLowerCase()}>`
+  if (n.nodeType === 3) return 'text node'
+  return `nodeType ${n.nodeType}`
+}
+
+function warnHydrationMismatch(msg: string): void {
+  if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+    console.warn(`[@tu/runtime] hydration mismatch: ${msg}`)
+  }
 }
 
 /**

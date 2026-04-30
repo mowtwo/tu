@@ -69,6 +69,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  examples/ssr:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+
   examples/styled:
     dependencies:
       '@tu/compiler':

@@ -286,6 +286,15 @@ and re-renders on cell mutation. The keyed diff reuses element identity
 across renders (M1.7); LIS-based reorder minimizes moves on long-range
 list shuffles (M1.15).
 
+`hydrate(thunk, container)` (M4 V1) is the SSR counterpart: instead of
+creating new DOM, it adopts an existing subtree (typically rendered by
+`renderToString` on the server) and only attaches event listeners /
+DOM-property props that SSR couldn't serialize. Subsequent renders run
+the normal patchChildren diff. Adjacent text vnodes that the server
+fused into a single Text node are split during hydration so cell updates
+can target individual fragments (`p { "count = " count }` keeps the
+static prefix Text node untouched when `count` ticks).
+
 ---
 
 ## Style block

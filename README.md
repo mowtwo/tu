@@ -107,12 +107,17 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M3.6 | `tu check` CLI — type-check `.tu` files with code-frame output | ✅ |
 | M3.7 | LanguageService cache (single-slot, mtime-aware) | ✅ |
 | M3.8 | LSP rename (cross-`.tu` workspace edits) | ✅ |
+| M3.9 | Synthesized `${Name}Props` interfaces in TS emit | ✅ |
 | M2.2 | Annotated `let X: T = …` declarations | ✅ |
+| M2.3 | Cross-`.tu` import classification (reactivity fix) | ✅ |
+| M2.4 | Type aliases (`type X = …`) + lex `\| & ; [ ]` | ✅ |
+| M2.5 | Array literals `[a, b, c]` + Todo.tu owns its controls | ✅ |
 | M1.12 | Pug-shorthand multi-class + `tag:` override | ✅ |
 | M1.13 | `:global(.foo)` CSS escape hatch | ✅ |
 | M1.14 | Counter.tu owns its own `+`/`−`/`reset` buttons | ✅ |
 | M1.15 | LIS-based keyed reorder (Vue/Inferno-style) | ✅ |
-| M4 | SSR / CE / wrapper targets | … |
+| M4 V1 | Client-side `hydrate(thunk, container)` for SSR | ✅ |
+| M4 | Custom Elements + framework wrapper targets | … |
 | M5 | Dev server polish + project template | … |
 | M6 | Docs + playground + v0.1 alpha release | … |
 
