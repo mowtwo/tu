@@ -13,6 +13,16 @@ coverage/
 # Playwright MCP scratch — page/console snapshots from in-session browser tests
 .playwright-mcp/
 
+# M2 typecheck artifacts: per-example compiled .ts shadow + project tsconfig
+examples/*/Clicker.ts
+examples/*/Greeting.ts
+examples/*/Counter.ts
+examples/*/Todo.ts
+examples/*/Card.ts
+examples/*/Diff.ts
+examples/*/Scoped.ts
+examples/*/tsconfig.typecheck.json
+
 # VS Code: keep shared settings, ignore user-specific
 .vscode/*
 !.vscode/extensions.json

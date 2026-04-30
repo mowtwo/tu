@@ -135,7 +135,9 @@ const PROPERTY_PROPS = new Set(['value', 'checked', 'selected'])
  *
  * `thunk` is invoked once on mount and again, scheduled via microtask, every
  * time any Signal it reads becomes stale. Returns a `stop()` function that
- * tears the subscription down.
+ * unsubscribes from cells AND removes the DOM nodes this mount created from
+ * the container — so a host that swaps between mounts (e.g. the playground
+ * sidebar) doesn't accumulate stale subtrees.
  *
  * Browser-only — requires `document`. Use `renderToString` for SSR.
  */
@@ -160,6 +162,12 @@ export function mount(thunk: () => Child, container: Element): () => void {
   c.get() // initial render
   return () => {
     w.unwatch(c)
+    for (const inst of mounted) {
+      if (inst.el.parentNode === container) {
+        container.removeChild(inst.el)
+      }
+    }
+    mounted = []
   }
 }
 

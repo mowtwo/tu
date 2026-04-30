@@ -32,3 +32,24 @@ For a real-browser demo you'd:
 3. Call `mount(Clicker, document.getElementById('app'))` from a `<script type="module">`.
 
 A bundler-integrated dev server lands in M5.
+
+## Type-check + `.d.ts` emit (M2)
+
+```bash
+pnpm --filter @tu-examples/clicker typecheck
+```
+
+This runs `compileToTS()` on `Clicker.tu`, drops the result next to the source as `Clicker.ts`, then shells out to `tsc` twice — once with `--noEmit` to verify it type-checks, once with `--emitDeclarationOnly` to produce `dist/Clicker.d.ts`.
+
+Output:
+
+```ts
+import { Signal } from '@tu/runtime';
+export declare const count: Signal.State<number>;
+export declare const Clicker: () => import("@tu/runtime").VNode[];
+```
+
+Notice:
+- `count` is typed `Signal.State<number>` — inferred by tsserver from `new Signal.State(0)` in the compiled output. No type annotation in the Tu source needed.
+- `Clicker` is `() => VNode[]` — also inferred from its body returning a fragment array (the `[divVNode, styleVNode]` we hand to mount).
+- The private helpers `dec`, `inc`, `reset` do NOT appear in the `.d.ts`. M1.10's `let` (private) vs `export let` (public) distinction reaches all the way into the public type surface.

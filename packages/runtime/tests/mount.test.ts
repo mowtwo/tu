@@ -70,14 +70,47 @@ describe('mount()', () => {
     stop()
   })
 
-  it('stop() unsubscribes — later mutations do not re-render', async () => {
+  it('stop() unsubscribes AND removes the mounted DOM from the container', async () => {
     const root = dom.window.document.getElementById('root')!
     const count = new Signal.State(0)
     const stop = mount(() => h('p', {}, [count.get()]), root)
     expect(root.innerHTML).toBe('<p>0</p>')
     stop()
+    // DOM is gone (mount cleans up its own subtree on stop) AND further
+    // mutations don't re-render.
+    expect(root.innerHTML).toBe('')
     count.set(99)
     await flush()
-    expect(root.innerHTML).toBe('<p>0</p>')
+    expect(root.innerHTML).toBe('')
+  })
+
+  it('mounting a second component into the same container after stop() does not stack', async () => {
+    // Regression for the playground sidebar bug: switching between demos
+    // accumulated stale DOM because the previous mount's tree was never
+    // removed. After M2's mount-cleanup fix, only the active component
+    // is in the container.
+    const root = dom.window.document.getElementById('root')!
+    const stopA = mount(() => h('p', {}, ['A']), root)
+    expect(root.innerHTML).toBe('<p>A</p>')
+    stopA()
+    expect(root.innerHTML).toBe('')
+    const stopB = mount(() => h('p', {}, ['B']), root)
+    expect(root.innerHTML).toBe('<p>B</p>')
+    stopB()
+    expect(root.innerHTML).toBe('')
+  })
+
+  it('stop() leaves sibling DOM nodes (outside the mount) untouched', () => {
+    // mount() should ONLY remove the subtree it created, not other
+    // children of the same container.
+    const root = dom.window.document.getElementById('root')!
+    const sibling = dom.window.document.createElement('span')
+    sibling.textContent = 'pre-existing'
+    root.appendChild(sibling)
+    const stop = mount(() => h('p', {}, ['mounted']), root)
+    expect(root.innerHTML).toContain('pre-existing')
+    expect(root.innerHTML).toContain('<p>mounted</p>')
+    stop()
+    expect(root.innerHTML).toBe('<span>pre-existing</span>')
   })
 })

@@ -94,7 +94,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.9 | Error UX: file:line:col + code frame, V3 source maps | ✅ |
 | M1.10 | Module visibility: private-by-default + `export let` | ✅ |
 | M1.11 | Drop `match` (TC39 Pattern Matching collision) | ✅ |
-| M2 | Type system via TypeScript (Volar pattern) + `.d.ts` emit | … |
+| M2 | Type system via TypeScript + `.d.ts` emit (V1: erasure-only) | ✅ |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |
 | M5 | CLI + dev server + project template | … |

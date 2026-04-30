@@ -6,6 +6,7 @@
   "description": "M1.5 demo: interactive counter — `count = count + 1`, onClick handlers, mount() in a jsdom-simulated browser.",
   "scripts": {
     "demo": "node run.mjs",
+    "typecheck": "node typecheck.mjs",
     "build": "echo 'clicker example: built on demand by run.mjs'",
     "test": "echo 'no tests'",
     "check": "echo 'no checks'"
