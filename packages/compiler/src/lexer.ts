@@ -92,6 +92,16 @@ export class Lexer {
         return this.punct(TokenKind.Slash, start, 1)
       case '%':
         return this.punct(TokenKind.Percent, start, 1)
+      case '|':
+        return this.punct(TokenKind.Pipe, start, 1)
+      case '&':
+        return this.punct(TokenKind.Amp, start, 1)
+      case ';':
+        return this.punct(TokenKind.Semi, start, 1)
+      case '[':
+        return this.punct(TokenKind.LBracket, start, 1)
+      case ']':
+        return this.punct(TokenKind.RBracket, start, 1)
     }
 
     throw new SyntaxError(

@@ -12,11 +12,17 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Local reactivity (per-cell-read subscriptions) | M1.7 | M2+ | Keyed diff is cheap, but the component thunk still re-runs in full on every cell mutation. Solid-style per-binding patches that only touch the affected text node / attribute are a deeper rework — needs a different compiler IR that wraps each cell read in its own reactive scope. |
 | Suspense / async components | M1.7 | M2+ | No async story yet. |
 | Default export (`export default …`) | M1.10 | TBD | Tu's no-`function`-keyword aesthetic argues against it; revisit when component-as-file becomes idiomatic. |
-| Type vs value namespace | M1.10 | when `type X = …` lands | M2 V1 ships without user-facing type aliases, so the namespace question doesn't bite yet. Revisit when adding TS-style `type` declarations to Tu's surface. |
-| Synthesize component-prop interfaces in TS emit | M2 | M3 / LSP polish | M2 V1 lets tsserver INFER prop types from the lambda body. For richer IDE hover ("CardProps { title: string; body: string }") synthesize an explicit interface per exported component lambda. |
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.9
+
+- ~~Synthesize component-prop interfaces in TS emit~~ — landed: codegen now emits `export interface ${Name}Props { p1: T1; p2: T2 }` immediately before each exported lambda whose params are all typed. Lambdas with zero params, any untyped param, or non-exported scope are skipped — no fictional `unknown` fields. JS-mode emission stays unchanged. Verified end-to-end via the Greeting.tu example: `export interface GreetingProps { name: string }` now precedes the const, giving downstream `.d.ts` consumers a named, reusable shape.
+
+## Closed in M2.4
+
+- ~~Type vs value namespace + type aliases (`type X = …`)~~ — landed: `type X = …` and `export type X = …` now parse as top-level declarations. `type` is a contextual keyword (only triggers when followed by `Ident =` at statement boundary), so users keep the freedom to name a value `type` (lambda param, let-decl name, etc.) without conflict. The RHS is captured as a raw source slice and emitted verbatim into the TS shadow; JS mode erases the alias entirely. Lexer gained `[`, `]`, `|`, `&`, `;` tokens — currently consumed only inside raw-type spans, but available to future expression syntax. Verified `let count: Counter = 0` (using a previously-declared alias) and round-trips through tsserver. Type-namespace question dissolves automatically: TS already keeps `type` and `const` separate.
 
 ## Closed in M2.3
 

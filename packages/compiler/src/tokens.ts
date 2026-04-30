@@ -10,11 +10,21 @@ export enum TokenKind {
   RParen,
   LBrace,
   RBrace,
+  /** `[` — V1 used only inside raw type spans (e.g. `T[]`); not yet part of expression syntax. */
+  LBracket,
+  /** `]` — V1 used only inside raw type spans. */
+  RBracket,
   Comma,
   Colon,
   Dot,
   Equals,
   FatArrow,
+  /** `|` — V1 used only inside raw type spans (`A | B`); not part of expression syntax. */
+  Pipe,
+  /** `&` — V1 used only inside raw type spans (`A & B`). */
+  Amp,
+  /** `;` — V1 used only inside raw type spans (object type field separator). */
+  Semi,
   // arithmetic
   Plus,
   Minus,

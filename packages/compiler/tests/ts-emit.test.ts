@@ -52,6 +52,76 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain(': Signal.State')
   })
 
+  it('M2.4: top-level `type X = …` emits a TS type alias', () => {
+    const ts = compileToTS('type Pair = { x: number, y: number }')
+    expect(ts).toContain('type Pair = { x: number, y: number }')
+    // No JS-side emission for the alias.
+    expect(ts).not.toContain('const Pair')
+  })
+
+  it('M2.4: `export type X = …` emits an exported alias', () => {
+    const ts = compileToTS('export type Color = "red" | "green" | "blue"')
+    expect(ts).toContain('export type Color = "red" | "green" | "blue"')
+  })
+
+  it('M2.4: type aliases are erased from the JS-mode output', () => {
+    const js = compile(`
+      type Pair = { x: number, y: number }
+      export let origin = 0
+    `)
+    expect(js).not.toContain('Pair')
+    expect(js).not.toContain('type ')
+    expect(js).toContain('export const origin = new Signal.State(0)')
+  })
+
+  it('M2.4: an annotated let can use a previously-declared type alias', () => {
+    const ts = compileToTS(`
+      type Counter = Signal.State<number>
+      export let count: Counter = 0
+    `)
+    expect(ts).toContain('type Counter = Signal.State<number>')
+    // The annotation goes through verbatim (no extra Signal.State<...> wrap).
+    expect(ts).toContain('export const count: Signal.State<Counter>')
+  })
+
+  it('M2.4: contextual `type` keyword does not break a value named `type`', () => {
+    // `type` as a lambda param name still parses as an identifier, since
+    // contextual-keyword detection requires `type Ident =` at top level.
+    const ts = compileToTS('export let f = (type: string) => p { type }')
+    expect(ts).toContain('export const f = (type: string) =>')
+    expect(ts).toContain('h("p", {}, [type])')
+  })
+
+  it('M3.9: synthesizes a `${Name}Props` interface for exported typed-param lambdas', () => {
+    const ts = compileToTS(
+      'export let Card = (title: string, body: string) => p { title }'
+    )
+    expect(ts).toContain('export interface CardProps { title: string; body: string }')
+    expect(ts).toContain('export const Card = (title: string, body: string) =>')
+  })
+
+  it('M3.9: skips the interface for non-exported lambdas', () => {
+    const ts = compileToTS('let inner = (x: number) => p { x }')
+    expect(ts).not.toContain('innerProps')
+    expect(ts).toContain('const inner = (x: number) =>')
+  })
+
+  it('M3.9: skips the interface for lambdas with any untyped param', () => {
+    const ts = compileToTS('export let f = (a: number, b) => p { a }')
+    expect(ts).not.toContain('fProps')
+  })
+
+  it('M3.9: skips the interface for zero-param lambdas', () => {
+    const ts = compileToTS('export let App = () => p { "hi" }')
+    expect(ts).not.toContain('AppProps')
+  })
+
+  it('M3.9: prop interface is omitted from the JS-mode output', () => {
+    const js = compile('export let Card = (title: string) => p { title }')
+    expect(js).not.toContain('CardProps')
+    expect(js).not.toContain('interface ')
+  })
+
   it('still threads source maps through the TS output', () => {
     const { code, map } = compileToTSWithMap(
       'export let G = (name: string) => p { name }',

@@ -14,7 +14,28 @@ interface Ranged {
   end: number
 }
 
-export type Stmt = LetDecl | ImportDecl | ReExportDecl
+export type Stmt = LetDecl | ImportDecl | ReExportDecl | TypeAlias
+
+/**
+ * `type Name = …` — a TS-style type alias. Tu doesn't parse the RHS itself;
+ * the raw text between `=` and the next top-level statement is captured and
+ * emitted verbatim into the TS shadow. JS mode erases the whole declaration.
+ *
+ * `export type` makes the alias publicly visible (mirrors `export let`).
+ */
+export interface TypeAlias extends Ranged {
+  kind: 'TypeAlias'
+  exported: boolean
+  name: string
+  /** Raw type expression text, captured between `=` and the next stmt boundary. */
+  type: string
+  /** Source byte range of the alias name. */
+  nameStart: number
+  nameEnd: number
+  /** Source byte range of the type expression itself. */
+  typeStart: number
+  typeEnd: number
+}
 
 /**
  * `import { name1, name2 } from "./path.tu"` — V1 supports named imports

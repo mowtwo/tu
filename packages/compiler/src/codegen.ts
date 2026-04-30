@@ -110,6 +110,8 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   const cg = new Codegen(cells, scopes, tsMode)
   cg.write(`${RUNTIME_IMPORT}\n\n`)
   for (const stmt of program.body) {
+    // Type aliases erase entirely in JS mode — they have no runtime presence.
+    if (stmt.kind === 'TypeAlias' && !tsMode) continue
     cg.recordStmtMapping(stmt.start)
     cg.emitStmt(stmt)
     cg.write('\n')
@@ -272,12 +274,41 @@ class Codegen {
       this.write(`export { ${stmt.names.join(', ')} } from ${JSON.stringify(src)}`)
       return
     }
+    if (stmt.kind === 'TypeAlias') {
+      // Only reached in TS mode; buildBody skips this stmt in JS mode.
+      const prefix = stmt.exported ? 'export type' : 'type'
+      this.write(`${prefix} `)
+      this.mark(stmt.nameStart, stmt.nameEnd, () => this.write(stmt.name))
+      this.write(' = ')
+      this.mark(stmt.typeStart, stmt.typeEnd, () => this.write(stmt.type))
+      return
+    }
     const decl = stmt
     const prefix = decl.exported ? 'export const' : 'const'
     const kind = this.cells.get(decl.name) ?? 'state'
     const ctx = this.scopedComponents.get(decl.name)
     if (ctx) this.scopes.push(ctx)
     try {
+      // M3.9: for an exported lambda with all-typed params, emit a named
+      // `${Name}Props` interface BEFORE the const so downstream consumers
+      // (TS code reading the .d.ts) get a reusable shape. Lambdas with any
+      // untyped param are skipped — we don't want to invent `unknown` fields.
+      if (
+        this.tsMode &&
+        decl.exported &&
+        decl.value.kind === 'Lambda' &&
+        decl.value.params.length >= 1 &&
+        decl.value.params.every((p) => p.type !== undefined)
+      ) {
+        this.write(`export interface ${decl.name}Props { `)
+        for (let i = 0; i < decl.value.params.length; i++) {
+          if (i > 0) this.write('; ')
+          const p = decl.value.params[i]!
+          this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
+          this.write(`: ${p.type}`)
+        }
+        this.write(' }\n')
+      }
       this.write(`${prefix} `)
       // Mark the bound name so a TS error on `count` lands on the source `count`.
       this.mark(decl.nameStart, decl.nameEnd, () => this.write(decl.name))

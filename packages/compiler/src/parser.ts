@@ -22,6 +22,7 @@ import type {
   StringLit,
   StyleBlock,
   TagCall,
+  TypeAlias,
 } from './ast.js'
 import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
@@ -76,18 +77,107 @@ export class Parser {
     if (this.peek().kind === TokenKind.Export) {
       this.pos++
       exported = true
-      // `export { … } from "…"` re-export form. The opening `{` after
-      // `export` (with no `let`) is the discriminator — distinct from
-      // `export let` and from a tag-call like `export {` (no such form
-      // exists at top level).
+      // `export { … } from "…"` re-export form.
       if (this.peek().kind === TokenKind.LBrace) {
         return this.parseReExportDecl(start)
+      }
+      // `export type X = …` — type alias.
+      if (this.isTypeAliasNext()) {
+        return this.parseTypeAlias(start, true)
       }
     }
     if (this.peek().kind === TokenKind.Let) {
       return this.parseLetDecl(start, exported)
     }
-    throw this.error(`expected 'let', 'export let', 'import', or 'export {…} from …'`)
+    if (this.isTypeAliasNext()) {
+      return this.parseTypeAlias(start, exported)
+    }
+    throw this.error(
+      `expected 'let', 'export let', 'type', 'export type', 'import', or 'export {…} from …'`
+    )
+  }
+
+  /**
+   * `type` is a contextual keyword: it's treated as a type-alias introducer
+   * only when followed by `Ident =`. Anywhere else (a value reference, a
+   * lambda param name) the lexer's plain `Ident` token wins. Mirrors how
+   * TypeScript / Swift handle it.
+   */
+  private isTypeAliasNext(): boolean {
+    const t1 = this.peek()
+    if (t1.kind !== TokenKind.Ident || t1.text !== 'type') return false
+    const t2 = this.tokens[this.pos + 1]
+    if (t2?.kind !== TokenKind.Ident) return false
+    const t3 = this.tokens[this.pos + 2]
+    return t3?.kind === TokenKind.Equals
+  }
+
+  private parseTypeAlias(start: number, exported: boolean): TypeAlias {
+    this.pos++ // consume the contextual `type` ident
+    const nameTok = this.expect(TokenKind.Ident)
+    this.expect(TokenKind.Equals)
+    const span = this.parseRawTypeUntilStmtBoundary()
+    return {
+      kind: 'TypeAlias',
+      exported,
+      name: nameTok.text,
+      type: span.text,
+      start,
+      end: span.end,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+      typeStart: span.start,
+      typeEnd: span.end,
+    }
+  }
+
+  /**
+   * Read tokens until the next top-level statement (or EOF), tracking nesting
+   * across `()` / `{}` / `[]` / `<…>`. Top-level boundary tokens are `let`,
+   * `export`, `import`, or a contextual `type`-alias-start. Returns the raw
+   * source slice — the TS compiler does the actual type parsing.
+   */
+  private parseRawTypeUntilStmtBoundary(): { text: string; start: number; end: number } {
+    const start = this.peek().start
+    let depth = 0
+    let end = start
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) break
+      if (depth === 0) {
+        if (
+          t.kind === TokenKind.Let ||
+          t.kind === TokenKind.Export ||
+          t.kind === TokenKind.Import
+        ) {
+          break
+        }
+        // Another contextual `type X = …` starting.
+        if (t.kind === TokenKind.Ident && t.text === 'type') {
+          const t2 = this.tokens[this.pos + 1]
+          const t3 = this.tokens[this.pos + 2]
+          if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.Equals) break
+        }
+      }
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
+        t.kind === TokenKind.Lt
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
+        t.kind === TokenKind.Gt
+      ) {
+        depth--
+      }
+      end = t.end
+      this.pos++
+    }
+    return { text: this.source.slice(start, end).trim(), start, end }
   }
 
   private parseImportDecl(start: number): ImportDecl {
@@ -182,12 +272,14 @@ export class Parser {
       if (
         t.kind === TokenKind.LParen ||
         t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
         t.kind === TokenKind.Lt
       ) {
         depth++
       } else if (
         t.kind === TokenKind.RParen ||
         t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
         t.kind === TokenKind.Gt
       ) {
         depth--
