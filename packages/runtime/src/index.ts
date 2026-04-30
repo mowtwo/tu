@@ -114,6 +114,112 @@ function renderVNode(node: VNode): string {
   return `<${node.tag}${propStr}>${childStr}</${node.tag}>`
 }
 
+/**
+ * Server-rendered full HTML document (M6.2). Wraps `thunk()`'s rendered
+ * output in `<!doctype html><html><head>…</head><body>…</body></html>`,
+ * injecting head metadata, stylesheets, and scripts so the result is
+ * a complete, browser-ready page — the foundation for tu-shu and any
+ * other Tu-built static site or SSR server.
+ *
+ * The function is sync (Tu has no async story yet); for streaming or
+ * Suspense-style data prefetching, see the deferred backlog.
+ *
+ * Example:
+ *   ```ts
+ *   const html = renderPage(() => App(), {
+ *     lang: 'en',
+ *     title: 'My Tu App',
+ *     meta: { description: 'A reactive UI built with Tu' },
+ *     links: [{ rel: 'stylesheet', href: '/assets/app.css' }],
+ *     scripts: [{ src: '/assets/client.js', type: 'module' }],
+ *   })
+ *   ```
+ */
+export interface RenderPageOptions {
+  /** `<html lang="…">`. Defaults to `'en'`. */
+  lang?: string
+  /** `<title>` text. Defaults to omitting the tag. */
+  title?: string
+  /** `<meta name=k content=v>` entries. `charset` and `viewport` are
+   *  emitted by default and can be overridden via this map. */
+  meta?: Record<string, string>
+  /** `<link>` entries — stylesheets, icons, preloads. */
+  links?: Array<Record<string, string>>
+  /** `<script>` entries — most commonly the client hydration entry. */
+  scripts?: Array<{
+    src?: string
+    type?: 'module' | 'text/javascript' | 'importmap'
+    defer?: boolean
+    async?: boolean
+    /** Inline script body (mutually exclusive with `src`). */
+    body?: string
+  }>
+  /** Extra raw HTML to splice into `<head>` after the auto-generated
+   *  bits. Use for OpenGraph cards, Tailwind injection, etc. */
+  headRaw?: string
+  /** `<body class="…">`. */
+  bodyClass?: string
+  /** Inline script appended right after the app body — useful for
+   *  "state hydration" payloads (`window.__INITIAL__ = …`). The string
+   *  is inserted verbatim; callers must JSON-stringify their data. */
+  inlineScript?: string
+}
+
+export function renderPage(thunk: () => Child, options: RenderPageOptions = {}): string {
+  const body = renderToString(thunk())
+  return assemblePage(body, options)
+}
+
+/**
+ * Same as `renderPage` but takes already-rendered `bodyHtml`. Useful when
+ * the caller wants to keep separate hooks before/after thunk invocation
+ * (route guards, data prefetch) — they call `renderToString(thunk())` on
+ * their own and pipe the result here.
+ */
+export function renderPageHtml(bodyHtml: string, options: RenderPageOptions = {}): string {
+  return assemblePage(bodyHtml, options)
+}
+
+function assemblePage(bodyHtml: string, options: RenderPageOptions): string {
+  const lang = options.lang ?? 'en'
+  const meta = {
+    charset: 'utf-8',
+    viewport: 'width=device-width, initial-scale=1.0',
+    ...(options.meta ?? {}),
+  }
+  let head = ''
+  // <meta charset> is special-cased — uses `charset` attribute, not name.
+  if (meta.charset) {
+    head += `<meta charset="${escapeAttr(meta.charset)}">`
+  }
+  for (const [k, v] of Object.entries(meta)) {
+    if (k === 'charset') continue
+    head += `<meta name="${escapeAttr(k)}" content="${escapeAttr(v)}">`
+  }
+  if (options.title) head += `<title>${escapeText(options.title)}</title>`
+  for (const link of options.links ?? []) {
+    head += '<link'
+    for (const [k, v] of Object.entries(link)) head += ` ${k}="${escapeAttr(v)}"`
+    head += '>'
+  }
+  for (const s of options.scripts ?? []) {
+    head += '<script'
+    if (s.type) head += ` type="${escapeAttr(s.type)}"`
+    if (s.src) head += ` src="${escapeAttr(s.src)}"`
+    if (s.defer) head += ' defer'
+    if (s.async) head += ' async'
+    head += '>'
+    if (s.body) head += s.body // raw — caller controls escaping
+    head += '</script>'
+  }
+  if (options.headRaw) head += options.headRaw
+  const bodyClassAttr = options.bodyClass ? ` class="${escapeAttr(options.bodyClass)}"` : ''
+  const tail = options.inlineScript
+    ? `<script>${options.inlineScript}</script>`
+    : ''
+  return `<!doctype html><html lang="${escapeAttr(lang)}"><head>${head}</head><body${bodyClassAttr}>${bodyHtml}${tail}</body></html>`
+}
+
 function renderRawTextChild(node: Child): string {
   if (node == null) return ''
   if (typeof node === 'string') return node

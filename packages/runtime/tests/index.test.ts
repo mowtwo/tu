@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Fragment, h, renderToString, VERSION } from '../src/index.js'
+import { Fragment, h, renderPage, renderPageHtml, renderToString, VERSION } from '../src/index.js'
 
 describe('@tu-lang/runtime', () => {
   it('exposes a version', () => {
@@ -78,5 +78,74 @@ describe('@tu-lang/runtime', () => {
     // flatten then splices them as siblings.
     const result = Fragment([h('p', {}, ['a']), h('p', {}, ['b'])])
     expect(renderToString(result)).toBe('<p>a</p><p>b</p>')
+  })
+
+  // ─── M6.2 — renderPage (full HTML document) ─────────────────────────
+
+  it('renderPage wraps the body in a complete HTML5 doctype + html scaffold', () => {
+    const html = renderPage(() => h('div', {}, ['app']))
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<meta charset="utf-8">')
+    expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1.0">')
+    expect(html).toContain('<body>')
+    expect(html).toContain('<div>app</div>')
+    expect(html.endsWith('</body></html>')).toBe(true)
+  })
+
+  it('renderPage injects title + extra meta + stylesheet links', () => {
+    const html = renderPage(() => h('main', {}, []), {
+      title: 'My Tu App',
+      meta: { description: 'A reactive UI built with Tu' },
+      links: [{ rel: 'stylesheet', href: '/assets/app.css' }],
+    })
+    expect(html).toContain('<title>My Tu App</title>')
+    expect(html).toContain('<meta name="description" content="A reactive UI built with Tu">')
+    expect(html).toContain('<link rel="stylesheet" href="/assets/app.css">')
+  })
+
+  it('renderPage emits scripts with type/defer/async/inline body', () => {
+    const html = renderPage(() => h('div', {}, []), {
+      scripts: [
+        { src: '/client.js', type: 'module' },
+        { src: '/legacy.js', defer: true },
+        { body: 'console.log("inline")', type: 'module' },
+      ],
+    })
+    expect(html).toContain('<script type="module" src="/client.js"></script>')
+    expect(html).toContain('<script src="/legacy.js" defer></script>')
+    expect(html).toContain('<script type="module">console.log("inline")</script>')
+  })
+
+  it('renderPage escapes user-supplied title + meta values', () => {
+    const html = renderPage(() => h('div', {}, []), {
+      title: '<bad>"&y',
+      meta: { description: '<x' },
+    })
+    expect(html).toContain('<title>&lt;bad&gt;"&amp;y</title>')
+    expect(html).toContain('<meta name="description" content="&lt;x">')
+  })
+
+  it('renderPage carries a body class + an inline state-hydration script', () => {
+    const html = renderPage(() => h('div', {}, []), {
+      bodyClass: 'theme-dark',
+      inlineScript: 'window.__INITIAL__ = {"count":0}',
+    })
+    expect(html).toContain('<body class="theme-dark">')
+    expect(html).toContain('<script>window.__INITIAL__ = {"count":0}</script></body>')
+  })
+
+  it('renderPageHtml accepts pre-rendered body — useful for routing pipelines', () => {
+    const body = renderToString(h('p', {}, ['hi']))
+    const html = renderPageHtml(body, { title: 'pre-rendered' })
+    expect(html).toContain('<title>pre-rendered</title>')
+    expect(html).toContain('<p>hi</p>')
+  })
+
+  it('renderPage charset can be overridden via meta map', () => {
+    const html = renderPage(() => h('div', {}, []), { meta: { charset: 'utf-16' } })
+    expect(html).toContain('<meta charset="utf-16">')
+    // Default charset isn't emitted twice.
+    expect(html.match(/<meta charset=/g)).toHaveLength(1)
   })
 })

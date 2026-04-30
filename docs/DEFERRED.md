@@ -15,6 +15,10 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
 | Object-literal shorthand / computed keys / spread | M5.6 | TBD | M5.6 ships `{ key: value }` (and `{ "string-key": value }`). Shorthand `{ x }` stays a `Block` (last-expression-returns idiom wins), `{ [expr]: v }` and `{ ...rest }` aren't recognized yet. Add when a real use case appears — most TS-style object work is doable today via explicit `key: value`. |
+| Param destructuring `({ title, footer }) => …` | M6.1 | M6.2+ | M6.1 lets components receive a single props object via named-arg call sites, but the receiver lambda still writes `(props) => p { props.title }`. Param destructuring would let the body skip the `props.` prefix. Needs a new param-AST shape — defer until ergonomic friction shows up. |
+| Auto-rewrite `${Name}Props` to all-optional + `children?: Child[]` | M6.1 | M6.2+ | After M6.1's named-arg form, every prop is optional at the call site by construction; M3.9's emitted interface should reflect that and always include `children?: Child[]`. Needs the props-object detection rule wired in. |
+| Deprecate positional component calls | M6.1 | M6.3 | Soft migration: both forms work through the alpha cycle, then warn-then-remove once tu-xing + migration tooling exist. |
+| Async / Suspense / streaming SSR | M1.7 | M6.3+ | M6.2 ships sync `renderPage` only. Tu has no `async`/`await` syntax. Streaming, per-route data prefetch, and Qwik-style resumability are future work. tu-shu can be built on the sync flavor today. |
 
 ## Closed in M3.13
 
