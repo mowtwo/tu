@@ -103,6 +103,43 @@ describe('completionsAtTuPosition — completion at a .tu cursor position', () =
     expect(labels).toContain('shadow')
   })
 
+  it('M3.11: CSS property completion inside a style block', () => {
+    // Cursor is on the line that has `.card { col` — right after `col`. The
+    // CSS LS should suggest `color`, `column-count`, etc.
+    const src = [
+      'export let App = () => {',
+      '  div(class: .card) { "hi" }',
+      '  style {',
+      '    .card { col }',
+      '  }',
+      '}',
+    ].join('\n')
+    // Line 3, col 14 — right after `col` (and before the trailing space + }).
+    const items = completionsAtTuPosition(src, join(tmp, 'css.tu'), 3, 14)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('color')
+    // CSS completion should NOT mix in our HTML tag list.
+    expect(labels).not.toContain('div')
+  })
+
+  it('M3.11: cursor outside any style block returns to the Tu/TS path', () => {
+    const src = [
+      'export let App = () => {',
+      '  div(class: .card) { "hi" }',
+      '  style {',
+      '    .card { color: red; }',
+      '  }',
+      '}',
+    ].join('\n')
+    // Line 0, col 23 — after `=> ` in the lambda. Tu expression-head path.
+    const items = completionsAtTuPosition(src, join(tmp, 'no-css.tu'), 0, 23)
+    const labels = items.map((i) => i.label)
+    expect(labels).toContain('div')
+    // The CSS LS should NOT have run — `color` is not a Tu ident so no
+    // CSS prop should appear.
+    expect(labels).not.toContain('color')
+  })
+
   it('M3.10: HTML tags do not duplicate user idents already returned by tsserver', () => {
     // User declared a `div` of their own (rare but legal). tsserver
     // returns it; our augmentation must not add a second `div` entry.

@@ -630,13 +630,16 @@ export class Parser {
 
   private parseStyleBlock(styleTok: Token): StyleBlock {
     this.expect(TokenKind.LBrace)
-    const css = this.expect(TokenKind.CssText).value as string
+    const cssTok = this.expect(TokenKind.CssText)
+    const css = cssTok.value as string
     const rbrace = this.expect(TokenKind.RBrace)
     return {
       kind: 'StyleBlock',
       css,
       start: styleTok.start,
       end: rbrace.end,
+      cssStart: cssTok.start,
+      cssEnd: cssTok.end,
     }
   }
 

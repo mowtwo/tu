@@ -200,11 +200,15 @@ export interface ForExpr extends Ranged {
 /**
  * A `style { … }` block. The CSS body is preserved verbatim as raw text — the
  * compiler does not parse CSS in M1.4. Rendered as an HTML `<style>` element
- * sibling to the component's main vnode.
+ * sibling to the component's main vnode. `cssStart` / `cssEnd` mark the byte
+ * range of the inner CSS text, so the LSP can slice it out for delegation
+ * to a CSS language service.
  */
 export interface StyleBlock extends Ranged {
   kind: 'StyleBlock'
   css: string
+  cssStart: number
+  cssEnd: number
 }
 
 /**

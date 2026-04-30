@@ -5,7 +5,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 ## Open
 
 | Item | Introduced | Target | Notes |
-| LSP completion / hover for CSS inside `style { … }` | M3.10 | post-M3 | Tu's `style { … }` body is preserved verbatim and the LSP doesn't (yet) embed a CSS language server, so users get no completions / hover / diagnostics for properties, values, or media queries. Wiring up `vscode-css-languageservice` against the captured CSS span is the natural next step. |
+| LSP hover / diagnostics for CSS inside `style { … }` | M3.11 | post-M3 | M3.11 wired up CSS *completion* via vscode-css-languageservice. Hover (CSS prop docs) and diagnostics (invalid prop names, broken selectors) are the natural follow-ups — same library exposes them via `doHover` / `doValidation`, just need the same range-mapping plumbing the completion path uses. |
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
@@ -15,6 +15,10 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.11
+
+- ~~CSS completion inside `style { … }` blocks~~ — landed: `@tu/lsp` now depends on `vscode-css-languageservice`. The parser was extended to record `cssStart` / `cssEnd` byte offsets on the `StyleBlock` AST node so completion can find the inner CSS span; `completionsAtTuPosition` checks first whether the cursor is inside any StyleBlock's CSS region and, if so, slices that text into a synthetic CSS `TextDocument`, calls `ls.doComplete()` at the cursor's CSS-relative position, and maps the items to `TuCompletionItem`. tsserver/HTML-tag/ClassRef paths skip entirely while inside a style block — CSS context is exclusive. CSS hover and diagnostics are split out as a fresh open row.
 
 ## Closed in M3.10
 

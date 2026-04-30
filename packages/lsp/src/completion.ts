@@ -1,4 +1,6 @@
-import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu/compiler'
+import { getScopedClassMap, lineColAt, parse, tokenize, TokenKind, type LetDecl, type Program, type StyleBlock, type Token } from '@tu/compiler'
+import { getCSSLanguageService, type LanguageService as CssLanguageService } from 'vscode-css-languageservice'
+import { TextDocument } from 'vscode-languageserver-textdocument'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
@@ -71,6 +73,13 @@ export function completionsAtTuPosition(
   line: number,
   col: number
 ): TuCompletionItem[] {
+  // Inside a `style { … }` block, hand the cursor off to a real CSS
+  // language service. tsserver has no business there (the CSS body is
+  // a raw string in the TS shadow), and our HTML-tag heuristic would
+  // pollute the suggestions.
+  const cssItems = maybeCssCompletions(source, line, col)
+  if (cssItems !== null) return cssItems
+
   const out: TuCompletionItem[] = []
   const tsItems = tsCompletions(source, filename, line, col)
   out.push(...tsItems)
@@ -262,4 +271,137 @@ function collectScopedClassesAt(source: string, offset: number): Set<string> | n
   if (!host) return null
   const map = getScopedClassMap(program)
   return map.get(host.name) ?? null
+}
+
+// ─── CSS LSP delegation (M3.11) ────────────────────────────────────────────
+
+// Lazy singleton — vscode-css-languageservice is heavy to construct.
+let cssLs: CssLanguageService | null = null
+function getCssLs(): CssLanguageService {
+  if (!cssLs) cssLs = getCSSLanguageService()
+  return cssLs
+}
+
+/**
+ * If the cursor sits inside a `style { … }` block, slice the inner CSS
+ * out and delegate completion to vscode-css-languageservice. Returns
+ * `null` when the cursor is outside any style block (or the source can't
+ * be parsed) — the caller falls back to the JS/Tu completion path.
+ */
+function maybeCssCompletions(
+  source: string,
+  line: number,
+  col: number
+): TuCompletionItem[] | null {
+  const offset = lineColToOffset(source, line, col)
+  if (offset === null) return null
+  let program: Program
+  try {
+    program = parse(tokenize(source), source)
+  } catch {
+    return null
+  }
+  const block = findEnclosingStyleBlock(program, offset)
+  if (!block) return null
+
+  // Convert the source position to a position relative to the CSS body.
+  const innerStartLC = lineColAt(source, block.cssStart) // 1-based
+  const cursorLC = lineColAt(source, offset) // 1-based
+  const cssLine = cursorLC.line - innerStartLC.line
+  const cssCol = cssLine === 0 ? cursorLC.col - innerStartLC.col : cursorLC.col - 1
+  if (cssLine < 0 || cssCol < 0) return []
+
+  const cssDoc = TextDocument.create('inline://style.css', 'css', 1, block.css)
+  const ls = getCssLs()
+  const stylesheet = ls.parseStylesheet(cssDoc)
+  const list = ls.doComplete(cssDoc, { line: cssLine, character: cssCol }, stylesheet)
+  if (!list || list.items.length === 0) return []
+  return list.items.map((it) => {
+    const result: TuCompletionItem = {
+      label: it.label,
+      kind: cssKindToTsKind(it.kind),
+      sortText: it.sortText ?? '5_' + it.label,
+    }
+    if (typeof it.insertText === 'string') result.insertText = it.insertText
+    if (typeof it.detail === 'string') result.detail = it.detail
+    if (typeof it.documentation === 'string') {
+      result.documentation = it.documentation
+    } else if (it.documentation && typeof it.documentation === 'object' && 'value' in it.documentation) {
+      result.documentation = (it.documentation as { value: string }).value
+    }
+    return result
+  })
+}
+
+function findEnclosingStyleBlock(program: Program, offset: number): StyleBlock | null {
+  let found: StyleBlock | null = null
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    walkForStyleBlock(stmt.value, offset, (b) => {
+      found = b
+    })
+    if (found) break
+  }
+  return found
+}
+
+function walkForStyleBlock(
+  expr: { kind: string } | undefined,
+  offset: number,
+  hit: (b: StyleBlock) => void
+): void {
+  if (!expr) return
+  if (expr.kind === 'StyleBlock') {
+    const b = expr as StyleBlock
+    if (offset >= b.cssStart && offset <= b.cssEnd) hit(b)
+    return
+  }
+  const e = expr as Record<string, unknown>
+  switch (expr.kind) {
+    case 'Lambda':
+      walkForStyleBlock(e.body as { kind: string }, offset, hit)
+      return
+    case 'Block':
+      for (const c of e.body as { kind: string }[]) walkForStyleBlock(c, offset, hit)
+      return
+    case 'TagCall':
+      for (const p of e.props as { value: { kind: string } }[]) walkForStyleBlock(p.value, offset, hit)
+      for (const c of e.children as { kind: string }[]) walkForStyleBlock(c, offset, hit)
+      return
+    case 'IfExpr':
+      walkForStyleBlock(e.cond as { kind: string }, offset, hit)
+      walkForStyleBlock(e.then as { kind: string }, offset, hit)
+      if (e.else) walkForStyleBlock(e.else as { kind: string }, offset, hit)
+      return
+    case 'ForExpr':
+      walkForStyleBlock(e.iter as { kind: string }, offset, hit)
+      walkForStyleBlock(e.body as { kind: string }, offset, hit)
+      return
+    case 'ArrayLit':
+      for (const c of e.elements as { kind: string }[]) walkForStyleBlock(c, offset, hit)
+      return
+    case 'CallExpr':
+      for (const a of e.args as { kind: string }[]) walkForStyleBlock(a, offset, hit)
+      return
+    case 'BinaryExpr':
+      walkForStyleBlock(e.left as { kind: string }, offset, hit)
+      walkForStyleBlock(e.right as { kind: string }, offset, hit)
+      return
+    case 'AssignExpr':
+      walkForStyleBlock(e.value as { kind: string }, offset, hit)
+      return
+    default:
+      return
+  }
+}
+
+function cssKindToTsKind(kind: number | undefined): string {
+  // vscode-languageserver-types CompletionItemKind:
+  //   13 = Enum, 14 = Keyword, 21 = Constant, 25 = TypeParameter
+  // — most CSS completions come back as Property (10) or Value (12).
+  if (kind === 14) return 'keyword'
+  if (kind === 13) return 'enum'
+  if (kind === 21) return 'const'
+  if (kind === 25) return 'type'
+  return 'property'
 }
