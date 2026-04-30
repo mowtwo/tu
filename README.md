@@ -40,14 +40,16 @@ pnpm test
 pnpm check
 ```
 
-### Run the M1.0 demo
+### Run the demos
 
 ```bash
-pnpm --filter @tu-examples/hello demo          # default name "World"
-pnpm --filter @tu-examples/hello demo Alice    # custom argument
-```
+# M1.0 — static Greeting compiled and rendered
+pnpm --filter @tu-examples/hello demo
+pnpm --filter @tu-examples/hello demo Alice
 
-Prints both the compiled JavaScript and the rendered HTML.
+# M1.2 — reactive Counter: top-level let → Signal cell, computed cells auto-update
+pnpm --filter @tu-examples/counter demo
+```
 
 ### VS Code syntax highlighting (M1.1)
 
@@ -67,7 +69,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M0 | Monorepo scaffold | ✅ |
 | M1.0 | Static `Greeting.tu` → ESM → HTML | ✅ |
 | M1.1 | VS Code syntax highlighting + file icon | ✅ |
-| M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | … |
+| M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | ✅ |
 | M1.3 | `if` / `for` / `match` expressions | … |
 | M1.4 | `style { … }` block | … |
 | M2 | Type inference + `.d.ts` emit | … |

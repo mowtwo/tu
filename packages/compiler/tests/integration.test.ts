@@ -64,4 +64,67 @@ describe('compile + render end-to-end', () => {
     // Attributes escape &, ", and < (but not >); text escapes &, <, and >.
     expect(html).toBe('<p title="&lt;x>&quot;&amp;y">&lt;x&gt;"&amp;y</p>')
   })
+
+  interface SignalCell<T> {
+    get(): T
+    set(v: T): void
+  }
+
+  it('top-level let auto-binds to a Signal cell with reactive computed', async () => {
+    const result = await compileAndRun(
+      `
+        let count = 0
+        let doubled = computed(count * 2)
+        let App = () => p { count }
+      `,
+      (mod) => {
+        const count = mod['count'] as SignalCell<number>
+        const doubled = mod['doubled'] as SignalCell<number>
+        const App = mod['App'] as () => unknown
+        const initial = renderToString(App() as never)
+        const initialDoubled = doubled.get()
+        count.set(7)
+        const afterSet = renderToString(App() as never)
+        const afterSetDoubled = doubled.get()
+        return { initial, initialDoubled, afterSet, afterSetDoubled }
+      }
+    )
+    expect(result.initial).toBe('<p>0</p>')
+    expect(result.initialDoubled).toBe(0)
+    expect(result.afterSet).toBe('<p>7</p>')
+    expect(result.afterSetDoubled).toBe(14)
+  })
+
+  it('binary arithmetic with mixed cell + literal operands', async () => {
+    const result = await compileAndRun(
+      `
+        let n = 10
+        let derived = computed(n * 2 + 1)
+      `,
+      (mod) => {
+        const n = mod['n'] as SignalCell<number>
+        const derived = mod['derived'] as SignalCell<number>
+        const before = derived.get()
+        n.set(5)
+        const after = derived.get()
+        return { before, after }
+      }
+    )
+    expect(result.before).toBe(21) // 10*2 + 1
+    expect(result.after).toBe(11) //  5*2 + 1
+  })
+
+  it('lambda params shadow same-named top-level cells', async () => {
+    const result = await compileAndRun(
+      `
+        let name = "outer"
+        let G = (name: string) => p { name }
+      `,
+      (mod) => {
+        const G = mod['G'] as (s: string) => unknown
+        return renderToString(G('inner') as never)
+      }
+    )
+    expect(result).toBe('<p>inner</p>')
+  })
 })

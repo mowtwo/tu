@@ -1,5 +1,8 @@
 import type {
+  BinaryExpr,
+  BinaryOp,
   Block,
+  CallExpr,
   Child,
   Expr,
   Ident,
@@ -14,6 +17,14 @@ import type {
   TagCall,
 } from './ast.js'
 import { TokenKind, type Token } from './tokens.js'
+
+const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
+  [TokenKind.Plus]: { op: '+', prec: 1 },
+  [TokenKind.Minus]: { op: '-', prec: 1 },
+  [TokenKind.Star]: { op: '*', prec: 2 },
+  [TokenKind.Slash]: { op: '/', prec: 2 },
+  [TokenKind.Percent]: { op: '%', prec: 2 },
+}
 
 export class Parser {
   private pos = 0
@@ -42,7 +53,24 @@ export class Parser {
     return { kind: 'LetDecl', exported: true, name, value }
   }
 
+  // Pratt-style precedence climber for binary expressions.
   private parseExpr(): Expr {
+    return this.parseBinary(0)
+  }
+
+  private parseBinary(minPrec: number): Expr {
+    let left = this.parsePrefix()
+    while (true) {
+      const op = BINARY_OPS[this.peek().kind]
+      if (!op || op.prec < minPrec) break
+      this.pos++ // consume operator
+      const right = this.parseBinary(op.prec + 1)
+      left = { kind: 'BinaryExpr', op: op.op, left, right } satisfies BinaryExpr
+    }
+    return left
+  }
+
+  private parsePrefix(): Expr {
     const k = this.peek().kind
     if (k === TokenKind.LParen) return this.parseLambda()
     if (k === TokenKind.LBrace) return this.parseBlock()
@@ -94,13 +122,45 @@ export class Parser {
     }
     if (t.kind === TokenKind.Ident) {
       this.pos++
-      const next = this.peek().kind
-      if (next === TokenKind.LParen || next === TokenKind.LBrace) {
-        return this.parseTagCall(t.text)
-      }
-      return { kind: 'Ident', name: t.text } satisfies Ident
+      return this.parseIdentTail(t.text)
     }
     throw this.error(`unexpected token ${TokenKind[t.kind]}`)
+  }
+
+  /**
+   * After an Ident, decide whether this is:
+   *  - bare ident
+   *  - TagCall (named-prop call, optionally followed by children block)
+   *  - CallExpr (positional-arg call)
+   */
+  private parseIdentTail(name: string): Expr {
+    const next = this.peek().kind
+    if (next === TokenKind.LBrace) {
+      return this.parseTagCall(name)
+    }
+    if (next === TokenKind.LParen) {
+      const shape = this.peekCallShape()
+      if (shape === 'tag') return this.parseTagCall(name)
+      return this.parseCallExpr(name)
+    }
+    return { kind: 'Ident', name } satisfies Ident
+  }
+
+  /**
+   * Look ahead at args inside `(`. If first arg is `Ident:` it's a tag-call (named props).
+   * If parens are empty and `{` follows, it's a tag-call (zero props + children block).
+   * Otherwise positional call.
+   */
+  private peekCallShape(): 'tag' | 'call' {
+    const t1 = this.tokens[this.pos + 1]
+    if (!t1) return 'call'
+    if (t1.kind === TokenKind.RParen) {
+      const t2 = this.tokens[this.pos + 2]
+      return t2?.kind === TokenKind.LBrace ? 'tag' : 'call'
+    }
+    const t2 = this.tokens[this.pos + 2]
+    if (t1.kind === TokenKind.Ident && t2?.kind === TokenKind.Colon) return 'tag'
+    return 'call'
   }
 
   private parseTagCall(tag: string): TagCall {
@@ -124,6 +184,17 @@ export class Parser {
     return { kind: 'TagCall', tag, props, children }
   }
 
+  private parseCallExpr(callee: string): CallExpr {
+    this.expect(TokenKind.LParen)
+    const args: Expr[] = []
+    while (this.peek().kind !== TokenKind.RParen) {
+      args.push(this.parseExpr())
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    this.expect(TokenKind.RParen)
+    return { kind: 'CallExpr', callee, args }
+  }
+
   private parseProp(): Prop {
     const name = this.expect(TokenKind.Ident).text
     this.expect(TokenKind.Colon)
@@ -132,24 +203,13 @@ export class Parser {
   }
 
   private parseChild(): Child {
-    const t = this.peek()
-    if (t.kind === TokenKind.String) {
-      this.pos++
-      return { kind: 'StringLit', value: t.value as string }
+    // Children can be any expression except lambdas or bare blocks.
+    // Using parseExpr lets binary arithmetic (e.g. `count + 1`) appear inline.
+    const e = this.parseExpr()
+    if (e.kind === 'Lambda' || e.kind === 'Block') {
+      throw this.error(`unexpected ${e.kind} as child`)
     }
-    if (t.kind === TokenKind.Number) {
-      this.pos++
-      return { kind: 'NumberLit', value: t.value as number }
-    }
-    if (t.kind === TokenKind.Ident) {
-      this.pos++
-      const next = this.peek().kind
-      if (next === TokenKind.LParen || next === TokenKind.LBrace) {
-        return this.parseTagCall(t.text)
-      }
-      return { kind: 'Ident', name: t.text }
-    }
-    throw this.error(`unexpected child token ${TokenKind[t.kind]}`)
+    return e
   }
 
   private peek(): Token {

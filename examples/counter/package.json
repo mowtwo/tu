@@ -3,10 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Example: a single-component reactive counter (placeholder).",
+  "description": "M1.2 demo: reactive counter with state + computed cells.",
   "scripts": {
-    "build": "echo 'counter example: implementation pending M5'",
+    "demo": "node run.mjs",
+    "build": "echo 'counter example: built on demand by run.mjs'",
     "test": "echo 'no tests'",
     "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
   }
 }

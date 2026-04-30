@@ -41,6 +41,16 @@ export class Lexer {
           return this.punct(TokenKind.FatArrow, start, 2)
         }
         return this.punct(TokenKind.Equals, start, 1)
+      case '+':
+        return this.punct(TokenKind.Plus, start, 1)
+      case '-':
+        return this.punct(TokenKind.Minus, start, 1)
+      case '*':
+        return this.punct(TokenKind.Star, start, 1)
+      case '/':
+        return this.punct(TokenKind.Slash, start, 1)
+      case '%':
+        return this.punct(TokenKind.Percent, start, 1)
     }
 
     throw new SyntaxError(`Unexpected character ${JSON.stringify(ch)} at offset ${start}`)

@@ -12,6 +12,12 @@ export enum TokenKind {
   Colon,
   Equals,
   FatArrow,
+  // arithmetic
+  Plus,
+  Minus,
+  Star,
+  Slash,
+  Percent,
   // keywords
   Let,
   Export,

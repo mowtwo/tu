@@ -7,13 +7,21 @@ export type Stmt = LetDecl
 
 export interface LetDecl {
   kind: 'LetDecl'
-  /** Top-level lets are auto-exported in M1.0. Will become opt-in via `export let` later. */
+  /** Top-level lets are auto-exported in M1.0+. Will become opt-in via `export let` later. */
   exported: boolean
   name: string
   value: Expr
 }
 
-export type Expr = Lambda | TagCall | StringLit | NumberLit | Ident | Block
+export type Expr =
+  | Lambda
+  | TagCall
+  | CallExpr
+  | BinaryExpr
+  | StringLit
+  | NumberLit
+  | Ident
+  | Block
 
 export interface Lambda {
   kind: 'Lambda'
@@ -44,7 +52,22 @@ export interface Prop {
   value: Expr
 }
 
-export type Child = TagCall | StringLit | NumberLit | Ident
+export type Child = TagCall | CallExpr | BinaryExpr | StringLit | NumberLit | Ident
+
+export interface CallExpr {
+  kind: 'CallExpr'
+  callee: string
+  args: Expr[]
+}
+
+export type BinaryOp = '+' | '-' | '*' | '/' | '%'
+
+export interface BinaryExpr {
+  kind: 'BinaryExpr'
+  op: BinaryOp
+  left: Expr
+  right: Expr
+}
 
 export interface StringLit {
   kind: 'StringLit'

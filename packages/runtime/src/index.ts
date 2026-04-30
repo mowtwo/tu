@@ -1,5 +1,7 @@
 export const VERSION = '0.0.0'
 
+export { Signal } from 'signal-polyfill'
+
 export type Child = VNode | string | number | null | undefined
 
 export interface VNode {
