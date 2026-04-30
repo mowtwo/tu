@@ -2,7 +2,7 @@
   "name": "vscode-tu",
   "displayName": "Tu",
   "description": "Tu language support for VS Code — syntax highlighting and file association.",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "license": "MIT",
   "publisher": "mowtwo",
@@ -18,8 +18,8 @@
         "extensions": [".tu"],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/tu.svg",
-          "dark": "./icons/tu.svg"
+          "light": "./icons/tu-mono.svg",
+          "dark": "./icons/tu-mono.svg"
         }
       }
     ],
