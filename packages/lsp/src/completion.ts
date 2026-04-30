@@ -219,6 +219,23 @@ function analyzeCursorContext(source: string, line: number, col: number): Cursor
     return { kind: 'class-ref', declared: [...classes].sort() }
   }
 
+  // Inside a `class: …` tag-call prop value? Surface declared classes.
+  // The user typed `class: ` and is about to put a value; the most useful
+  // thing is to insert `.declaredClass` (ClassRef syntax) so the dual-
+  // class injection kicks in.
+  if (prevTok.kind === TokenKind.Colon && realPrev > 0) {
+    const before = tokens[realPrev - 1]!
+    if (before.kind === TokenKind.Ident && before.text === 'class') {
+      const classes = collectScopedClassesAt(source, offset)
+      if (classes) {
+        return {
+          kind: 'class-ref',
+          declared: [...classes].map((c) => `.${c}`).sort(),
+        }
+      }
+    }
+  }
+
   if (
     prevTok.kind === TokenKind.LBrace ||
     prevTok.kind === TokenKind.LParen ||

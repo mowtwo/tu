@@ -4,6 +4,7 @@ import type {
   BinaryExpr,
   BinaryOp,
   Block,
+  BlockItem,
   CallExpr,
   Child,
   ClassRef,
@@ -14,6 +15,7 @@ import type {
   ImportDecl,
   Lambda,
   LetDecl,
+  LocalLet,
   NumberLit,
   Param,
   Program,
@@ -501,14 +503,17 @@ export class Parser {
 
   private parseBlock(): Block {
     const lbrace = this.expect(TokenKind.LBrace)
-    const body: Expr[] = []
+    const body: BlockItem[] = []
     while (this.peek().kind !== TokenKind.RBrace) {
-      // Tolerate optional `;` as a statement separator. Tu is whitespace-
-      // separated by default, but readers (and hands trained on JS / TS)
-      // reach for `;` when squeezing two stmts onto one line. Keep it a
-      // no-op so `() => { foo = 1; bar = 2 }` works the way users expect.
+      // Tolerate optional `;` as a statement separator (M2.4 token, kept
+      // a no-op for ergonomic inline lambdas).
       if (this.peek().kind === TokenKind.Semi) {
         this.pos++
+        continue
+      }
+      // Local `let` (M5.2): `let x = expr` declares a block-scoped const.
+      if (this.peek().kind === TokenKind.Let) {
+        body.push(this.parseLocalLet())
         continue
       }
       body.push(this.parseExpr())
@@ -520,6 +525,38 @@ export class Parser {
       start: lbrace.start,
       end: rbrace.end,
     }
+  }
+
+  private parseLocalLet(): LocalLet {
+    const letTok = this.expect(TokenKind.Let)
+    const nameTok = this.expect(TokenKind.Ident)
+    let type: string | undefined
+    let typeStart: number | undefined
+    let typeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilEquals()
+      type = span.text
+      typeStart = span.start
+      typeEnd = span.end
+    }
+    this.expect(TokenKind.Equals)
+    const value = this.parseExpr()
+    const out: LocalLet = {
+      kind: 'LocalLet',
+      name: nameTok.text,
+      value,
+      start: letTok.start,
+      end: value.end,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+    }
+    if (type !== undefined) {
+      out.type = type
+      out.typeStart = typeStart!
+      out.typeEnd = typeEnd!
+    }
+    return out
   }
 
   private parseIfExpr(): IfExpr {

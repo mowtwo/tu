@@ -1,16 +1,16 @@
-// M1.5 demo: an interactive counter.
+// M1.5 demo, refreshed for M5: an interactive counter.
 //
-// Three new things appear here:
+// Tu features on display:
 //   • `count = count + 1` — assigning to a top-level `let` mutates its Signal
 //     cell; the compiler rewrites this to `count.set(count.get() + 1)`.
-//   • `onClick: () => …` — lambda-valued props become event listeners; the
-//     runtime maps `on{Capital}` props to `addEventListener('click', …)`.
-//   • Calling `mount(Clicker, container)` (from the runner) materializes the
-//     component into real DOM and re-renders on every cell change.
+//   • `onClick: () => …` — lambda-valued props become event listeners.
+//   • `.classname` ClassRef syntax — markup gets BOTH the original name and
+//     the per-component hashed name (M5/F dual injection); CSS selectors
+//     use the hashed name only, so styles stay scoped.
+//   • Top-level CSS rules MUST be class-rooted (M5/D); compound selectors
+//     like `.row > button` are nested inside the parent class via CSS4
+//     nesting, which modern browsers handle natively.
 
-// M1.10 — `count` is `export` because the runner reads it externally; the
-// `dec` / `inc` / `reset` helpers are referenced only from inside this module
-// (by the onClick props below), so they stay module-private.
 export let count = 0
 
 let dec = () => count = count - 1
@@ -18,9 +18,9 @@ let inc = () => count = count + 1
 let reset = () => count = 0
 
 export let Clicker = () => {
-  div(class: "clicker") {
-    p(class: "label") { "count = " count }
-    div(class: "row") {
+  .clicker() {
+    p(class: .label) { "count = " count }
+    .row() {
       button(onClick: dec) { "−" }
       button(onClick: reset) { "reset" }
       button(onClick: inc) { "+" }

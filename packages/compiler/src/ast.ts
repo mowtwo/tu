@@ -113,7 +113,35 @@ export interface Param extends Ranged {
 
 export interface Block extends Ranged {
   kind: 'Block'
-  body: Expr[]
+  /**
+   * Sequence of items in source order. Plain expressions evaluate left-to-
+   * right; the LAST item's value is the block's return value (Rust-style
+   * implicit return). `LocalLet` items declare block-scoped const bindings
+   * accessible to later items — the workhorse for closures and local
+   * computation that doesn't belong at the module top level.
+   */
+  body: BlockItem[]
+}
+
+export type BlockItem = Expr | LocalLet
+
+/**
+ * `let X = expr` written INSIDE a block body. Compiles to a JS `const`,
+ * not a reactive cell — local lets are plain values. Type annotations are
+ * supported via the same raw-source-slice mechanism as top-level lets.
+ *
+ * Local lets MUST appear inside a `Block`; the parser only accepts them
+ * there. They have no `exported` field — local visibility is implicit.
+ */
+export interface LocalLet extends Ranged {
+  kind: 'LocalLet'
+  name: string
+  value: Expr
+  nameStart: number
+  nameEnd: number
+  type?: string
+  typeStart?: number
+  typeEnd?: number
 }
 
 export interface TagCall extends Ranged {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { h, renderToString, VERSION } from '../src/index.js'
+import { Fragment, h, renderToString, VERSION } from '../src/index.js'
 
 describe('@tu/runtime', () => {
   it('exposes a version', () => {
@@ -70,5 +70,13 @@ describe('@tu/runtime', () => {
   it('renderToString skips function-typed props (event handlers have no SSR rep)', () => {
     const v = h('button', { onClick: () => {}, class: 'b' }, ['+'])
     expect(renderToString(v)).toBe('<button class="b">+</button>')
+  })
+
+  it('Fragment passes its children through; renderer flattens', () => {
+    // Tu's component path emits `Fragment([a, b, c])` for `Fragment { a b c }`.
+    // The runtime function returns the array — `renderToString`'s array
+    // flatten then splices them as siblings.
+    const result = Fragment([h('p', {}, ['a']), h('p', {}, ['b'])])
+    expect(renderToString(result)).toBe('<p>a</p><p>b</p>')
   })
 })

@@ -161,8 +161,8 @@ describe('codegen', () => {
         style { .card { padding: 1rem; } }
       }
     `)
-    // Pull the hash out of the markup; the style block must use the same one.
-    const m = js.match(/"class": "card-tu-([a-f0-9]{6})"/)
+    // Markup gets BOTH the original class name AND the hashed one (M5/F).
+    const m = js.match(/"class": "card card-tu-([a-f0-9]{6})"/)
     expect(m).not.toBeNull()
     const hash = m![1]
     expect(js).toContain(`.card-tu-${hash} { padding: 1rem; }`)
@@ -179,9 +179,12 @@ describe('codegen', () => {
         style { .card { color: blue; } }
       }
     `)
-    const matches = [...js.matchAll(/"card-tu-([a-f0-9]{6})"/g)].map((x) => x[1])
-    expect(matches).toHaveLength(2)
-    expect(matches[0]).not.toBe(matches[1])
+    const matches = [...js.matchAll(/card-tu-([a-f0-9]{6})/g)].map((x) => x[1])
+    // Markup-side appears twice per component (original + hashed) and CSS
+    // side once per component, so dedupe by uniqueness.
+    const unique = [...new Set(matches)]
+    expect(unique).toHaveLength(2)
+    expect(unique[0]).not.toBe(unique[1])
   })
 
   it('leaves M1.4-style components without ClassRef unchanged (back-compat)', () => {
@@ -288,9 +291,11 @@ describe('codegen', () => {
       }
     `)
     const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
-    // The runtime should see a single string at runtime: `card-tu-h bar-tu-h`.
-    expect(js).toContain(`(("card-tu-${hash}" + " ") + "shadow-tu-${hash}")`)
-    expect(js).toContain('h("div'); // tag is still default `div`
+    // Each ClassRef now emits both the raw name and the hashed one.
+    expect(js).toContain(
+      `(("card card-tu-${hash}" + " ") + "shadow shadow-tu-${hash}")`
+    )
+    expect(js).toContain('h("div')
   })
 
   it('pug-shorthand `tag:` prop overrides the default `div` tag', () => {
@@ -302,8 +307,7 @@ describe('codegen', () => {
     `)
     expect(js).toContain('h("section"')
     expect(js).not.toContain('h("div"')
-    // The class prop is still bound and the `tag:` prop is consumed (not emitted).
-    expect(js).toMatch(/"class": "card-tu-[a-f0-9]{6}"/)
+    expect(js).toMatch(/"class": "card card-tu-[a-f0-9]{6}"/)
     expect(js).not.toContain('"tag": ')
   })
 
@@ -324,7 +328,7 @@ describe('codegen', () => {
       }
     `)
     const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
-    expect(js).toContain(`h("div", { "class": "card-tu-${hash}" }, ["hi"])`)
+    expect(js).toContain(`h("div", { "class": "card card-tu-${hash}" }, ["hi"])`)
   })
 
   it('M2.3: importedNameKinds={state} causes imported reads to emit `.get()`', () => {
@@ -411,6 +415,83 @@ describe('codegen', () => {
       let App = () => Card("Hello") { p { "body" } }
     `)
     expect(js).toContain('Card("Hello", [h("p", {}, ["body"])])')
+  })
+
+  it('M5.2: local `let` inside a block compiles to a const inside an IIFE', () => {
+    const js = compile(`
+      let App = () => {
+        let greeting = "hi"
+        p { greeting }
+      }
+    `)
+    expect(js).toContain('const greeting = "hi"')
+    expect(js).toContain('return h("p", {}, [greeting])')
+  })
+
+  it('M5.2: local `let` chains support multi-step computation', () => {
+    const js = compile(`
+      let App = () => {
+        let a = 1
+        let b = a + 2
+        p { b }
+      }
+    `)
+    expect(js).toContain('const a = 1')
+    expect(js).toContain('const b = (a + 2)')
+    expect(js).toContain('return h("p", {}, [b])')
+  })
+
+  it('M5.2: local `let` is plain const, NOT wrapped in Signal.State', () => {
+    const js = compile(`
+      let App = () => {
+        let count = 0
+        p { count }
+      }
+    `)
+    // Module-level lets wrap; local lets do not.
+    expect(js).not.toContain('new Signal.State')
+    expect(js).toContain('const count = 0')
+    // And reads stay as bare idents (no .get() injection inside the block).
+    expect(js).toContain('return h("p", {}, [count])')
+  })
+
+  it('M5/D: rejects an element selector at the top of a style block', () => {
+    expect(() => compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style {
+          .card { color: red; }
+          p { font-size: 1rem; }
+        }
+      }
+    `)).toThrow(/top-level CSS rule must use a class selector/)
+  })
+
+  it('M5/D: nested selectors inside a class are allowed (CSS4 nesting)', () => {
+    // `.card { p { … } }` is valid — the nesting is browser-handled.
+    expect(() => compile(`
+      let App = () => {
+        div(class: .card) { p { "hi" } }
+        style {
+          .card {
+            padding: 1rem;
+            p { color: red; }
+          }
+        }
+      }
+    `)).not.toThrow()
+  })
+
+  it('M5/D: :global escape hatch passes top-level validation', () => {
+    expect(() => compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style {
+          :global(.legacy) { z-index: 9999; }
+          .card { padding: 1rem; }
+        }
+      }
+    `)).not.toThrow()
   })
 
   it('M5: lowercase ident in tag-call position remains an HTML tag', () => {

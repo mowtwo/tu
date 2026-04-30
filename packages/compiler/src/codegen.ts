@@ -11,6 +11,7 @@ import type {
   ForExpr,
   IfExpr,
   Lambda,
+  LocalLet,
   Program,
   Prop,
   Stmt,
@@ -19,7 +20,19 @@ import type {
 } from './ast.js'
 import { lineColAt } from './diagnostics.js'
 
-const RUNTIME_IMPORT = `import { h, Signal } from '@tu/runtime'`
+/**
+ * Auto-injected import at the head of every compiled module.
+ *
+ * In TS-emit mode we ALSO bring in the type-only exports `Child` and
+ * `VNode` so user annotations like `(children: VNode[])` or
+ * `(items: Child[])` resolve without requiring the user to write the
+ * import themselves. JS-emit drops the type-only members (they're not
+ * legal ESM at runtime).
+ */
+function runtimeImportLine(tsMode: boolean): string {
+  if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu/runtime'`
+  return `import { h, Signal } from '@tu/runtime'`
+}
 
 export interface SourceMapV3 {
   version: 3
@@ -109,7 +122,7 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   const cells = analyzeProgram(program, opts?.importedNameKinds)
   const scopes = analyzeScopedComponents(program)
   const cg = new Codegen(cells, scopes, tsMode)
-  cg.write(`${RUNTIME_IMPORT}\n\n`)
+  cg.write(`${runtimeImportLine(tsMode)}\n\n`)
   for (const stmt of program.body) {
     // Type aliases erase entirely in JS mode — they have no runtime presence.
     if (stmt.kind === 'TypeAlias' && !tsMode) continue
@@ -337,13 +350,27 @@ class Codegen {
       this.write(`${prefix} `)
       // Mark the bound name so a TS error on `count` lands on the source `count`.
       this.mark(decl.nameStart, decl.nameEnd, () => this.write(decl.name))
-      // M2.2: emit a TS type annotation when the user supplied one. Lambdas
-      // pass through as-is; state / computed cells get the declared type
-      // wrapped in their Signal box so the variable's actual type matches.
+      // Emit a TS type annotation when the user supplied one.
+      //
+      // Default behavior: lambdas pass through as-is; state / computed cells
+      // get the declared type wrapped in their Signal box so the variable's
+      // actual type matches the wrapped value (M2.2 ergonomic).
+      //
+      // Escape hatch: if the user's annotation ALREADY starts with
+      // `Signal.State<` / `Signal.Computed<`, we trust them and skip the
+      // double-wrap — useful when they want to declare an explicit Signal
+      // shape (e.g. `let cell: Signal.State<MyShape> = …`).
       if (this.tsMode && decl.type !== undefined) {
-        if (kind === 'function') this.write(`: ${decl.type}`)
-        else if (kind === 'computed') this.write(`: Signal.Computed<${decl.type}>`)
-        else this.write(`: Signal.State<${decl.type}>`)
+        const t = decl.type.trim()
+        const preWrapped =
+          t.startsWith('Signal.State<') || t.startsWith('Signal.Computed<')
+        if (preWrapped || kind === 'function') {
+          this.write(`: ${decl.type}`)
+        } else if (kind === 'computed') {
+          this.write(`: Signal.Computed<${decl.type}>`)
+        } else {
+          this.write(`: Signal.State<${decl.type}>`)
+        }
       }
       this.write(' = ')
       if (kind === 'function') {
@@ -476,47 +503,124 @@ class Codegen {
       this.write('(undefined)')
       return
     }
-    // A block containing one or more `style { … }` blocks emits as an array
-    // fragment so each item (the main vnode + each style vnode) reaches the
-    // renderer. The runtime flattens array children, so `[mainVNode, styleVNode]`
-    // renders as siblings.
-    if (node.body.some((e) => e.kind === 'StyleBlock')) {
+    // Local lets shadow same-named top-level cells inside this block —
+    // push their names so identifier reads emit as bare idents (no .get()
+    // injection). Pop in finally so style-block / multi-stmt branches all
+    // honor it.
+    const localNames = new Set<string>()
+    for (const item of node.body) {
+      if (item.kind === 'LocalLet') localNames.add(item.name)
+    }
+    if (localNames.size > 0) this.shadowed.push(localNames)
+    try {
+      this._emitBlockInner(node)
+    } finally {
+      if (localNames.size > 0) this.shadowed.pop()
+    }
+  }
+
+  private _emitBlockInner(node: Block): void {
+    // A block containing one or more `style { … }` blocks emits as an
+    // array fragment so the renderer sees the main vnode and each style
+    // vnode as siblings. LocalLet items inside such a block are still
+    // ordinary const declarations; we wrap the whole thing in an IIFE
+    // when needed below.
+    const hasStyle = node.body.some((e) => e.kind === 'StyleBlock')
+    const hasLocal = node.body.some((e) => e.kind === 'LocalLet')
+    if (hasStyle && !hasLocal) {
       this.write('[')
-      for (let i = 0; i < node.body.length; i++) {
-        if (i > 0) this.write(', ')
-        this.emitExpr(node.body[i]!)
+      let first = true
+      for (const item of node.body) {
+        if (!first) this.write(', ')
+        first = false
+        this.emitExpr(item as Expr)
       }
       this.write(']')
       return
     }
-    if (node.body.length === 1) {
+    if (node.body.length === 1 && !hasLocal) {
       const only = node.body[0]
       if (!only) {
         this.write('(undefined)')
         return
       }
       this.write('(')
-      this.emitExpr(only)
+      this.emitExpr(only as Expr)
       this.write(')')
       return
     }
+    // Multi-item path (or single-item-with-LocalLet): wrap in an IIFE.
+    // LocalLet items emit as `const x = …;`; non-final expressions emit as
+    // `expr;` for side effects; the FINAL non-LocalLet expression emits as
+    // `return …`. If the trailing item is itself a LocalLet, the block
+    // returns undefined.
     this.write('(() => {\n')
-    for (let i = 0; i < node.body.length - 1; i++) {
+    let lastExprIdx = -1
+    for (let i = node.body.length - 1; i >= 0; i--) {
+      if (node.body[i]!.kind !== 'LocalLet') {
+        lastExprIdx = i
+        break
+      }
+    }
+    for (let i = 0; i < node.body.length; i++) {
+      const item = node.body[i]!
       this.write('  ')
-      this.emitExpr(node.body[i]!)
-      this.write(';\n')
+      if (item.kind === 'LocalLet') {
+        this.emitLocalLet(item as LocalLet)
+        this.write(';\n')
+      } else if (i === lastExprIdx) {
+        // Inside an IIFE that mixes local-lets and a style block array
+        // fragment, we still want the array shape — but only when the
+        // final expression is the array fragment itself. Detect that
+        // case via `hasStyle` and emit a special return shape.
+        if (hasStyle) {
+          this.write('return [')
+          // Re-emit non-LocalLet items in source order as the array
+          // fragment members. We'd already emitted the local-lets above.
+          let firstArr = true
+          for (const inner of node.body) {
+            if (inner.kind === 'LocalLet') continue
+            if (!firstArr) this.write(', ')
+            firstArr = false
+            this.emitExpr(inner as Expr)
+          }
+          this.write('];\n')
+          break // we just emitted everything past the local-lets
+        }
+        this.write('return ')
+        this.emitExpr(item as Expr)
+        this.write(';\n')
+      } else {
+        this.emitExpr(item as Expr)
+        this.write(';\n')
+      }
     }
-    const last = node.body[node.body.length - 1]
-    if (!last) {
-      this.write('  return undefined;\n})()')
-      return
+    if (lastExprIdx === -1) this.write('  return undefined;\n')
+    this.write('})()')
+  }
+
+  private emitLocalLet(node: LocalLet): void {
+    this.write('const ')
+    this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    if (this.tsMode && node.type !== undefined) {
+      this.write(`: ${node.type}`)
     }
-    this.write('  return ')
-    this.emitExpr(last)
-    this.write(';\n})()')
+    this.write(' = ')
+    this.emitExpr(node.value)
   }
 
   private emitStyleBlock(node: StyleBlock): void {
+    // Enforce M5/D: top-level rule selectors must be class-rooted.
+    // Element selectors (`p { … }`) at top level escape the component's
+    // hash scope and bleed into the page; users wanting them inside a
+    // class should switch to CSS4 nesting (`.card { p { … } }`).
+    const violation = findNonClassTopLevelSelector(node.css)
+    if (violation !== null) {
+      throw new Error(
+        `top-level CSS rule must use a class selector (.foo); got "${violation}". ` +
+          `Wrap element / id selectors inside a class block to use CSS nesting.`
+      )
+    }
     const ctx = this.currentScope()
     const css = ctx ? rewriteCss(node.css, ctx.declared, ctx.hash) : node.css
     this.write(`h("style", {}, [${JSON.stringify(css)}])`)
@@ -534,8 +638,12 @@ class Codegen {
         `class ref .${node.name} is not declared in this component's style block`
       )
     }
+    // Emit BOTH the original class name AND the hashed one (space-joined),
+    // so consumers can target the unhashed `.block` from global CSS / dev-
+    // tools / framework theming layers, while the component's own scoped
+    // styles (which use the hashed name in selectors) stay isolated.
     this.mark(node.start, node.end, () =>
-      this.write(JSON.stringify(`${node.name}-tu-${ctx.hash}`))
+      this.write(JSON.stringify(`${node.name} ${node.name}-tu-${ctx.hash}`))
     )
   }
 
@@ -719,7 +827,10 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       collectClassRefs(expr.right, out)
       return
     case 'Block':
-      for (const e of expr.body) collectClassRefs(e, out)
+      for (const e of expr.body) {
+        if (e.kind === 'LocalLet') collectClassRefs(e.value, out)
+        else collectClassRefs(e, out)
+      }
       return
     case 'IfExpr':
       collectClassRefs(expr.cond, out)
@@ -763,7 +874,10 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       collectStyleBlockBodies(expr.right, out)
       return
     case 'Block':
-      for (const e of expr.body) collectStyleBlockBodies(e, out)
+      for (const e of expr.body) {
+        if (e.kind === 'LocalLet') collectStyleBlockBodies(e.value, out)
+        else collectStyleBlockBodies(e, out)
+      }
       return
     case 'IfExpr':
       collectStyleBlockBodies(expr.cond, out)
@@ -932,6 +1046,78 @@ function rewriteCss(css: string, declared: Set<string>, hash: string): string {
     i++
   }
   return out
+}
+
+/**
+ * Walk the CSS body's top-level rules. A rule's "selector" is whatever
+ * sits between the previous depth-0 `}` (or start) and the next `{`.
+ * Comma-split each, trim, and check each piece starts with `.` (class
+ * selector), `:global(` (escape hatch), or `@` (at-rule like `@media`).
+ *
+ * Returns the first offending selector text on violation, or `null` when
+ * every top-level rule is class-rooted.
+ *
+ * Skips strings, comments, and `:global(...)` wrappers' interiors so a
+ * `.foo > p` inside a global escape doesn't flag.
+ */
+function findNonClassTopLevelSelector(css: string): string | null {
+  let buffer = ''
+  let depth = 0
+  let i = 0
+  while (i < css.length) {
+    const c = css.charAt(i)
+    if (c === '/' && css.charAt(i + 1) === '*') {
+      const end = css.indexOf('*/', i + 2)
+      if (end < 0) break
+      i = end + 2
+      continue
+    }
+    if (c === '"' || c === "'") {
+      const q = c
+      i++
+      while (i < css.length && css.charAt(i) !== q) {
+        if (css.charAt(i) === '\\') i++
+        i++
+      }
+      if (i < css.length) i++
+      continue
+    }
+    if (c === '{') {
+      if (depth === 0) {
+        const v = checkSelectorList(buffer)
+        if (v !== null) return v
+        buffer = ''
+      }
+      depth++
+      i++
+      continue
+    }
+    if (c === '}') {
+      depth--
+      if (depth === 0) buffer = ''
+      i++
+      continue
+    }
+    if (depth === 0) buffer += c
+    i++
+  }
+  return null
+}
+
+function checkSelectorList(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  // Comma-split. Doesn't fully respect parens (`:not(.a, .b)`), good
+  // enough for V1 — common CSS rarely has commas inside top-level
+  // pseudo-class args.
+  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean)
+  for (const p of parts) {
+    if (p.startsWith('.')) continue
+    if (p.startsWith(':global(')) continue
+    if (p.startsWith('@')) continue
+    return p
+  }
+  return null
 }
 
 // ─── Hash ───────────────────────────────────────────────────────────────────

@@ -228,11 +228,11 @@ describe('compile + render end-to-end', () => {
         return renderToString(Card() as never)
       }
     )
-    // Pull the hashed class out of the rendered markup; the style tag
-    // must reference the same one.
-    const classMatch = html.match(/class="(card-tu-[a-f0-9]{6})"/)!
+    // Markup carries `card card-tu-XXX` (M5/F dual-class injection); the
+    // style tag references the hashed name only.
+    const classMatch = html.match(/class="card (card-tu-[a-f0-9]{6})"/)!
     const klass = classMatch[1]
-    expect(html).toContain(`<div class="${klass}">hi</div>`)
+    expect(html).toContain(`<div class="card ${klass}">hi</div>`)
     expect(html).toContain(`<style>.${klass} { padding: 1rem; }`)
   })
 
@@ -254,10 +254,10 @@ describe('compile + render end-to-end', () => {
         return renderToString(A() as never) + renderToString(B() as never)
       }
     )
-    const classes = [...html.matchAll(/class="(card-tu-[a-f0-9]{6})"/g)].map((m) => m[1])
+    const classes = [...html.matchAll(/class="card (card-tu-[a-f0-9]{6})"/g)].map((m) => m[1])
     expect(classes).toHaveLength(2)
     expect(classes[0]).not.toBe(classes[1])
-    // Each component's style block carries its own class:
+    // Each component's style block carries its own hashed class:
     expect(html).toContain(`.${classes[0]} { color: red; }`)
     expect(html).toContain(`.${classes[1]} { color: blue; }`)
   })

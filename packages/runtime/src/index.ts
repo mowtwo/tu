@@ -21,6 +21,28 @@ export function h(
   return { tag, props, children }
 }
 
+/**
+ * Fragment helper for component bodies that want to return multiple
+ * sibling vnodes without an enclosing wrapper element. Capitalized so it
+ * goes through Tu's component-invocation path (M5 V1) — the codegen
+ * emits `Fragment { a b c }` as `Fragment([a, b, c])`, and this function
+ * just hands the array straight back to the renderer (whose flatten
+ * step splices them into the parent's children list).
+ *
+ * Usage:
+ *   ```tu
+ *   import { Fragment } from "@tu/runtime"
+ *   let Layout = (children) => Fragment {
+ *     header { "Title" }
+ *     children
+ *     footer { "Bottom" }
+ *   }
+ *   ```
+ */
+export function Fragment(children: Child[]): Child {
+  return children
+}
+
 /** Render a VNode (or text/number/array) to an HTML string. M1.0 SSR target. */
 export function renderToString(node: Child): string {
   if (node == null) return ''

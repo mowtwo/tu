@@ -8,6 +8,8 @@
 export let items = []
 export let count = 0
 
+export let b = 2
+
 export let label = computed(
   if (count == 0) { "no items" }
   else if (count == 1) { "1 item" }
@@ -27,20 +29,23 @@ let setMany = () => {
   count = 3
 }
 
-let Demo = () => {
+let Demo = (children:string) => {
   div {
     p { "This is a demo of M1.3 control flow and M1.10 visibility." }
     p { "The buttons below manipulate the `items` and `count` cells, which are exported from this module." }
     p { "The list of items is rendered with a `for` loop, and the label is computed with an `if/else if/else` expression." }
+    children
   }
 }
 
 export let Todo = () => {
 
+  let d = Demo("")
+
   div(class: "todo") {
     h1 { "Todo — " label }
 
-    Demo {}
+    d
 
     if (count > 0) {
       ul {
