@@ -1,7 +1,8 @@
-import { compileToTSWithMap } from '@tu/compiler'
+import { compileToTSWithMap, parse, tokenize } from '@tu/compiler'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import ts from 'typescript'
+import { validateCssBlocks } from './css-lsp.js'
 import { mapTSRangeToSource } from './source-map.js'
 import {
   buildShadowGraph,
@@ -100,9 +101,32 @@ export function checkTuSource(source: string, filename: string): TuDiagnostic[] 
   })
 
   const tsDiagnostics = ts.getPreEmitDiagnostics(program)
-  return tsDiagnostics
+  const tuDiags: TuDiagnostic[] = tsDiagnostics
     .filter((d) => d.file?.fileName === rootShadow.virtualPath)
     .map((d) => translateDiagnostic(d, rootShadow))
+
+  // Augment with CSS diagnostics from any style blocks in the root file.
+  // The checked source is the in-memory text we received, not the
+  // shadow-graph copy on disk — keeps things consistent with what tsc saw.
+  try {
+    const ast = parse(tokenize(source, filename), source, filename)
+    for (const cssDiag of validateCssBlocks(source, ast)) {
+      tuDiags.push({
+        line: cssDiag.line,
+        col: cssDiag.col,
+        length: cssDiag.length,
+        severity: cssDiag.severity,
+        message: cssDiag.message,
+        // CSS LS doesn't carry TS-style numeric codes; surface a sentinel
+        // so the LSP layer can suppress the `[code]` tag in its output.
+        code: -1,
+      })
+    }
+  } catch {
+    // Already covered by the buildShadowGraph compile-error path above.
+  }
+
+  return tuDiags
 }
 
 function translateDiagnostic(d: ts.Diagnostic, shadow: Shadow): TuDiagnostic {

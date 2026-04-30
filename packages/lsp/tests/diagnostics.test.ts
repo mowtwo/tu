@@ -63,6 +63,27 @@ describe('checkTuSource — diagnostic round-trip', () => {
     expect(argDiag!.length).toBe(2)
   })
 
+  it('M3.13: surfaces CSS validation errors from inside a style block', () => {
+    // `colour` is a misspelling — vscode-css-languageservice flags it as
+    // an unknown property. The diagnostic should land on the source line
+    // containing `.card { colour: red; }`, not on the let-decl header.
+    const src = [
+      'export let App = () => {',
+      '  div(class: .card) { "hi" }',
+      '  style { .card { colour: red; } }',
+      '}',
+    ].join('\n')
+    const diags = checkTuSource(src, 'css.tu')
+    const cssDiag = diags.find((d) => d.message.toLowerCase().includes('unknown'))
+    expect(cssDiag).toBeDefined()
+    // Line 2 (0-based) holds the offending property.
+    expect(cssDiag!.line).toBe(2)
+    // Length should cover `colour` (6 chars).
+    expect(cssDiag!.length).toBe(6)
+    // CSS diagnostics use code === -1 sentinel.
+    expect(cssDiag!.code).toBe(-1)
+  })
+
   it('squiggles the offending RHS literal in a state-cell assignment', () => {
     // `count.set("not a number")` — TS reports on `"not a number"`. The
     // string literal in the source spans `"not a number"` (15 chars).

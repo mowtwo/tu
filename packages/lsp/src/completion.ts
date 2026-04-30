@@ -1,6 +1,5 @@
-import { getScopedClassMap, lineColAt, parse, tokenize, TokenKind, type LetDecl, type Program, type StyleBlock, type Token } from '@tu/compiler'
-import { getCSSLanguageService, type LanguageService as CssLanguageService } from 'vscode-css-languageservice'
-import { TextDocument } from 'vscode-languageserver-textdocument'
+import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu/compiler'
+import { cssService, findCssContextAt } from './css-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
@@ -275,46 +274,23 @@ function collectScopedClassesAt(source: string, offset: number): Set<string> | n
 
 // ─── CSS LSP delegation (M3.11) ────────────────────────────────────────────
 
-// Lazy singleton — vscode-css-languageservice is heavy to construct.
-let cssLs: CssLanguageService | null = null
-function getCssLs(): CssLanguageService {
-  if (!cssLs) cssLs = getCSSLanguageService()
-  return cssLs
-}
-
 /**
- * If the cursor sits inside a `style { … }` block, slice the inner CSS
- * out and delegate completion to vscode-css-languageservice. Returns
- * `null` when the cursor is outside any style block (or the source can't
- * be parsed) — the caller falls back to the JS/Tu completion path.
+ * If the cursor sits inside a `style { … }` block, delegate completion
+ * to vscode-css-languageservice. Returns `null` when the cursor is
+ * outside any style block — the caller falls back to the JS/Tu path.
  */
 function maybeCssCompletions(
   source: string,
   line: number,
   col: number
 ): TuCompletionItem[] | null {
-  const offset = lineColToOffset(source, line, col)
-  if (offset === null) return null
-  let program: Program
-  try {
-    program = parse(tokenize(source), source)
-  } catch {
-    return null
-  }
-  const block = findEnclosingStyleBlock(program, offset)
-  if (!block) return null
-
-  // Convert the source position to a position relative to the CSS body.
-  const innerStartLC = lineColAt(source, block.cssStart) // 1-based
-  const cursorLC = lineColAt(source, offset) // 1-based
-  const cssLine = cursorLC.line - innerStartLC.line
-  const cssCol = cssLine === 0 ? cursorLC.col - innerStartLC.col : cursorLC.col - 1
-  if (cssLine < 0 || cssCol < 0) return []
-
-  const cssDoc = TextDocument.create('inline://style.css', 'css', 1, block.css)
-  const ls = getCssLs()
-  const stylesheet = ls.parseStylesheet(cssDoc)
-  const list = ls.doComplete(cssDoc, { line: cssLine, character: cssCol }, stylesheet)
+  const ctx = findCssContextAt(source, line, col)
+  if (!ctx) return null
+  const list = cssService().doComplete(
+    ctx.doc,
+    { line: ctx.cssLine, character: ctx.cssCol },
+    ctx.stylesheet
+  )
   if (!list || list.items.length === 0) return []
   return list.items.map((it) => {
     const result: TuCompletionItem = {
@@ -331,68 +307,6 @@ function maybeCssCompletions(
     }
     return result
   })
-}
-
-function findEnclosingStyleBlock(program: Program, offset: number): StyleBlock | null {
-  let found: StyleBlock | null = null
-  for (const stmt of program.body) {
-    if (stmt.kind !== 'LetDecl') continue
-    walkForStyleBlock(stmt.value, offset, (b) => {
-      found = b
-    })
-    if (found) break
-  }
-  return found
-}
-
-function walkForStyleBlock(
-  expr: { kind: string } | undefined,
-  offset: number,
-  hit: (b: StyleBlock) => void
-): void {
-  if (!expr) return
-  if (expr.kind === 'StyleBlock') {
-    const b = expr as StyleBlock
-    if (offset >= b.cssStart && offset <= b.cssEnd) hit(b)
-    return
-  }
-  const e = expr as Record<string, unknown>
-  switch (expr.kind) {
-    case 'Lambda':
-      walkForStyleBlock(e.body as { kind: string }, offset, hit)
-      return
-    case 'Block':
-      for (const c of e.body as { kind: string }[]) walkForStyleBlock(c, offset, hit)
-      return
-    case 'TagCall':
-      for (const p of e.props as { value: { kind: string } }[]) walkForStyleBlock(p.value, offset, hit)
-      for (const c of e.children as { kind: string }[]) walkForStyleBlock(c, offset, hit)
-      return
-    case 'IfExpr':
-      walkForStyleBlock(e.cond as { kind: string }, offset, hit)
-      walkForStyleBlock(e.then as { kind: string }, offset, hit)
-      if (e.else) walkForStyleBlock(e.else as { kind: string }, offset, hit)
-      return
-    case 'ForExpr':
-      walkForStyleBlock(e.iter as { kind: string }, offset, hit)
-      walkForStyleBlock(e.body as { kind: string }, offset, hit)
-      return
-    case 'ArrayLit':
-      for (const c of e.elements as { kind: string }[]) walkForStyleBlock(c, offset, hit)
-      return
-    case 'CallExpr':
-      for (const a of e.args as { kind: string }[]) walkForStyleBlock(a, offset, hit)
-      return
-    case 'BinaryExpr':
-      walkForStyleBlock(e.left as { kind: string }, offset, hit)
-      walkForStyleBlock(e.right as { kind: string }, offset, hit)
-      return
-    case 'AssignExpr':
-      walkForStyleBlock(e.value as { kind: string }, offset, hit)
-      return
-    default:
-      return
-  }
 }
 
 function cssKindToTsKind(kind: number | undefined): string {

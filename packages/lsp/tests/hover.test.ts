@@ -71,6 +71,25 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(hoverAtTuPosition(src, join(tmp, 'kw.tu'), 0, 17)).toBeNull()
   })
 
+  it('M3.12: hovering a CSS property inside a style block returns CSS docs', () => {
+    const src = [
+      'export let App = () => {',
+      '  div(class: .card) { "hi" }',
+      '  style {',
+      '    .card { color: red; }',
+      '  }',
+      '}',
+    ].join('\n')
+    // Line 3, col 13 — sits on the `c` of `color`. The CSS LS should
+    // surface the property's documentation.
+    const info = hoverAtTuPosition(src, join(tmp, 'css-hover.tu'), 3, 13)
+    expect(info).not.toBeNull()
+    // CSS LS hover content includes the property name.
+    expect(info!.contents.toLowerCase()).toContain('color')
+    // Range is on line 3 (the same source line as `color`).
+    expect(info!.line).toBe(3)
+  })
+
   it('returns null when the source has a Tu compile error', () => {
     // Unbalanced braces — buildShadowGraph swallows the compile error and
     // returns no shadow for the root file. Hover gracefully degrades to null.

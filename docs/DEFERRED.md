@@ -5,7 +5,6 @@ A living list of every "leave for later" decision made during a milestone, with 
 ## Open
 
 | Item | Introduced | Target | Notes |
-| LSP hover / diagnostics for CSS inside `style { … }` | M3.11 | post-M3 | M3.11 wired up CSS *completion* via vscode-css-languageservice. Hover (CSS prop docs) and diagnostics (invalid prop names, broken selectors) are the natural follow-ups — same library exposes them via `doHover` / `doValidation`, just need the same range-mapping plumbing the completion path uses. |
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
@@ -15,6 +14,14 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.13
+
+- ~~CSS diagnostics inside `style { … }`~~ — landed: `validateCssBlocks` (in the new `css-lsp.ts` module) walks every style block in the program and runs `cssLs.doValidation`. Diagnostic ranges come back in CSS-doc-relative coordinates and are translated to source-doc absolute (line, col, length) via the same offset-math the M3.12 hover path uses. `checkTuSource` augments its TS-only diagnostic list with these. Misspellings (`colour: red`) and other CSS-LS-known issues now squiggle on the offending property/value, not the surrounding let-decl. CSS diagnostics use a `code: -1` sentinel since CSS LS doesn't carry TS-style numeric codes — `tu check` and the LSP server suppress the `[code]` tag for those.
+
+## Closed in M3.12
+
+- ~~CSS hover inside `style { … }`~~ — landed: `hoverAtTuPosition` checks `findCssContextAt` first; if the cursor is in a CSS body, it delegates to `cssLs.doHover()` and translates the returned range from CSS-doc coordinates to source-doc coordinates so the LSP underline lands on the property/value the cursor pointed at. CSS hover content (a Markdown-formatted property doc with a link to MDN) flows back as the `TuHover.contents`. Falls through to tsserver only when the cursor is outside any style block.
 
 ## Closed in M3.11
 
