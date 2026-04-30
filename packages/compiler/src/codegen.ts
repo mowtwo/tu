@@ -12,6 +12,7 @@ import type {
   Program,
   Prop,
   Stmt,
+  StyleBlock,
   TagCall,
 } from './ast.js'
 
@@ -106,6 +107,8 @@ class Codegen {
         return this.emitForExpr(expr)
       case 'MatchExpr':
         return this.emitMatchExpr(expr)
+      case 'StyleBlock':
+        return this.emitStyleBlock(expr)
     }
   }
 
@@ -122,6 +125,14 @@ class Codegen {
 
   private emitBlock(node: Block): string {
     if (node.body.length === 0) return '(undefined)'
+    // A block containing one or more `style { … }` blocks emits as an array
+    // fragment so each item (the main vnode + each style vnode) reaches the
+    // renderer. The runtime flattens array children, so `[mainVNode, styleVNode]`
+    // renders as siblings.
+    if (node.body.some((e) => e.kind === 'StyleBlock')) {
+      const items = node.body.map((e) => this.emitExpr(e))
+      return `[${items.join(', ')}]`
+    }
     if (node.body.length === 1) {
       const only = node.body[0]
       if (!only) return '(undefined)'
@@ -131,6 +142,10 @@ class Codegen {
     const last = node.body[node.body.length - 1]
     if (!last) return '(undefined)'
     return `(() => {\n${stmts.join('\n')}\n  return ${this.emitExpr(last)};\n})()`
+  }
+
+  private emitStyleBlock(node: StyleBlock): string {
+    return `h("style", {}, [${JSON.stringify(node.css)}])`
   }
 
   private emitTagCall(node: TagCall): string {

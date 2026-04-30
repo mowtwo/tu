@@ -177,6 +177,20 @@ describe('parser', () => {
     expect(v.arms[1]?.pattern.kind).toBe('PatWild')
   })
 
+  it('parses `style { … }` as a StyleBlock with raw CSS preserved', () => {
+    const tree = ast('let X = style { .card { color: red; } }')
+    const v = (tree.body[0] as { value: unknown }).value as { kind: string; css: string }
+    expect(v.kind).toBe('StyleBlock')
+    expect(v.css).toContain('.card { color: red; }')
+  })
+
+  it('parses `style(...) { … }` as a tag-call (parens disambiguate)', () => {
+    const tree = ast('let X = style(scoped: true) { "raw text" }')
+    const v = (tree.body[0] as { value: unknown }).value as { kind: string; tag?: string }
+    expect(v.kind).toBe('TagCall')
+    expect(v.tag).toBe('style')
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

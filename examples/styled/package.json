@@ -1,0 +1,17 @@
+{
+  "name": "@tu-examples/styled",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1.4 demo: a component with a `style { … }` block.",
+  "scripts": {
+    "demo": "node run.mjs",
+    "build": "echo 'styled example: built on demand by run.mjs'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
+  }
+}

@@ -7,6 +7,7 @@
     { "include": "#comment" },
     { "include": "#string" },
     { "include": "#number" },
+    { "include": "#style-block" },
     { "include": "#keyword" },
     { "include": "#constant" },
     { "include": "#type-primitive" },
@@ -106,6 +107,22 @@
           "match": "\\b[a-z_$][a-zA-Z0-9_$]*\\b",
           "name": "variable.other.tu"
         }
+      ]
+    },
+    "style-block": {
+      "begin": "\\b(style)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.tu" },
+        "2": { "name": "punctuation.section.embedded.begin.tu" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.embedded.end.tu" }
+      },
+      "name": "meta.embedded.block.css.tu",
+      "contentName": "source.css",
+      "patterns": [
+        { "include": "source.css" }
       ]
     }
   }

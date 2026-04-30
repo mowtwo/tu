@@ -123,4 +123,42 @@ describe('lexer', () => {
   it('throws on bare !', () => {
     expect(() => tokenize('!')).toThrow(/Unexpected character/)
   })
+
+  it('lexes `style { … }` body as a single CssText token', () => {
+    const tokens = tokenize('let App = () => style { .card { padding: 1rem; } }')
+    // Last five tokens are: Ident("style"), LBrace, CssText, RBrace, Eof
+    expect(tokens.slice(-5).map((t) => t.kind)).toEqual([
+      TokenKind.Ident,
+      TokenKind.LBrace,
+      TokenKind.CssText,
+      TokenKind.RBrace,
+      TokenKind.Eof,
+    ])
+    const cssTok = tokens.find((t) => t.kind === TokenKind.CssText)!
+    expect(cssTok.value).toContain('.card')
+    expect(cssTok.value).toContain('padding: 1rem')
+  })
+
+  it('CSS mode tracks brace depth so nested rules close cleanly', () => {
+    const tokens = tokenize('let X = style { @media (min-width: 800px) { .a { color: red; } } }')
+    const cssTok = tokens.find((t) => t.kind === TokenKind.CssText)!
+    expect(cssTok.value).toContain('@media')
+    expect(cssTok.value).toContain('.a')
+    // outer RBrace must remain — not consumed by the CSS scan
+    const lastBraces = tokens.filter((t) => t.kind === TokenKind.RBrace)
+    expect(lastBraces.length).toBe(1)
+  })
+
+  it('CSS mode ignores `}` inside strings and block comments', () => {
+    const src = `let X = style { .a::before { content: "}"; /* } not real */ } }`
+    const tokens = tokenize(src)
+    const cssTok = tokens.find((t) => t.kind === TokenKind.CssText)!
+    expect(cssTok.value).toContain('"}"')
+    expect(cssTok.value).toContain('/* } not real */')
+  })
+
+  it('does not enter CSS mode for `style(...)` (parenthesized tag-call)', () => {
+    const tokens = tokenize('let X = style(scoped: true) { p { "x" } }')
+    expect(tokens.find((t) => t.kind === TokenKind.CssText)).toBeUndefined()
+  })
 })

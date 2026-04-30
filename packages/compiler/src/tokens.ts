@@ -4,6 +4,8 @@ export enum TokenKind {
   String,
   Number,
   Underscore,
+  /** Raw CSS text inside a `style { … }` block; lexed in CSS mode. */
+  CssText,
   // punctuation
   LParen,
   RParen,

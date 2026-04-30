@@ -56,4 +56,14 @@ describe('@tu/runtime', () => {
   it('renderToString flattens nested arrays', () => {
     expect(renderToString([['a', 'b'], 'c'])).toBe('abc')
   })
+
+  it('does not HTML-escape text inside <style> (raw-text element)', () => {
+    const css = '.card > h1 { color: red; } /* x>y */'
+    expect(renderToString(h('style', {}, [css]))).toBe(`<style>${css}</style>`)
+  })
+
+  it('does not HTML-escape text inside <script> (raw-text element)', () => {
+    const js = 'if (x < 10 && y > 0) console.log("ok")'
+    expect(renderToString(h('script', {}, [js]))).toBe(`<script>${js}</script>`)
+  })
 })

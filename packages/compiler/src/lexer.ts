@@ -2,6 +2,10 @@ import { KEYWORDS, TokenKind, type Token } from './tokens.js'
 
 export class Lexer {
   private pos = 0
+  /** True when the previous non-trivia token was Ident `style`. */
+  private styleSeen = false
+  /** True when an Ident `style` was followed by `{`; next token is the CssText body. */
+  private cssPending = false
   constructor(private readonly src: string) {}
 
   tokenize(): Token[] {
@@ -9,7 +13,23 @@ export class Lexer {
     while (this.pos < this.src.length) {
       this.skipTrivia()
       if (this.pos >= this.src.length) break
-      out.push(this.next())
+      if (this.cssPending) {
+        out.push(this.lexCssText())
+        this.cssPending = false
+        this.styleSeen = false
+        continue
+      }
+      const tok = this.next()
+      out.push(tok)
+      // Track contextual `style { ... }` opening sequence.
+      if (tok.kind === TokenKind.Ident && tok.text === 'style') {
+        this.styleSeen = true
+      } else if (tok.kind === TokenKind.LBrace && this.styleSeen) {
+        this.cssPending = true
+        this.styleSeen = false
+      } else {
+        this.styleSeen = false
+      }
     }
     out.push({ kind: TokenKind.Eof, text: '', start: this.pos, end: this.pos })
     return out
@@ -93,6 +113,64 @@ export class Lexer {
         continue
       }
       break
+    }
+  }
+
+  /**
+   * Scan raw CSS until the matching `}` (depth 0). Tracks brace depth, skips
+   * over content inside `"…"` / `'…'` strings and `/* … *​/` block comments so
+   * a `}` inside a string or comment doesn't close the block prematurely.
+   * Stops at the closing `}` without consuming it — the main loop emits it as
+   * a normal RBrace.
+   */
+  private lexCssText(): Token {
+    const start = this.pos
+    let depth = 0
+    while (this.pos < this.src.length) {
+      const ch = this.src.charAt(this.pos)
+      if (ch === '"' || ch === "'") {
+        const quote = ch
+        this.pos++
+        while (this.pos < this.src.length && this.src.charAt(this.pos) !== quote) {
+          if (this.src.charAt(this.pos) === '\\') {
+            this.pos++
+          }
+          this.pos++
+        }
+        if (this.pos < this.src.length) this.pos++ // closing quote
+        continue
+      }
+      if (ch === '/' && this.src.charAt(this.pos + 1) === '*') {
+        this.pos += 2
+        while (
+          this.pos + 1 < this.src.length &&
+          !(this.src.charAt(this.pos) === '*' && this.src.charAt(this.pos + 1) === '/')
+        ) {
+          this.pos++
+        }
+        if (this.pos + 1 < this.src.length) this.pos += 2
+        continue
+      }
+      if (ch === '{') {
+        depth++
+        this.pos++
+        continue
+      }
+      if (ch === '}') {
+        if (depth === 0) break
+        depth--
+        this.pos++
+        continue
+      }
+      this.pos++
+    }
+    const text = this.src.slice(start, this.pos)
+    return {
+      kind: TokenKind.CssText,
+      text,
+      value: text,
+      start,
+      end: this.pos,
     }
   }
 

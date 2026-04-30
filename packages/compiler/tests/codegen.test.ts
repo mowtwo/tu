@@ -121,6 +121,21 @@ describe('codegen', () => {
     expect(js).toContain('(a.get() !== 2)')
   })
 
+  it('emits a StyleBlock as h("style", {}, [<css>])', () => {
+    const js = compile('let X = style { .card { color: red; } }')
+    expect(js).toContain('h("style", {}, [".card { color: red; } "])')
+  })
+
+  it('emits a fragment array when a Block contains both a tag-call and a style block', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: "card") { "hi" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    expect(js).toContain('export const App = () => [h("div", { "class": "card" }, ["hi"]), h("style", {}, [".card { padding: 1rem; }')
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       let Greeting = (name: string) => {

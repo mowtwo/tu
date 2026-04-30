@@ -25,6 +25,7 @@ export type Expr =
   | IfExpr
   | ForExpr
   | MatchExpr
+  | StyleBlock
 
 export interface Lambda {
   kind: 'Lambda'
@@ -65,6 +66,7 @@ export type Child =
   | IfExpr
   | ForExpr
   | MatchExpr
+  | StyleBlock
 
 export interface CallExpr {
   kind: 'CallExpr'
@@ -126,4 +128,14 @@ export type MatchPattern =
 export interface MatchArm {
   pattern: MatchPattern
   body: Expr
+}
+
+/**
+ * A `style { … }` block. The CSS body is preserved verbatim as raw text — the
+ * compiler does not parse CSS in M1.4. Rendered as an HTML `<style>` element
+ * sibling to the component's main vnode.
+ */
+export interface StyleBlock {
+  kind: 'StyleBlock'
+  css: string
 }

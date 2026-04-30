@@ -46,10 +46,30 @@ function renderVNode(node: VNode): string {
     return `<${node.tag}${propStr}>`
   }
   let childStr = ''
-  for (const c of node.children) {
-    childStr += renderToString(c)
+  if (RAW_TEXT_ELEMENTS.has(node.tag)) {
+    // <style> and <script> are HTML raw-text elements: their text content is
+    // NOT HTML-escaped. We still render nested vnodes (rare but valid) normally.
+    for (const c of node.children) {
+      childStr += renderRawTextChild(c)
+    }
+  } else {
+    for (const c of node.children) {
+      childStr += renderToString(c)
+    }
   }
   return `<${node.tag}${propStr}>${childStr}</${node.tag}>`
+}
+
+function renderRawTextChild(node: Child): string {
+  if (node == null) return ''
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) {
+    let out = ''
+    for (const c of node) out += renderRawTextChild(c)
+    return out
+  }
+  return renderVNode(node)
 }
 
 function escapeText(s: string): string {
@@ -64,3 +84,6 @@ const VOID_ELEMENTS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
   'link', 'meta', 'source', 'track', 'wbr',
 ])
+
+/** HTML raw-text elements: their text content is not HTML-escaped. */
+const RAW_TEXT_ELEMENTS = new Set(['style', 'script'])

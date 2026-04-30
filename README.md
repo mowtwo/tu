@@ -52,6 +52,9 @@ pnpm --filter @tu-examples/counter demo
 
 # M1.3 — Todo: for / if / match expressions over a reactive list
 pnpm --filter @tu-examples/todo demo
+
+# M1.4 — Card: a component with a `style { ... }` block
+pnpm --filter @tu-examples/styled demo
 ```
 
 ### VS Code syntax highlighting (M1.1)
@@ -74,7 +77,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.1 | VS Code syntax highlighting + file icon | ✅ |
 | M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | ✅ |
 | M1.3 | `if` / `for` / `match` expressions | ✅ |
-| M1.4 | `style { … }` block | … |
+| M1.4 | `style { … }` block | ✅ |
 | M2 | Type inference + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |

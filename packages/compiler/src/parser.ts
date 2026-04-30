@@ -19,6 +19,7 @@ import type {
   Prop,
   Stmt,
   StringLit,
+  StyleBlock,
   TagCall,
 } from './ast.js'
 import { TokenKind, type Token } from './tokens.js'
@@ -238,6 +239,12 @@ export class Parser {
   private parseIdentTail(name: string): Expr {
     const next = this.peek().kind
     if (next === TokenKind.LBrace && !this.noBraceBlock) {
+      // `style { … }` (no parens) is a special-form CSS block; the lexer has
+      // already tokenized the body as a single CssText. Anything else with a
+      // trailing `{` is a tag-call children block.
+      if (name === 'style' && this.tokens[this.pos + 1]?.kind === TokenKind.CssText) {
+        return this.parseStyleBlock()
+      }
       return this.parseTagCall(name)
     }
     if (next === TokenKind.LParen) {
@@ -246,6 +253,13 @@ export class Parser {
       return this.parseCallExpr(name)
     }
     return { kind: 'Ident', name } satisfies Ident
+  }
+
+  private parseStyleBlock(): StyleBlock {
+    this.expect(TokenKind.LBrace)
+    const css = this.expect(TokenKind.CssText).value as string
+    this.expect(TokenKind.RBrace)
+    return { kind: 'StyleBlock', css }
   }
 
   /**

@@ -194,6 +194,29 @@ describe('compile + render end-to-end', () => {
     expect(result.many).toBe('<p>many</p>')
   })
 
+  it('renders a component with a style block as a fragment with un-escaped CSS', async () => {
+    const html = await compileAndRun(
+      `
+        let Card = () => {
+          div(class: "card") { h1 { "Hello" } }
+          style {
+            .card { padding: 1rem; color: #333; }
+            .card > h1 { font-weight: 700; }
+          }
+        }
+      `,
+      (mod) => {
+        const Card = mod['Card'] as () => unknown
+        return renderToString(Card() as never)
+      }
+    )
+    expect(html).toContain('<div class="card"><h1>Hello</h1></div>')
+    expect(html).toContain('<style>')
+    // CSS body must NOT have its `>` escaped; raw-text element passes through.
+    expect(html).toContain('.card > h1 { font-weight: 700; }')
+    expect(html).not.toContain('&gt;')
+  })
+
   it('lambda params shadow same-named top-level cells', async () => {
     const result = await compileAndRun(
       `

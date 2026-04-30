@@ -27,7 +27,10 @@
       {
         "language": "tu",
         "scopeName": "source.tu",
-        "path": "./syntaxes/tu.tmLanguage.json"
+        "path": "./syntaxes/tu.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.css.tu": "css"
+        }
       }
     ]
   },

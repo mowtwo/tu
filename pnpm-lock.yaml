@@ -39,6 +39,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  examples/styled:
+    dependencies:
+      '@tu/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
   examples/todo:
     dependencies:
       '@tu/compiler':
