@@ -597,6 +597,18 @@ class Codegen {
       if (i > 0) this.write(', ')
       this.emitExpr(node.args[i]!)
     }
+    // Component invocations carry a trailing children array (M5 V1). Emit
+    // it as the last positional argument so a `let Card = (..., children)`
+    // lambda can receive it.
+    if (node.children !== undefined) {
+      if (node.args.length > 0) this.write(', ')
+      this.write('[')
+      for (let i = 0; i < node.children.length; i++) {
+        if (i > 0) this.write(', ')
+        this.emitExpr(node.children[i]!)
+      }
+      this.write(']')
+    }
     this.write(')')
   }
 
@@ -700,6 +712,7 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       return
     case 'CallExpr':
       for (const a of expr.args) collectClassRefs(a, out)
+      if (expr.children) for (const c of expr.children) collectClassRefs(c as Expr, out)
       return
     case 'BinaryExpr':
       collectClassRefs(expr.left, out)
@@ -743,6 +756,7 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'CallExpr':
       for (const a of expr.args) collectStyleBlockBodies(a, out)
+      if (expr.children) for (const c of expr.children) collectStyleBlockBodies(c as Expr, out)
       return
     case 'BinaryExpr':
       collectStyleBlockBodies(expr.left, out)

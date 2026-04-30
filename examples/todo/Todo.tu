@@ -27,9 +27,20 @@ let setMany = () => {
   count = 3
 }
 
+let Demo = () => {
+  div {
+    p { "This is a demo of M1.3 control flow and M1.10 visibility." }
+    p { "The buttons below manipulate the `items` and `count` cells, which are exported from this module." }
+    p { "The list of items is rendered with a `for` loop, and the label is computed with an `if/else if/else` expression." }
+  }
+}
+
 export let Todo = () => {
+
   div(class: "todo") {
     h1 { "Todo — " label }
+
+    Demo {}
 
     if (count > 0) {
       ul {
@@ -47,5 +58,8 @@ export let Todo = () => {
       button(onClick: setMany) { "three items" }
       button(onClick: () => { items = ["buy milk", "walk the dog", "write Tu", "call mom"]; count = 4 }) { "four items" }
     }
+  }
+  style {
+    .div::after {}
   }
 }

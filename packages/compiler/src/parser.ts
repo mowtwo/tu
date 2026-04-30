@@ -600,22 +600,31 @@ export class Parser {
   /**
    * After an Ident, decide whether this is:
    *  - bare ident
-   *  - TagCall (named-prop call, optionally followed by children block)
-   *  - CallExpr (positional-arg call)
+   *  - HTML tag-call (lowercase callee + named-prop call, optionally
+   *    followed by a children block) → `h("tag", props, children)`
+   *  - Component invocation (capitalized callee) → `Callee(args, [children])`
+   *  - Plain function call (lowercase callee + positional args, no children)
+   *
+   * Capitalization is the discriminator between HTML tags and user
+   * components, mirroring the React/JSX convention. The split matters
+   * because user components are real functions — tsserver sees them as
+   * such, so hover / goto-definition / completion all work in IDEs.
    */
   private parseIdentTail(nameTok: Token): Expr {
     const name = nameTok.text
     const next = this.peek().kind
+    const isComponent = isCapitalizedIdent(name)
     if (next === TokenKind.LBrace && !this.noBraceBlock) {
       // `style { … }` (no parens) is a special-form CSS block; the lexer has
-      // already tokenized the body as a single CssText. Anything else with a
-      // trailing `{` is a tag-call children block.
+      // already tokenized the body as a single CssText.
       if (name === 'style' && this.tokens[this.pos + 1]?.kind === TokenKind.CssText) {
         return this.parseStyleBlock(nameTok)
       }
+      if (isComponent) return this.parseComponentCall(nameTok, /* hasParens */ false)
       return this.parseTagCall(nameTok)
     }
     if (next === TokenKind.LParen) {
+      if (isComponent) return this.parseComponentCall(nameTok, /* hasParens */ true)
       const shape = this.peekCallShape()
       if (shape === 'tag') return this.parseTagCall(nameTok)
       return this.parseCallExpr(nameTok)
@@ -626,6 +635,45 @@ export class Parser {
       start: nameTok.start,
       end: nameTok.end,
     } satisfies Ident
+  }
+
+  /**
+   * Parse a component invocation: `Callee([args]) [{ children }]`. Both
+   * the args list and the children block are optional independently.
+   * Lowers to a `CallExpr` whose `children` (if present) the codegen
+   * emits as the last positional argument array.
+   */
+  private parseComponentCall(nameTok: Token, hasParens: boolean): CallExpr {
+    const args: Expr[] = []
+    let endTok: Token = nameTok
+    if (hasParens) {
+      this.expect(TokenKind.LParen)
+      while (this.peek().kind !== TokenKind.RParen) {
+        args.push(this.parseExpr())
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      endTok = this.expect(TokenKind.RParen)
+    }
+    let children: Child[] | undefined
+    if (this.peek().kind === TokenKind.LBrace && !this.noBraceBlock) {
+      this.expect(TokenKind.LBrace)
+      children = []
+      while (this.peek().kind !== TokenKind.RBrace) {
+        children.push(this.parseChild())
+      }
+      endTok = this.expect(TokenKind.RBrace)
+    }
+    const result: CallExpr = {
+      kind: 'CallExpr',
+      callee: nameTok.text,
+      args,
+      start: nameTok.start,
+      end: endTok.end,
+      calleeStart: nameTok.start,
+      calleeEnd: nameTok.end,
+    }
+    if (children !== undefined) result.children = children
+    return result
   }
 
   private parseStyleBlock(styleTok: Token): StyleBlock {
@@ -754,6 +802,19 @@ export class Parser {
 
 export function parse(tokens: Token[], source: string = '', filename?: string): Program {
   return new Parser(tokens, source, filename).parseProgram()
+}
+
+/**
+ * `Card`, `MyButton`, `X` → component (capitalized).
+ * `div`, `button`, `_helper`, `count` → HTML tag or plain ident.
+ * Strict-capitalized check: ASCII letter A-Z. Non-letter starts (`_`, `$`)
+ * fall through to the lowercase path so private-by-convention names don't
+ * accidentally become components.
+ */
+function isCapitalizedIdent(name: string): boolean {
+  if (name.length === 0) return false
+  const c = name.charCodeAt(0)
+  return c >= 0x41 /* A */ && c <= 0x5a /* Z */
 }
 
 /**

@@ -169,6 +169,9 @@ function visitStyleBlocks(
       return
     case 'CallExpr':
       for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
+      if (Array.isArray(e.children)) {
+        for (const c of e.children as { kind: string }[]) visitStyleBlocks(c, hit)
+      }
       return
     case 'BinaryExpr':
       visitStyleBlocks(e.left as { kind: string }, hit)

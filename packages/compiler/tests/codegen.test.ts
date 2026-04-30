@@ -387,6 +387,38 @@ describe('codegen', () => {
     expect(js).toMatch(/-tu-[a-f0-9]{6}/)
   })
 
+  it('M5: capitalized callee compiles as a function call, not h("Tag", …)', () => {
+    const js = compile(`
+      let Card = (label) => p { label }
+      let App = () => Card("hi")
+    `)
+    expect(js).toContain('const App = () => Card("hi")')
+    // Crucially, NOT `h("Card", ...)` — Card is a real function.
+    expect(js).not.toContain('h("Card"')
+  })
+
+  it('M5: `Card { children }` compiles to Card([children])', () => {
+    const js = compile(`
+      let Card = (children) => div { children }
+      let App = () => Card { p { "body" } }
+    `)
+    expect(js).toContain('const App = () => Card([h("p", {}, ["body"])])')
+  })
+
+  it('M5: `Card("hi") { children }` compiles with args + trailing children', () => {
+    const js = compile(`
+      let Card = (label, children) => div { label children }
+      let App = () => Card("Hello") { p { "body" } }
+    `)
+    expect(js).toContain('Card("Hello", [h("p", {}, ["body"])])')
+  })
+
+  it('M5: lowercase ident in tag-call position remains an HTML tag', () => {
+    const js = compile('let App = () => div { "x" }')
+    expect(js).toContain('h("div", {}, ["x"])')
+    expect(js).not.toContain('div([')
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       export let Greeting = (name: string) => {

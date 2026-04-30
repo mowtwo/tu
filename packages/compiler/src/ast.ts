@@ -151,6 +151,16 @@ export interface CallExpr extends Ranged {
   /** Source byte range of the callee identifier. */
   calleeStart: number
   calleeEnd: number
+  /**
+   * Trailing children block, present only for **component** invocations
+   * (capitalized callee). The compiler emits these as the last positional
+   * argument: `Callee(...args, [...children])`. Components by convention
+   * accept a final `children` parameter to receive this array.
+   *
+   * Plain function calls (lowercase callees that aren't HTML tags) stay
+   * `children: undefined` — they don't accept a trailing block.
+   */
+  children?: Child[]
 }
 
 export type BinaryOp =
