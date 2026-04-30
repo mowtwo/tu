@@ -88,16 +88,23 @@
     "tag-call": {
       "patterns": [
         {
+          "comment": "HTML-style lowercase tags in tag-call position: `div(`, `h1 {`, `button(onClick: …)`. Colored with the standard HTML tag scope.",
           "match": "\\b([a-z][a-zA-Z0-9-]*)\\b(?=\\s*[\\({])",
           "name": "entity.name.tag.tu"
+        },
+        {
+          "comment": "Capitalized identifiers in tag-call position are user components (`Card { … }`, `Greeting('World')`). Use the JSX-style `support.class.component` scope so themes that distinguish components colorize them in line with `<Card />` in JSX.",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b(?=\\s*[\\({])",
+          "name": "support.class.component.tu"
         }
       ]
     },
     "component-name": {
       "patterns": [
         {
+          "comment": "Capitalized identifiers NOT in call position — bare references to components / functions (e.g. `onClick: dec` if `dec` were capitalized, or `Card` passed as a value). Tu's user-defined types are functions, not classes, so use the function scope rather than `entity.name.type` (which themes color like a class).",
           "match": "\\b[A-Z][a-zA-Z0-9_]*\\b",
-          "name": "entity.name.type.tu"
+          "name": "entity.name.function.tu"
         }
       ]
     },
