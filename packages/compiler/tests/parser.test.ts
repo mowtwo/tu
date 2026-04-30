@@ -191,6 +191,35 @@ describe('parser', () => {
     expect(v.tag).toBe('style')
   })
 
+  it('parses Ident = expr as AssignExpr', () => {
+    const tree = ast('let f = () => count = count + 1')
+    const lambda = (tree.body[0] as { value: { body: unknown } }).value as { body: unknown }
+    expect(lambda.body).toMatchObject({
+      kind: 'AssignExpr',
+      target: 'count',
+      value: {
+        kind: 'BinaryExpr',
+        op: '+',
+        left: { kind: 'Ident', name: 'count' },
+        right: { kind: 'NumberLit', value: 1 },
+      },
+    })
+  })
+
+  it('parses lambda-valued prop in a tag-call', () => {
+    const tree = ast('let App = () => button(onClick: () => count = count + 1) { "+" }')
+    const tag = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { props: { name: string; value: { kind: string } }[] }
+    }
+    const prop = tag.body.props[0]!
+    expect(prop.name).toBe('onClick')
+    expect(prop.value.kind).toBe('Lambda')
+  })
+
+  it('rejects an assignment as a tag-call child', () => {
+    expect(() => ast('let App = () => div { count = 5 }')).toThrow(/AssignExpr as child/)
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

@@ -26,6 +26,7 @@ export type Expr =
   | ForExpr
   | MatchExpr
   | StyleBlock
+  | AssignExpr
 
 export interface Lambda {
   kind: 'Lambda'
@@ -138,4 +139,15 @@ export interface MatchArm {
 export interface StyleBlock {
   kind: 'StyleBlock'
   css: string
+}
+
+/**
+ * `target = value` in expression position. When the target resolves to a
+ * top-level state cell, codegen emits `target.set(value)`; otherwise emits a
+ * plain JS assignment.
+ */
+export interface AssignExpr {
+  kind: 'AssignExpr'
+  target: string
+  value: Expr
 }

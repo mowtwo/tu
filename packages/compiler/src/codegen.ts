@@ -1,4 +1,5 @@
 import type {
+  AssignExpr,
   BinaryExpr,
   BinaryOp,
   Block,
@@ -109,6 +110,8 @@ class Codegen {
         return this.emitMatchExpr(expr)
       case 'StyleBlock':
         return this.emitStyleBlock(expr)
+      case 'AssignExpr':
+        return this.emitAssignExpr(expr)
     }
   }
 
@@ -146,6 +149,26 @@ class Codegen {
 
   private emitStyleBlock(node: StyleBlock): string {
     return `h("style", {}, [${JSON.stringify(node.css)}])`
+  }
+
+  private emitAssignExpr(node: AssignExpr): string {
+    const rhs = this.emitExpr(node.value)
+    // A lambda parameter or `for` binder shadowing the cell — plain JS assign.
+    for (let i = this.shadowed.length - 1; i >= 0; i--) {
+      if (this.shadowed[i]?.has(node.target)) {
+        return `(${node.target} = ${rhs})`
+      }
+    }
+    const kind = this.cells.get(node.target)
+    if (kind === 'state') return `${node.target}.set(${rhs})`
+    if (kind === 'computed') {
+      throw new Error(`cannot assign to computed cell '${node.target}'`)
+    }
+    if (kind === 'function') {
+      throw new Error(`cannot assign to function binding '${node.target}'`)
+    }
+    // Unknown binding — emit a plain JS assignment so user-defined locals work.
+    return `(${node.target} = ${rhs})`
   }
 
   private emitTagCall(node: TagCall): string {

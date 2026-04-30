@@ -1,4 +1,5 @@
 import type {
+  AssignExpr,
   BinaryExpr,
   BinaryOp,
   Block,
@@ -76,8 +77,20 @@ export class Parser {
     return { kind: 'LetDecl', exported: true, name, value }
   }
 
-  // Pratt-style precedence climber for binary expressions.
+  // Pratt-style precedence climber for binary expressions, with a
+  // top-level assignment hook: `Ident = expr` parses as AssignExpr. This is
+  // the only way Tu source mutates a state cell — codegen rewrites
+  // `target = expr` to `target.set(expr)` when target resolves to a cell.
   private parseExpr(): Expr {
+    if (this.peek().kind === TokenKind.Ident) {
+      const next = this.tokens[this.pos + 1]
+      if (next?.kind === TokenKind.Equals) {
+        const target = this.peek().text
+        this.pos += 2 // consume Ident and Equals
+        const value = this.parseExpr()
+        return { kind: 'AssignExpr', target, value } satisfies AssignExpr
+      }
+    }
     return this.parseBinary(0)
   }
 
@@ -314,16 +327,19 @@ export class Parser {
   private parseProp(): Prop {
     const name = this.expect(TokenKind.Ident).text
     this.expect(TokenKind.Colon)
-    const value = this.parsePrimary()
+    // Use parseExpr (not parsePrimary) so prop values can be lambdas,
+    // arithmetic, conditional expressions, etc. — e.g.
+    // `onClick: () => count = count + 1`.
+    const value = this.parseExpr()
     return { name, value }
   }
 
   private parseChild(): Child {
-    // Children can be any expression except lambdas or bare blocks.
-    // Using parseExpr lets binary arithmetic (e.g. `count + 1`) and
-    // control-flow expressions (`if`, `for`, `match`) appear inline.
+    // Children can be any expression except lambdas, bare blocks, or
+    // assignments. Using parseExpr lets binary arithmetic (e.g. `count + 1`)
+    // and control-flow expressions (`if`, `for`, `match`) appear inline.
     const e = this.parseExpr()
-    if (e.kind === 'Lambda' || e.kind === 'Block') {
+    if (e.kind === 'Lambda' || e.kind === 'Block' || e.kind === 'AssignExpr') {
       throw this.error(`unexpected ${e.kind} as child`)
     }
     return e

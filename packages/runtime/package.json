@@ -12,7 +12,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -21,5 +24,9 @@
   },
   "dependencies": {
     "signal-polyfill": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^28.0.1",
+    "jsdom": "^29.1.0"
   }
 }

@@ -136,6 +136,36 @@ describe('codegen', () => {
     expect(js).toContain('export const App = () => [h("div", { "class": "card" }, ["hi"]), h("style", {}, [".card { padding: 1rem; }')
   })
 
+  it('emits an assignment to a state cell as cell.set(rhs)', () => {
+    const js = compile(`
+      let count = 0
+      let inc = () => count = count + 1
+    `)
+    expect(js).toContain('export const inc = () => count.set((count.get() + 1))')
+  })
+
+  it('throws on assignment to a computed cell', () => {
+    expect(() => compile(`
+      let count = 0
+      let doubled = computed(count * 2)
+      let bad = () => doubled = 99
+    `)).toThrow(/cannot assign to computed cell 'doubled'/)
+  })
+
+  it('emits a lambda-valued prop as a JS arrow function (event handler)', () => {
+    const js = compile(`
+      let count = 0
+      let App = () => button(onClick: () => count = count + 1) { "+" }
+    `)
+    expect(js).toContain('h("button", { "onClick": () => count.set((count.get() + 1)) }, ["+"])')
+  })
+
+  it('does not turn a lambda parameter assignment into .set()', () => {
+    // Inside the lambda body, `n` is a param — assignment must stay plain JS.
+    const js = compile('let f = (n: number) => n = n + 1')
+    expect(js).toContain('export const f = (n) => (n = (n + 1))')
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       let Greeting = (name: string) => {

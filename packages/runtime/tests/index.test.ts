@@ -66,4 +66,9 @@ describe('@tu/runtime', () => {
     const js = 'if (x < 10 && y > 0) console.log("ok")'
     expect(renderToString(h('script', {}, [js]))).toBe(`<script>${js}</script>`)
   })
+
+  it('renderToString skips function-typed props (event handlers have no SSR rep)', () => {
+    const v = h('button', { onClick: () => {}, class: 'b' }, ['+'])
+    expect(renderToString(v)).toBe('<button class="b">+</button>')
+  })
 })

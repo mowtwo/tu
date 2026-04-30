@@ -1,0 +1,18 @@
+{
+  "name": "@tu-examples/clicker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1.5 demo: interactive counter — `count = count + 1`, onClick handlers, mount() in a jsdom-simulated browser.",
+  "scripts": {
+    "demo": "node run.mjs",
+    "build": "echo 'clicker example: built on demand by run.mjs'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*",
+    "jsdom": "^26.0.0"
+  }
+}

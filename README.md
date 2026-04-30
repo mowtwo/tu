@@ -55,6 +55,9 @@ pnpm --filter @tu-examples/todo demo
 
 # M1.4 — Card: a component with a `style { ... }` block
 pnpm --filter @tu-examples/styled demo
+
+# M1.5 — Clicker: interactive counter, mounted into a jsdom-simulated browser
+pnpm --filter @tu-examples/clicker demo
 ```
 
 ### VS Code syntax highlighting (M1.1)
@@ -78,6 +81,7 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | ✅ |
 | M1.3 | `if` / `for` / `match` expressions | ✅ |
 | M1.4 | `style { … }` block | ✅ |
+| M1.5 | Events + `mount()` (interactive components) | ✅ |
 | M2 | Type inference + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |
