@@ -1,10 +1,9 @@
-import { compileToTSWithMap } from '@tu/compiler'
+import { compileToTSWithMap, parse, tokenize, type Program } from '@tu/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { buildSourceMapper, type MappingSegment } from './source-map.js'
-import { decodeMappings } from './source-map.js'
+import { buildSourceMapper, decodeMappings } from './source-map.js'
 
 export interface TuDiagnostic {
   /** 0-based line in the .tu source. */
@@ -17,6 +16,11 @@ export interface TuDiagnostic {
   message: string
   /** TS error code (e.g. 2322), surfaced for diagnostic.code in the LSP. */
   code: number
+}
+
+/** `/path/Foo.tu` → `/path/Foo.ts` so the virtual path matches the import-rewrite codegen does. */
+function tuPathToTs(p: string): string {
+  return p.endsWith('.tu') ? p.slice(0, -'.tu'.length) + '.ts' : p + '.ts'
 }
 
 /** Locate `@tu/runtime`'s `.d.ts` so the in-memory program can resolve the import. */
@@ -36,26 +40,108 @@ function findRuntimeTypesPath(): string {
   )
 }
 
+interface Shadow {
+  /** Absolute virtual TS path (foo.ts) — what tsserver resolves imports to. */
+  virtualPath: string
+  /** Absolute path of the original .tu source. */
+  tuPath: string
+  /** Compiled TS source. */
+  ts: string
+  /** Source map for translating tsserver diagnostics back to .tu line/col. */
+  mappings: ReturnType<typeof decodeMappings>
+  /** Pre-built mapping function. */
+  mapPos: (genLine: number, genCol: number) => { line: number; col: number }
+}
+
 /**
- * Type-check a single `.tu` source. Returns diagnostics with positions
- * mapped back to .tu line/col coordinates. Uses TypeScript's in-process
- * compiler API — no spawning, sub-second on small modules.
+ * Walk the import graph rooted at `(rootSource, rootFilename)`, compile every
+ * reachable `.tu` to a TS shadow, and return the closure as a Map keyed by
+ * the shadow's virtual path. The root is included; transitively imported
+ * `.tu` files are read from disk (in-memory edits to OTHER files are not
+ * picked up — V2 will surface them by routing through the LSP's open-doc
+ * cache).
+ *
+ * Files we can't read (missing, permission denied) are skipped silently;
+ * tsserver will produce its own "Cannot find module" diagnostic mapped to
+ * the import line.
+ */
+function buildShadowGraph(rootSource: string, rootFilename: string): Map<string, Shadow> {
+  const shadows = new Map<string, Shadow>()
+  const queue: { source: string; filename: string }[] = [
+    { source: rootSource, filename: rootFilename },
+  ]
+  const seen = new Set<string>()
+  while (queue.length > 0) {
+    const { source, filename } = queue.shift()!
+    if (seen.has(filename)) continue
+    seen.add(filename)
+    let compiled
+    let ast: Program
+    try {
+      compiled = compileToTSWithMap(source, { filename })
+      ast = parse(tokenize(source, filename), source, filename)
+    } catch {
+      // A Tu compile error in an imported module short-circuits its analysis,
+      // but doesn't tank the whole LSP — the importer will still be checked,
+      // and tsserver will emit "cannot find module" if the broken file's
+      // exports aren't reachable. The compile error itself surfaces when the
+      // user opens that broken file directly.
+      continue
+    }
+    const virtualPath = tuPathToTs(filename)
+    shadows.set(virtualPath, {
+      virtualPath,
+      tuPath: filename,
+      ts: compiled.code,
+      mappings: decodeMappings(compiled.map.mappings),
+      mapPos: buildSourceMapper(compiled.map),
+    })
+
+    // Walk top-level imports + re-exports for relative `.tu` paths.
+    for (const stmt of ast.body) {
+      if (stmt.kind !== 'ImportDecl' && stmt.kind !== 'ReExportDecl') continue
+      if (!stmt.source.endsWith('.tu')) continue
+      // Only follow relative paths — bare-specifier imports are npm modules
+      // resolved by tsserver against node_modules, not part of our graph.
+      if (!stmt.source.startsWith('.')) continue
+      const importPath = resolve(dirname(filename), stmt.source)
+      if (seen.has(importPath)) continue
+      try {
+        const importedSource = readFileSync(importPath, 'utf-8')
+        queue.push({ source: importedSource, filename: importPath })
+      } catch {
+        // missing / unreadable — let tsserver complain at the import site
+      }
+    }
+  }
+  return shadows
+}
+
+/**
+ * Type-check a single `.tu` source against its full import graph. The current
+ * document's text is used verbatim; transitively-imported `.tu` files are
+ * read from disk. Returns diagnostics for the root file only (cross-file
+ * errors land in the file that imports the broken thing).
  *
  * V1 limitations:
- * - Single-file analysis; cross-`.tu` imports are not resolved through
- *   the LSP (the user sees a cannot-find-module error if they import
- *   from another `.tu`). M3 V2 work.
- * - Per-statement source-map granularity, so a diagnostic shows up at
- *   the start of the offending `let` / `import` line, not pointed at
- *   the exact token.
+ * - In-memory edits to non-root files are NOT seen — this only resolves
+ *   through the disk for transitive deps. Open multiple files in VS Code
+ *   and switching between them re-runs from disk every time. Acceptable
+ *   for the smoke-test scale; future work for incremental.
+ * - Per-statement source-map granularity, so a diagnostic shows up at the
+ *   start of the offending `let` / `import` line, not pointed at the exact
+ *   token.
  */
 export function checkTuSource(source: string, filename: string): TuDiagnostic[] {
-  let tsResult
+  // Normalize filename to absolute up-front so the BFS keys + the root
+  // lookup agree (the BFS uses whatever filename it's given verbatim).
+  const rootAbsPath = isAbsolute(filename) ? filename : resolve(process.cwd(), filename)
+  let shadows: Map<string, Shadow>
   try {
-    tsResult = compileToTSWithMap(source, { filename })
+    shadows = buildShadowGraph(source, rootAbsPath)
   } catch (err) {
-    // A compile-side syntax error already carries `file:line:col` in its
-    // message thanks to M1.9. Surface it as a single diagnostic at line 0.
+    // A Tu compile error on the ROOT file (the one being checked) surfaces
+    // here. The error is already pre-formatted with file:line:col by M1.9.
     return [
       {
         line: 0,
@@ -67,17 +153,36 @@ export function checkTuSource(source: string, filename: string): TuDiagnostic[] 
       },
     ]
   }
-  const { code: virtualTs, map } = tsResult
-  const segments = decodeMappings(map.mappings)
-  const mapPos = buildSourceMapper(map)
-
-  const virtualPath = isAbsolute(filename) ? filename + '.ts' : resolve(process.cwd(), filename) + '.ts'
+  const rootVirtualPath = tuPathToTs(rootAbsPath)
+  const rootShadow = shadows.get(rootVirtualPath)
+  if (!rootShadow) {
+    // The root failed to compile inside buildShadowGraph (caught silently
+    // there). Re-run compile so we can surface the formatted error.
+    try {
+      compileToTSWithMap(source, { filename })
+    } catch (err) {
+      return [
+        {
+          line: 0,
+          col: 0,
+          length: 1,
+          severity: 'error',
+          message: err instanceof Error ? err.message : String(err),
+          code: -1,
+        },
+      ]
+    }
+    return []
+  }
   const runtimeTypes = findRuntimeTypesPath()
 
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
+    // Tu's codegen rewrites cross-`.tu` imports to `.ts` paths in the TS
+    // shadow (so tsserver resolves the sibling shadow). Permit them.
+    allowImportingTsExtensions: true,
     strict: true,
     skipLibCheck: true,
     noEmit: true,
@@ -89,31 +194,31 @@ export function checkTuSource(source: string, filename: string): TuDiagnostic[] 
   const host = ts.createCompilerHost(compilerOptions, true)
   const realGetSourceFile = host.getSourceFile.bind(host)
   host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (name === virtualPath) {
-      return ts.createSourceFile(name, virtualTs, languageVersion, true)
+    const shadow = shadows.get(name)
+    if (shadow) {
+      return ts.createSourceFile(name, shadow.ts, languageVersion, true)
     }
     return realGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile)
   }
   const realFileExists = host.fileExists.bind(host)
-  host.fileExists = (name) => name === virtualPath || realFileExists(name)
+  host.fileExists = (name) => shadows.has(name) || realFileExists(name)
   const realReadFile = host.readFile.bind(host)
-  host.readFile = (name) => (name === virtualPath ? virtualTs : realReadFile(name))
+  host.readFile = (name) => shadows.get(name)?.ts ?? realReadFile(name)
 
   const program = ts.createProgram({
-    rootNames: [virtualPath],
+    rootNames: [rootShadow.virtualPath],
     options: compilerOptions,
     host,
   })
 
   const tsDiagnostics = ts.getPreEmitDiagnostics(program)
   return tsDiagnostics
-    .filter((d) => d.file?.fileName === virtualPath)
-    .map((d) => translateDiagnostic(d, segments, mapPos))
+    .filter((d) => d.file?.fileName === rootShadow.virtualPath)
+    .map((d) => translateDiagnostic(d, rootShadow.mapPos))
 }
 
 function translateDiagnostic(
   d: ts.Diagnostic,
-  _segments: MappingSegment[],
   mapPos: (genLine: number, genCol: number) => { line: number; col: number }
 ): TuDiagnostic {
   const start = d.start ?? 0
