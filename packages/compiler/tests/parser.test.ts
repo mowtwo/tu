@@ -12,7 +12,7 @@ describe('parser', () => {
   })
 
   it('parses a bare `let` as module-private (exported: false)', () => {
-    expect(ast('let x = "hi"')).toEqual({
+    expect(ast('let x = "hi"')).toMatchObject({
       kind: 'Program',
       body: [
         {
@@ -27,7 +27,7 @@ describe('parser', () => {
   })
 
   it('parses `export let` as public (exported: true)', () => {
-    expect(ast('export let x = "hi"')).toEqual({
+    expect(ast('export let x = "hi"')).toMatchObject({
       kind: 'Program',
       body: [
         {
@@ -65,7 +65,7 @@ describe('parser', () => {
     const lambda = (tree.body[0] as { value: unknown }).value as {
       params: { name: string; type?: string }[]
     }
-    expect(lambda.params).toEqual([
+    expect(lambda.params).toMatchObject([
       { name: 'name', type: 'string' },
       { name: 'age', type: 'number' },
     ])
@@ -79,62 +79,49 @@ describe('parser', () => {
         }
       }
     `)
-    expect(tree).toMatchInlineSnapshot(`
-      {
-        "body": [
-          {
-            "exported": false,
-            "kind": "LetDecl",
-            "name": "App",
-            "start": 7,
-            "value": {
-              "body": {
-                "body": [
-                  {
-                    "children": [
-                      {
-                        "children": [
-                          {
-                            "kind": "StringLit",
-                            "value": "Hello, ",
-                          },
-                          {
-                            "kind": "Ident",
-                            "name": "name",
-                          },
-                          {
-                            "kind": "StringLit",
-                            "value": "!",
-                          },
-                        ],
-                        "kind": "TagCall",
-                        "props": [],
-                        "tag": "h1",
-                      },
-                    ],
-                    "kind": "TagCall",
-                    "props": [
-                      {
-                        "name": "class",
-                        "value": {
-                          "kind": "StringLit",
-                          "value": "g",
-                        },
-                      },
-                    ],
-                    "tag": "div",
-                  },
-                ],
-                "kind": "Block",
-              },
-              "kind": "Lambda",
-              "params": [],
+    // Match the structural shape; positional metadata (`start`, `end`,
+    // `tagStart`, etc.) is asserted by the source-map tests instead.
+    expect(tree).toMatchObject({
+      kind: 'Program',
+      body: [
+        {
+          kind: 'LetDecl',
+          exported: false,
+          name: 'App',
+          value: {
+            kind: 'Lambda',
+            params: [],
+            body: {
+              kind: 'Block',
+              body: [
+                {
+                  kind: 'TagCall',
+                  tag: 'div',
+                  props: [
+                    {
+                      name: 'class',
+                      value: { kind: 'StringLit', value: 'g' },
+                    },
+                  ],
+                  children: [
+                    {
+                      kind: 'TagCall',
+                      tag: 'h1',
+                      props: [],
+                      children: [
+                        { kind: 'StringLit', value: 'Hello, ' },
+                        { kind: 'Ident', name: 'name' },
+                        { kind: 'StringLit', value: '!' },
+                      ],
+                    },
+                  ],
+                },
+              ],
             },
           },
-        ],
-        "kind": "Program",
-      }
-    `)
+        },
+      ],
+    })
   })
 
   it('reports errors with line:col + a code frame', () => {
@@ -226,7 +213,7 @@ describe('parser', () => {
     const tag = (tree.body[0] as { value: { body: unknown } }).value as {
       body: { props: { name: string; value: { kind: string; name?: string } }[] }
     }
-    expect(tag.body.props[0]).toEqual({
+    expect(tag.body.props[0]).toMatchObject({
       name: 'class',
       value: { kind: 'ClassRef', name: 'card' },
     })
@@ -239,7 +226,7 @@ describe('parser', () => {
     }
     expect(inner.body.kind).toBe('TagCall')
     expect(inner.body.tag).toBe('div')
-    expect(inner.body.props[0]).toEqual({
+    expect(inner.body.props[0]).toMatchObject({
       name: 'class',
       value: { kind: 'ClassRef', name: 'card' },
     })

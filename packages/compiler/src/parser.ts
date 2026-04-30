@@ -101,7 +101,13 @@ export class Parser {
     this.expect(TokenKind.RBrace)
     this.expect(TokenKind.From)
     const sourceTok = this.expect(TokenKind.String)
-    return { kind: 'ImportDecl', names, source: sourceTok.value as string, start }
+    return {
+      kind: 'ImportDecl',
+      names,
+      source: sourceTok.value as string,
+      start,
+      end: sourceTok.end,
+    }
   }
 
   private parseReExportDecl(start: number): ReExportDecl {
@@ -114,15 +120,30 @@ export class Parser {
     this.expect(TokenKind.RBrace)
     this.expect(TokenKind.From)
     const sourceTok = this.expect(TokenKind.String)
-    return { kind: 'ReExportDecl', names, source: sourceTok.value as string, start }
+    return {
+      kind: 'ReExportDecl',
+      names,
+      source: sourceTok.value as string,
+      start,
+      end: sourceTok.end,
+    }
   }
 
   private parseLetDecl(start: number, exported: boolean): LetDecl {
     this.expect(TokenKind.Let)
-    const name = this.expect(TokenKind.Ident).text
+    const nameTok = this.expect(TokenKind.Ident)
     this.expect(TokenKind.Equals)
     const value = this.parseExpr()
-    return { kind: 'LetDecl', exported, name, value, start }
+    return {
+      kind: 'LetDecl',
+      exported,
+      name: nameTok.text,
+      value,
+      start,
+      end: value.end,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+    }
   }
 
   // Pratt-style precedence climber for binary expressions, with a
@@ -133,10 +154,18 @@ export class Parser {
     if (this.peek().kind === TokenKind.Ident) {
       const next = this.tokens[this.pos + 1]
       if (next?.kind === TokenKind.Equals) {
-        const target = this.peek().text
+        const targetTok = this.peek()
         this.pos += 2 // consume Ident and Equals
         const value = this.parseExpr()
-        return { kind: 'AssignExpr', target, value } satisfies AssignExpr
+        return {
+          kind: 'AssignExpr',
+          target: targetTok.text,
+          value,
+          start: targetTok.start,
+          end: value.end,
+          targetStart: targetTok.start,
+          targetEnd: targetTok.end,
+        } satisfies AssignExpr
       }
     }
     return this.parseBinary(0)
@@ -149,7 +178,14 @@ export class Parser {
       if (!op || op.prec < minPrec) break
       this.pos++ // consume operator
       const right = this.parseBinary(op.prec + 1)
-      left = { kind: 'BinaryExpr', op: op.op, left, right } satisfies BinaryExpr
+      left = {
+        kind: 'BinaryExpr',
+        op: op.op,
+        left,
+        right,
+        start: left.start,
+        end: right.end,
+      } satisfies BinaryExpr
     }
     return left
   }
@@ -174,9 +210,14 @@ export class Parser {
    * compile error — the shorthand already binds class.
    */
   private parseClassRefOrPugShorthand(): Expr {
-    this.expect(TokenKind.Dot)
-    const name = this.expect(TokenKind.Ident).text
-    const ref: ClassRef = { kind: 'ClassRef', name }
+    const dotTok = this.expect(TokenKind.Dot)
+    const nameTok = this.expect(TokenKind.Ident)
+    const ref: ClassRef = {
+      kind: 'ClassRef',
+      name: nameTok.text,
+      start: dotTok.start,
+      end: nameTok.end,
+    }
     const next = this.peek().kind
     if (next === TokenKind.LParen || (next === TokenKind.LBrace && !this.noBraceBlock)) {
       return this.parsePugShorthandTail(ref)
@@ -199,18 +240,33 @@ export class Parser {
       this.expect(TokenKind.RParen)
     }
     const children: Child[] = []
+    let endTok: Token
     if (this.peek().kind === TokenKind.LBrace) {
       this.expect(TokenKind.LBrace)
       while (this.peek().kind !== TokenKind.RBrace) {
         children.push(this.parseChild())
       }
-      this.expect(TokenKind.RBrace)
+      endTok = this.expect(TokenKind.RBrace)
+    } else {
+      // Tail paren is required if no children; the previous expect(RParen) gives the close.
+      endTok = this.tokens[this.pos - 1]!
     }
-    return { kind: 'TagCall', tag: 'div', props, children }
+    return {
+      kind: 'TagCall',
+      tag: 'div',
+      props,
+      children,
+      start: classRef.start,
+      end: endTok.end,
+      // The "tag" is synthesized — the source has no `div` token, so anchor
+      // the tag range on the class ref so a TS error on `div` lands on `.foo`.
+      tagStart: classRef.start,
+      tagEnd: classRef.end,
+    }
   }
 
   private parseLambda(): Lambda {
-    this.expect(TokenKind.LParen)
+    const lparen = this.expect(TokenKind.LParen)
     const params: Param[] = []
     while (this.peek().kind !== TokenKind.RParen) {
       params.push(this.parseParam())
@@ -219,31 +275,60 @@ export class Parser {
     this.expect(TokenKind.RParen)
     this.expect(TokenKind.FatArrow)
     const body = this.parseExpr()
-    return { kind: 'Lambda', params, body }
+    return {
+      kind: 'Lambda',
+      params,
+      body,
+      start: lparen.start,
+      end: body.end,
+    }
   }
 
   private parseParam(): Param {
-    const name = this.expect(TokenKind.Ident).text
+    const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
+    let endOffset = nameTok.end
     if (this.peek().kind === TokenKind.Colon) {
       this.pos++
-      type = this.expect(TokenKind.Ident).text
+      const typeTok = this.expect(TokenKind.Ident)
+      type = typeTok.text
+      endOffset = typeTok.end
     }
-    return type === undefined ? { name } : { name, type }
+    return type === undefined
+      ? {
+          name: nameTok.text,
+          start: nameTok.start,
+          end: endOffset,
+          nameStart: nameTok.start,
+          nameEnd: nameTok.end,
+        }
+      : {
+          name: nameTok.text,
+          type,
+          start: nameTok.start,
+          end: endOffset,
+          nameStart: nameTok.start,
+          nameEnd: nameTok.end,
+        }
   }
 
   private parseBlock(): Block {
-    this.expect(TokenKind.LBrace)
+    const lbrace = this.expect(TokenKind.LBrace)
     const body: Expr[] = []
     while (this.peek().kind !== TokenKind.RBrace) {
       body.push(this.parseExpr())
     }
-    this.expect(TokenKind.RBrace)
-    return { kind: 'Block', body }
+    const rbrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'Block',
+      body,
+      start: lbrace.start,
+      end: rbrace.end,
+    }
   }
 
   private parseIfExpr(): IfExpr {
-    this.expect(TokenKind.If)
+    const ifTok = this.expect(TokenKind.If)
     this.expect(TokenKind.LParen)
     const cond = this.parseExpr()
     this.expect(TokenKind.RParen)
@@ -257,14 +342,15 @@ export class Parser {
         elseBranch = this.parseBlock()
       }
     }
+    const end = elseBranch ? elseBranch.end : then.end
     return elseBranch === undefined
-      ? { kind: 'IfExpr', cond, then }
-      : { kind: 'IfExpr', cond, then, else: elseBranch }
+      ? { kind: 'IfExpr', cond, then, start: ifTok.start, end }
+      : { kind: 'IfExpr', cond, then, else: elseBranch, start: ifTok.start, end }
   }
 
   private parseForExpr(): ForExpr {
-    this.expect(TokenKind.For)
-    const item = this.expect(TokenKind.Ident).text
+    const forTok = this.expect(TokenKind.For)
+    const itemTok = this.expect(TokenKind.Ident)
     this.expect(TokenKind.In)
     // Suppress trailing-brace block during iter parsing so that
     // `for x in items { body }` doesn't treat `items { body }` as a tag-call.
@@ -277,22 +363,41 @@ export class Parser {
       this.noBraceBlock = prev
     }
     const body = this.parseBlock()
-    return { kind: 'ForExpr', item, iter, body }
+    return {
+      kind: 'ForExpr',
+      item: itemTok.text,
+      iter,
+      body,
+      start: forTok.start,
+      end: body.end,
+      itemStart: itemTok.start,
+      itemEnd: itemTok.end,
+    }
   }
 
   private parsePrimary(): Expr {
     const t = this.peek()
     if (t.kind === TokenKind.String) {
       this.pos++
-      return { kind: 'StringLit', value: t.value as string } satisfies StringLit
+      return {
+        kind: 'StringLit',
+        value: t.value as string,
+        start: t.start,
+        end: t.end,
+      } satisfies StringLit
     }
     if (t.kind === TokenKind.Number) {
       this.pos++
-      return { kind: 'NumberLit', value: t.value as number } satisfies NumberLit
+      return {
+        kind: 'NumberLit',
+        value: t.value as number,
+        start: t.start,
+        end: t.end,
+      } satisfies NumberLit
     }
     if (t.kind === TokenKind.Ident) {
       this.pos++
-      return this.parseIdentTail(t.text)
+      return this.parseIdentTail(t)
     }
     throw this.error(`unexpected token ${TokenKind[t.kind]}`)
   }
@@ -303,30 +408,41 @@ export class Parser {
    *  - TagCall (named-prop call, optionally followed by children block)
    *  - CallExpr (positional-arg call)
    */
-  private parseIdentTail(name: string): Expr {
+  private parseIdentTail(nameTok: Token): Expr {
+    const name = nameTok.text
     const next = this.peek().kind
     if (next === TokenKind.LBrace && !this.noBraceBlock) {
       // `style { … }` (no parens) is a special-form CSS block; the lexer has
       // already tokenized the body as a single CssText. Anything else with a
       // trailing `{` is a tag-call children block.
       if (name === 'style' && this.tokens[this.pos + 1]?.kind === TokenKind.CssText) {
-        return this.parseStyleBlock()
+        return this.parseStyleBlock(nameTok)
       }
-      return this.parseTagCall(name)
+      return this.parseTagCall(nameTok)
     }
     if (next === TokenKind.LParen) {
       const shape = this.peekCallShape()
-      if (shape === 'tag') return this.parseTagCall(name)
-      return this.parseCallExpr(name)
+      if (shape === 'tag') return this.parseTagCall(nameTok)
+      return this.parseCallExpr(nameTok)
     }
-    return { kind: 'Ident', name } satisfies Ident
+    return {
+      kind: 'Ident',
+      name,
+      start: nameTok.start,
+      end: nameTok.end,
+    } satisfies Ident
   }
 
-  private parseStyleBlock(): StyleBlock {
+  private parseStyleBlock(styleTok: Token): StyleBlock {
     this.expect(TokenKind.LBrace)
     const css = this.expect(TokenKind.CssText).value as string
-    this.expect(TokenKind.RBrace)
-    return { kind: 'StyleBlock', css }
+    const rbrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'StyleBlock',
+      css,
+      start: styleTok.start,
+      end: rbrace.end,
+    }
   }
 
   /**
@@ -346,7 +462,7 @@ export class Parser {
     return 'call'
   }
 
-  private parseTagCall(tag: string): TagCall {
+  private parseTagCall(tagTok: Token): TagCall {
     const props: Prop[] = []
     if (this.peek().kind === TokenKind.LParen) {
       this.expect(TokenKind.LParen)
@@ -357,25 +473,43 @@ export class Parser {
       this.expect(TokenKind.RParen)
     }
     const children: Child[] = []
+    let endOffset = this.tokens[this.pos - 1]!.end
     if (this.peek().kind === TokenKind.LBrace) {
       this.expect(TokenKind.LBrace)
       while (this.peek().kind !== TokenKind.RBrace) {
         children.push(this.parseChild())
       }
-      this.expect(TokenKind.RBrace)
+      endOffset = this.expect(TokenKind.RBrace).end
     }
-    return { kind: 'TagCall', tag, props, children }
+    return {
+      kind: 'TagCall',
+      tag: tagTok.text,
+      props,
+      children,
+      start: tagTok.start,
+      end: endOffset,
+      tagStart: tagTok.start,
+      tagEnd: tagTok.end,
+    }
   }
 
-  private parseCallExpr(callee: string): CallExpr {
+  private parseCallExpr(calleeTok: Token): CallExpr {
     this.expect(TokenKind.LParen)
     const args: Expr[] = []
     while (this.peek().kind !== TokenKind.RParen) {
       args.push(this.parseExpr())
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
-    this.expect(TokenKind.RParen)
-    return { kind: 'CallExpr', callee, args }
+    const rparen = this.expect(TokenKind.RParen)
+    return {
+      kind: 'CallExpr',
+      callee: calleeTok.text,
+      args,
+      start: calleeTok.start,
+      end: rparen.end,
+      calleeStart: calleeTok.start,
+      calleeEnd: calleeTok.end,
+    }
   }
 
   private parseProp(): Prop {

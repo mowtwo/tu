@@ -1,4 +1,5 @@
-import type { SourceMapV3 } from '@tu/compiler'
+import type { SourceMapV3, TokenMapping } from '@tu/compiler'
+import { lineColAt } from '@tu/compiler'
 
 /**
  * Decoded mapping segment: the position in the generated TS, plus the
@@ -127,4 +128,76 @@ export function buildSourceMapper(
 ): (genLine: number, genCol: number) => { line: number; col: number } {
   const segments = decodeMappings(map.mappings)
   return (genLine, genCol) => mapToSource(segments, genLine, genCol)
+}
+
+/**
+ * Map a generated TS byte range `[genStart, genStart + genLength)` to a
+ * source `.tu` range. Uses the per-token mapping list (richer than V3) to
+ * find the most-specific span that contains the diagnostic, so a TS error
+ * on a single identifier squiggles only that identifier in the source.
+ *
+ * Strategy: find the tightest TokenMapping whose JS span contains
+ * `genStart`, plus the tightest one that contains `(genStart + genLength - 1)`,
+ * and return their combined source span. Falls back to the per-statement
+ * mapper when no token covers the position (e.g. inside a synthetic emit
+ * like `.get()`).
+ */
+export function mapTSRangeToSource(
+  tokens: TokenMapping[],
+  generated: string,
+  source: string,
+  genStart: number,
+  genLength: number,
+  fallback: (genLine: number, genCol: number) => { line: number; col: number }
+): { line: number; col: number; length: number } {
+  const genEnd = Math.max(genStart, genStart + genLength)
+  const startTok = tightestContaining(tokens, genStart)
+  // For length === 0 / 1 diagnostics, the start-side token is enough.
+  const endTok = genLength <= 1 ? startTok : tightestContaining(tokens, genEnd - 1)
+  if (startTok && endTok) {
+    const srcStart = Math.min(startTok.srcStart, endTok.srcStart)
+    const srcEnd = Math.max(startTok.srcEnd, endTok.srcEnd)
+    const startLC = lineColAt(source, srcStart)
+    return {
+      line: startLC.line - 1,
+      col: startLC.col - 1,
+      length: Math.max(srcEnd - srcStart, 1),
+    }
+  }
+  // No token covers the diagnostic position — fall back to the per-stmt
+  // mapping (start point) and a length of 1. The LSP layer expands that
+  // into the let-header range as before.
+  const lc = lineColAtIfPossible(generated, genStart)
+  if (!lc) return { line: 0, col: 0, length: 1 }
+  const mapped = fallback(lc.line, lc.col)
+  return { line: mapped.line, col: mapped.col, length: 1 }
+}
+
+/**
+ * Find the smallest (`jsEnd - jsStart`) TokenMapping whose JS span contains
+ * `jsOffset`. Returns undefined if no mapping contains it. Linear scan is
+ * fine — even large files produce a few hundred mappings.
+ */
+function tightestContaining(
+  tokens: TokenMapping[],
+  jsOffset: number
+): TokenMapping | undefined {
+  let best: TokenMapping | undefined
+  let bestWidth = Number.POSITIVE_INFINITY
+  for (const t of tokens) {
+    if (t.jsStart <= jsOffset && jsOffset < t.jsEnd) {
+      const w = t.jsEnd - t.jsStart
+      if (w < bestWidth) {
+        best = t
+        bestWidth = w
+      }
+    }
+  }
+  return best
+}
+
+function lineColAtIfPossible(source: string, offset: number): { line: number; col: number } | undefined {
+  if (offset < 0 || offset > source.length) return undefined
+  const lc = lineColAt(source, offset)
+  return { line: lc.line - 1, col: lc.col - 1 }
 }

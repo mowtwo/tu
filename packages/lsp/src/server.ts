@@ -34,14 +34,27 @@ const SEVERITY_MAP: Record<TuDiagnostic['severity'], DiagnosticSeverity> = {
 }
 
 function toLspDiagnostic(d: TuDiagnostic, documentText: string): Diagnostic {
-  // V1 source maps are per top-level statement, so we land on column 0 of
-  // the offending `let` line. Highlight from there up to the `=` (or the
-  // end of the line if no `=`) so the squiggle covers the binding header
-  // — `export let bad1` — and clearly identifies which binding is broken
-  // without dragging across the whole multi-line body. Token-level ranges
-  // are V2 work.
+  // The compiler+LSP source-map pipeline now resolves token-level source
+  // spans, so most diagnostics arrive with a meaningful `length` covering
+  // exactly the offending identifier / literal. Length === 1 is the
+  // fallback signal — the diagnostic landed inside synthetic emit (`.get()`,
+  // runtime import, etc.) and we couldn't recover a token. In that case
+  // expand to the `let`-header range so the squiggle still identifies the
+  // broken binding.
+  if (d.length <= 1) {
+    const start = { line: d.line, character: d.col }
+    const end = { line: d.line, character: letHeaderEnd(documentText, d.line, d.col) }
+    const range: Range = { start, end }
+    return {
+      severity: SEVERITY_MAP[d.severity],
+      range,
+      message: d.message,
+      source: '@tu/lsp',
+      code: d.code === -1 ? undefined : d.code,
+    } satisfies Diagnostic
+  }
   const start = { line: d.line, character: d.col }
-  const end = { line: d.line, character: lineEndForRange(documentText, d.line, d.col) }
+  const end = advance(documentText, d.line, d.col, d.length)
   const range: Range = { start, end }
   return {
     severity: SEVERITY_MAP[d.severity],
@@ -53,13 +66,43 @@ function toLspDiagnostic(d: TuDiagnostic, documentText: string): Diagnostic {
 }
 
 /**
- * Compute the end column for a per-statement diagnostic squiggle. Looks at
- * the source text of the line containing the error and returns the column
- * of the first `=` that appears after `startCol`, or the end of the line if
- * no `=` is found. Falls back to `startCol + 1` (single character) for
- * defensive corner cases.
+ * Walk `length` source bytes forward from (line, col) and return the
+ * resulting (line, col). Handles spans that cross newlines (block-spanning
+ * diagnostics like a whole tag-call) without producing invalid ranges.
  */
-function lineEndForRange(documentText: string, line: number, startCol: number): number {
+function advance(
+  documentText: string,
+  line: number,
+  col: number,
+  length: number
+): { line: number; character: number } {
+  const lines = documentText.split('\n')
+  let curLine = line
+  let curCol = col
+  let remaining = length
+  while (remaining > 0 && curLine < lines.length) {
+    const lineText = lines[curLine] ?? ''
+    const lineRest = lineText.length - curCol
+    // +1 for the implicit `\n` consumed when crossing a line boundary.
+    if (remaining <= lineRest) {
+      curCol += remaining
+      remaining = 0
+      break
+    }
+    remaining -= lineRest + 1
+    curLine++
+    curCol = 0
+  }
+  return { line: curLine, character: curCol }
+}
+
+/**
+ * Compute the end column for a fallback (no-token-mapping) diagnostic
+ * squiggle. Looks at the source text of the line containing the error and
+ * returns the column of the first `=` that appears after `startCol`, or the
+ * end of the line if no `=` is found.
+ */
+function letHeaderEnd(documentText: string, line: number, startCol: number): number {
   const lines = documentText.split('\n')
   const lineText = lines[line]
   if (lineText === undefined) return startCol + 1

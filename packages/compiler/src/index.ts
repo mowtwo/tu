@@ -1,4 +1,4 @@
-import { generateTSWithMap, generateWithMap, type SourceMapV3 } from './codegen.js'
+import { generateTSWithMap, generateWithMap, type SourceMapV3, type TokenMapping } from './codegen.js'
 import { parse } from './parser.js'
 import { tokenize } from './lexer.js'
 
@@ -9,7 +9,7 @@ export { Parser, parse } from './parser.js'
 export { generate, generateTSWithMap, generateWithMap } from './codegen.js'
 export { TokenKind, type Token } from './tokens.js'
 export { formatError, lineColAt } from './diagnostics.js'
-export type { SourceMapV3 } from './codegen.js'
+export type { SourceMapV3, TokenMapping } from './codegen.js'
 export type * from './ast.js'
 
 export interface CompileOptions {
@@ -20,6 +20,9 @@ export interface CompileOptions {
 export interface CompileResult {
   code: string
   map: SourceMapV3
+  /** Per-token source-range mappings — consumed by the LSP for token-level
+   *  diagnostic ranges. Not part of V3; built alongside the standard map. */
+  tokenMappings: TokenMapping[]
 }
 
 /**

@@ -1,16 +1,16 @@
-import { compileToTSWithMap, parse, tokenize, type Program } from '@tu/compiler'
+import { compileToTSWithMap, parse, tokenize, type Program, type TokenMapping } from '@tu/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { buildSourceMapper, decodeMappings } from './source-map.js'
+import { buildSourceMapper, decodeMappings, mapTSRangeToSource } from './source-map.js'
 
 export interface TuDiagnostic {
   /** 0-based line in the .tu source. */
   line: number
   /** 0-based column in the .tu source. */
   col: number
-  /** Diagnostic length in TS characters; mapped 1:1 since per-statement granularity. */
+  /** Diagnostic length in `.tu` source bytes (not TS) — squiggle width. */
   length: number
   severity: 'error' | 'warning' | 'info' | 'hint'
   message: string
@@ -47,10 +47,14 @@ interface Shadow {
   tuPath: string
   /** Compiled TS source. */
   ts: string
+  /** Original .tu source — needed to convert source byte offsets to line/col. */
+  tuSource: string
   /** Source map for translating tsserver diagnostics back to .tu line/col. */
   mappings: ReturnType<typeof decodeMappings>
-  /** Pre-built mapping function. */
+  /** Pre-built mapping function (per-statement, used as the fallback). */
   mapPos: (genLine: number, genCol: number) => { line: number; col: number }
+  /** Per-token spans — drives token-level diagnostic ranges. */
+  tokenMappings: TokenMapping[]
 }
 
 /**
@@ -93,8 +97,10 @@ function buildShadowGraph(rootSource: string, rootFilename: string): Map<string,
       virtualPath,
       tuPath: filename,
       ts: compiled.code,
+      tuSource: source,
       mappings: decodeMappings(compiled.map.mappings),
       mapPos: buildSourceMapper(compiled.map),
+      tokenMappings: compiled.tokenMappings,
     })
 
     // Walk top-level imports + re-exports for relative `.tu` paths.
@@ -214,24 +220,27 @@ export function checkTuSource(source: string, filename: string): TuDiagnostic[] 
   const tsDiagnostics = ts.getPreEmitDiagnostics(program)
   return tsDiagnostics
     .filter((d) => d.file?.fileName === rootShadow.virtualPath)
-    .map((d) => translateDiagnostic(d, rootShadow.mapPos))
+    .map((d) => translateDiagnostic(d, rootShadow))
 }
 
-function translateDiagnostic(
-  d: ts.Diagnostic,
-  mapPos: (genLine: number, genCol: number) => { line: number; col: number }
-): TuDiagnostic {
+function translateDiagnostic(d: ts.Diagnostic, shadow: Shadow): TuDiagnostic {
   const start = d.start ?? 0
   const length = d.length ?? 1
-  const file = d.file
-  const { line: genLine, character: genCol } = file
-    ? file.getLineAndCharacterOfPosition(start)
-    : { line: 0, character: 0 }
-  const mapped = mapPos(genLine, genCol)
-  return {
-    line: mapped.line,
-    col: mapped.col,
+  // Token-level mapping: if a TokenMapping covers the diagnostic's TS span,
+  // use that span's source range. Otherwise fall back to the per-statement
+  // mapping (start point) and let the LSP layer expand it to the let header.
+  const range = mapTSRangeToSource(
+    shadow.tokenMappings,
+    shadow.ts,
+    shadow.tuSource,
+    start,
     length,
+    shadow.mapPos
+  )
+  return {
+    line: range.line,
+    col: range.col,
+    length: range.length,
     severity:
       d.category === ts.DiagnosticCategory.Error
         ? 'error'

@@ -20,13 +20,14 @@ describe('decodeMappings — V3 VLQ round-trip', () => {
     const src = 'export let a = 1\nexport let b = 2\nexport let c = 3'
     const { map } = compileToTSWithMap(src, { filename: 't.tu' })
     const segs = decodeMappings(map.mappings)
-    expect(segs.length).toBe(3)
-    expect(segs[0]?.srcLine).toBe(0)
-    expect(segs[1]?.srcLine).toBe(1)
-    expect(segs[2]?.srcLine).toBe(2)
-    // genLine increases between segments (each statement on its own line).
-    expect(segs[0]!.genLine).toBeLessThan(segs[1]!.genLine)
-    expect(segs[1]!.genLine).toBeLessThan(segs[2]!.genLine)
+    // M3.2: per-token mappings emit additional segments per source line —
+    // at minimum the statement anchor + the bound name + the literal value.
+    // Assert there's at least one segment landing on each source line.
+    const srcLines = new Set(segs.map((s) => s.srcLine))
+    expect(srcLines.has(0)).toBe(true)
+    expect(srcLines.has(1)).toBe(true)
+    expect(srcLines.has(2)).toBe(true)
+    expect(segs.length).toBeGreaterThanOrEqual(3)
   })
 })
 
@@ -48,12 +49,12 @@ describe('mapToSource — generated → source position lookup', () => {
       'export let b = 2',
       'export let c = 3',
     ])
-    // Find the genLine of segment 1 (the second statement) and ask for a
-    // position somewhere on it.
-    const seg1 = segs[1]!
-    const mapped = mapToSource(segs, seg1.genLine, seg1.genCol + 5)
+    // Find any segment whose source line is 1 (the second statement) and ask
+    // for a position somewhere on its generated line. The mapper should
+    // resolve back to source line 1.
+    const onLineOne = segs.find((s) => s.srcLine === 1)!
+    const mapped = mapToSource(segs, onLineOne.genLine, onLineOne.genCol + 5)
     expect(mapped.line).toBe(1)
-    expect(mapped.col).toBe(0)
   })
 
   it('a position past the last mapping pins to the last mapping', () => {
