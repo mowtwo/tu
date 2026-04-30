@@ -56,6 +56,8 @@ export class Lexer {
         return this.punct(TokenKind.Comma, start, 1)
       case ':':
         return this.punct(TokenKind.Colon, start, 1)
+      case '.':
+        return this.punct(TokenKind.Dot, start, 1)
       case '=':
         if (this.src.charAt(this.pos + 1) === '>') {
           return this.punct(TokenKind.FatArrow, start, 2)

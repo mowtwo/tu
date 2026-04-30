@@ -1,0 +1,16 @@
+{
+  "name": "@tu-examples/scoped",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1.8 demo: two components declaring the same `.card` selector — verifies scoping prevents collision.",
+  "scripts": {
+    "build": "echo 'scoped example: visual demo only — exercise it via the playground'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu/compiler": "workspace:*",
+    "@tu/runtime": "workspace:*"
+  }
+}

@@ -220,6 +220,46 @@ describe('parser', () => {
     expect(() => ast('let App = () => div { count = 5 }')).toThrow(/AssignExpr as child/)
   })
 
+  it('parses `.foo` as ClassRef when used as a prop value', () => {
+    const tree = ast('let App = () => div(class: .card) { "x" }')
+    const tag = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { props: { name: string; value: { kind: string; name?: string } }[] }
+    }
+    expect(tag.body.props[0]).toEqual({
+      name: 'class',
+      value: { kind: 'ClassRef', name: 'card' },
+    })
+  })
+
+  it('desugars `.foo() {…}` to a div TagCall with class injected', () => {
+    const tree = ast('let App = () => .card() { "x" }')
+    const inner = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { kind: string; tag: string; props: { name: string; value: { kind: string } }[] }
+    }
+    expect(inner.body.kind).toBe('TagCall')
+    expect(inner.body.tag).toBe('div')
+    expect(inner.body.props[0]).toEqual({
+      name: 'class',
+      value: { kind: 'ClassRef', name: 'card' },
+    })
+  })
+
+  it('desugars bare `.foo {…}` (no parens) to a div TagCall', () => {
+    const tree = ast('let App = () => .card { "x" }')
+    const inner = (tree.body[0] as { value: { body: unknown } }).value as {
+      body: { kind: string; tag: string; children: unknown[] }
+    }
+    expect(inner.body.kind).toBe('TagCall')
+    expect(inner.body.tag).toBe('div')
+    expect(inner.body.children).toHaveLength(1)
+  })
+
+  it('rejects an explicit `class:` prop in pug-shorthand', () => {
+    expect(() => ast('let App = () => .card(class: "extra") { "x" }')).toThrow(
+      /already binds class/
+    )
+  })
+
   it('parses comparison operators with lower precedence than arithmetic', () => {
     // a + 1 > 0  parses as (a + 1) > 0
     const tree = ast('let x = a + 1 > 0')

@@ -13,6 +13,7 @@ export enum TokenKind {
   RBrace,
   Comma,
   Colon,
+  Dot,
   Equals,
   FatArrow,
   // arithmetic

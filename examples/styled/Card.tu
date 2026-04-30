@@ -1,20 +1,17 @@
-// M1.4 demo: a component with a `style { … }` block.
+// M1.4 + M1.8 demo: a component with a scoped `style { … }` block.
 //
-// The `style { … }` block (no parens) is special-form: its body is preserved
-// verbatim as raw CSS, emitted as a sibling `<style>` element next to the
-// component's main vnode. The lambda body is a Block containing both, so
-// the compiled output is a fragment array `[card, style]`.
+// M1.4 introduced the `style { … }` block (raw CSS preserved verbatim, emitted
+// as a sibling `<style>` element). M1.8 added scoping: classes referenced
+// symbolically with `.classname` (instead of stringly `class: "classname"`)
+// get a per-component hash suffix in both the markup attribute and the CSS
+// selector, so two components declaring the same class name don't collide.
 //
-// Note: M1.4 is a textual style block — no scoping rewrite yet. CSS selectors
-// here are global. Scoping (auto class hash or `[data-tu-…]` attribute
-// rewrite) lands in a later milestone.
-
-let theme = "indigo"
+// The pug-style shorthand `.body() { … }` desugars to `div(class: .body)`.
 
 let Card = (title: string, body: string) => {
-  div(class: "card") {
-    h1(class: "card__title") { title }
-    p(class: "card__body") { body }
+  .card() {
+    h1(class: .card__title) { title }
+    .body() { body }
   }
   style {
     .card {
@@ -29,12 +26,12 @@ let Card = (title: string, body: string) => {
       margin: 0 0 0.5rem 0;
       font-size: 1.25rem;
       letter-spacing: -0.01em;
+      color: #a5b4fc;
     }
-    .card__body {
+    .body {
       margin: 0;
       line-height: 1.5;
       opacity: 0.85;
     }
-    .card > .card__title { color: #a5b4fc; }
   }
 }

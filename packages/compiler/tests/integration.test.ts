@@ -217,6 +217,53 @@ describe('compile + render end-to-end', () => {
     expect(html).not.toContain('&gt;')
   })
 
+  it('renders a scoped component with hashed class names matching the markup', async () => {
+    const html = await compileAndRun(
+      `
+        let Card = () => {
+          .card() { "hi" }
+          style { .card { padding: 1rem; } }
+        }
+      `,
+      (mod) => {
+        const Card = mod['Card'] as () => unknown
+        return renderToString(Card() as never)
+      }
+    )
+    // Pull the hashed class out of the rendered markup; the style tag
+    // must reference the same one.
+    const classMatch = html.match(/class="(card-tu-[a-f0-9]{6})"/)!
+    const klass = classMatch[1]
+    expect(html).toContain(`<div class="${klass}">hi</div>`)
+    expect(html).toContain(`<style>.${klass} { padding: 1rem; }`)
+  })
+
+  it('renders two components with the same class declaration without collision', async () => {
+    const html = await compileAndRun(
+      `
+        let A = () => {
+          div(class: .card) { "A body" }
+          style { .card { color: red; } }
+        }
+        let B = () => {
+          div(class: .card) { "B body" }
+          style { .card { color: blue; } }
+        }
+      `,
+      (mod) => {
+        const A = mod['A'] as () => unknown
+        const B = mod['B'] as () => unknown
+        return renderToString(A() as never) + renderToString(B() as never)
+      }
+    )
+    const classes = [...html.matchAll(/class="(card-tu-[a-f0-9]{6})"/g)].map((m) => m[1])
+    expect(classes).toHaveLength(2)
+    expect(classes[0]).not.toBe(classes[1])
+    // Each component's style block carries its own class:
+    expect(html).toContain(`.${classes[0]} { color: red; }`)
+    expect(html).toContain(`.${classes[1]} { color: blue; }`)
+  })
+
   it('lambda params shadow same-named top-level cells', async () => {
     const result = await compileAndRun(
       `

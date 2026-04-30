@@ -5,6 +5,7 @@ import type {
   Block,
   CallExpr,
   Child,
+  ClassRef,
   Expr,
   ForExpr,
   Ident,
@@ -113,7 +114,53 @@ export class Parser {
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
     if (k === TokenKind.Match) return this.parseMatchExpr()
+    if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
     return this.parsePrimary()
+  }
+
+  /**
+   * Parse a `.foo` form. Three shapes:
+   *   `.foo`          → ClassRef (used as e.g. `class: .foo`)
+   *   `.foo(...)`     → pug-shorthand tag-call: desugars to `div(class: .foo, ...)`
+   *   `.foo { ... }`  → pug-shorthand tag-call with no extra props
+   *
+   * In the pug-shorthand cases, an explicit `class:` prop in the args is a
+   * compile error — the shorthand already binds class.
+   */
+  private parseClassRefOrPugShorthand(): Expr {
+    this.expect(TokenKind.Dot)
+    const name = this.expect(TokenKind.Ident).text
+    const ref: ClassRef = { kind: 'ClassRef', name }
+    const next = this.peek().kind
+    if (next === TokenKind.LParen || (next === TokenKind.LBrace && !this.noBraceBlock)) {
+      return this.parsePugShorthandTail(ref)
+    }
+    return ref
+  }
+
+  private parsePugShorthandTail(classRef: ClassRef): TagCall {
+    const props: Prop[] = [{ name: 'class', value: classRef }]
+    if (this.peek().kind === TokenKind.LParen) {
+      this.expect(TokenKind.LParen)
+      while (this.peek().kind !== TokenKind.RParen) {
+        const p = this.parseProp()
+        if (p.name === 'class') {
+          throw this.error(`pug-shorthand .${classRef.name}(...) already binds class:; remove the explicit class prop`)
+        }
+        props.push(p)
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      this.expect(TokenKind.RParen)
+    }
+    const children: Child[] = []
+    if (this.peek().kind === TokenKind.LBrace) {
+      this.expect(TokenKind.LBrace)
+      while (this.peek().kind !== TokenKind.RBrace) {
+        children.push(this.parseChild())
+      }
+      this.expect(TokenKind.RBrace)
+    }
+    return { kind: 'TagCall', tag: 'div', props, children }
   }
 
   private parseLambda(): Lambda {

@@ -6,6 +6,7 @@ import * as TodoMod from '../../examples/todo/Todo.tu'
 import * as CardMod from '../../examples/styled/Card.tu'
 import * as ClickerMod from '../../examples/clicker/Clicker.tu'
 import * as DiffMod from '../../examples/diff/Diff.tu'
+import * as ScopedMod from '../../examples/scoped/Scoped.tu'
 
 // Each demo: id, label, blurb, render thunk that returns a Tu vnode (or array
 // fragment). Some demos (counter / todo) seed their state cells before mount
@@ -68,7 +69,7 @@ const demos = [
   {
     id: 'card',
     label: 'M1.4  Card',
-    blurb: '`style { ... }` block — raw CSS preserved verbatim and emitted as a sibling `<style>` element. M1.4 has no scoping rewrite (selectors are global).',
+    blurb: '`style { ... }` block (M1.4) + symbolic class refs `.card()` and `class: .card__title` (M1.8). The compiler hashes every declared class with a per-component suffix, so the markup attribute and the CSS selector match up while staying isolated from other components.',
     setup() {},
     thunk: () => CardMod.Card('Tu', 'A reactive UI language with first-class style blocks.'),
   },
@@ -80,6 +81,13 @@ const demos = [
       ClickerMod.count.set(0)
     },
     thunk: () => ClickerMod.Clicker(),
+  },
+  {
+    id: 'scoped',
+    label: 'M1.8  Scoped',
+    blurb: 'Two components both declare a `.card` style. Symbolic class refs (`.card()` shorthand and `class: .card`) get a per-component hash suffix in markup AND CSS, so the rules don\'t bleed across components.',
+    setup() {},
+    thunk: () => ScopedMod.Scoped(),
   },
   {
     id: 'diff',

@@ -27,6 +27,7 @@ export type Expr =
   | MatchExpr
   | StyleBlock
   | AssignExpr
+  | ClassRef
 
 export interface Lambda {
   kind: 'Lambda'
@@ -68,6 +69,7 @@ export type Child =
   | ForExpr
   | MatchExpr
   | StyleBlock
+  | ClassRef
 
 export interface CallExpr {
   kind: 'CallExpr'
@@ -150,4 +152,15 @@ export interface AssignExpr {
   kind: 'AssignExpr'
   target: string
   value: Expr
+}
+
+/**
+ * `.foo` — a symbolic reference to a class declared in the enclosing
+ * component's `style { … }` block. At codegen time, scoped components rewrite
+ * each ClassRef to a hashed string literal that matches the rewritten CSS
+ * selectors — so markup and styles stay in lock-step under scoping.
+ */
+export interface ClassRef {
+  kind: 'ClassRef'
+  name: string
 }

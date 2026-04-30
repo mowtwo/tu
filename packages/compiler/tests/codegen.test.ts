@@ -166,6 +166,106 @@ describe('codegen', () => {
     expect(js).toContain('export const f = (n) => (n = (n + 1))')
   })
 
+  it('hashes class refs and CSS selectors with the same suffix in a scoped component', () => {
+    const js = compile(`
+      let Card = () => {
+        div(class: .card) { "x" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    // Pull the hash out of the markup; the style block must use the same one.
+    const m = js.match(/"class": "card-tu-([a-f0-9]{6})"/)
+    expect(m).not.toBeNull()
+    const hash = m![1]
+    expect(js).toContain(`.card-tu-${hash} { padding: 1rem; }`)
+  })
+
+  it('uses different hashes for two components declaring the same class', () => {
+    const js = compile(`
+      let A = () => {
+        div(class: .card) { "a" }
+        style { .card { color: red; } }
+      }
+      let B = () => {
+        div(class: .card) { "b" }
+        style { .card { color: blue; } }
+      }
+    `)
+    const matches = [...js.matchAll(/"card-tu-([a-f0-9]{6})"/g)].map((x) => x[1])
+    expect(matches).toHaveLength(2)
+    expect(matches[0]).not.toBe(matches[1])
+  })
+
+  it('leaves M1.4-style components without ClassRef unchanged (back-compat)', () => {
+    const js = compile(`
+      let Old = () => {
+        div(class: "card") { "x" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    expect(js).toContain('"class": "card"')
+    expect(js).toContain('.card { padding: 1rem; }')
+    expect(js).not.toMatch(/-tu-[a-f0-9]/)
+  })
+
+  it('leaves classes appearing only inside CSS strings/comments alone', () => {
+    const js = compile(`
+      let X = () => {
+        div(class: .real) { "x" }
+        style {
+          .real { content: ".not-a-class"; /* .also-not */ color: red; }
+        }
+      }
+    `)
+    const hashMatch = js.match(/-tu-([a-f0-9]{6})/)!
+    const hash = hashMatch[1]
+    expect(js).toContain(`.real-tu-${hash}`)
+    expect(js).not.toContain(`.not-a-class-tu-`)
+    expect(js).not.toContain(`.also-not-tu-`)
+    // The string + comment text survives intact.
+    expect(js).toContain('.not-a-class')
+    expect(js).toContain('.also-not')
+  })
+
+  it('leaves CSS classes that are NOT declared in the same component alone (treated as global)', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style {
+          .card .legacy-global { color: red; }
+        }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    expect(js).toContain(`.card-tu-${hash} .legacy-global`)
+  })
+
+  it('throws on a class ref to a class not declared in this component', () => {
+    expect(() => compile(`
+      let X = () => {
+        div(class: .ghost) { "x" }
+        style { .real { color: red; } }
+      }
+    `)).toThrow(/class ref \.ghost is not declared/)
+  })
+
+  it('throws on a class ref outside any scoped component', () => {
+    expect(() => compile(`
+      let bad = .card
+    `)).toThrow(/class ref \.card used outside a scoped component/)
+  })
+
+  it('compiles `.foo() { children }` pug-shorthand to a div with the scoped class', () => {
+    const js = compile(`
+      let App = () => {
+        .card() { "hi" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    expect(js).toContain(`h("div", { "class": "card-tu-${hash}" }, ["hi"])`)
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       let Greeting = (name: string) => {

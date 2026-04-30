@@ -124,6 +124,12 @@ describe('lexer', () => {
     expect(() => tokenize('!')).toThrow(/Unexpected character/)
   })
 
+  it('lexes a `.` as Dot (used by class refs)', () => {
+    const tokens = tokenize('.card')
+    expect(tokens.map((t) => t.kind)).toEqual([TokenKind.Dot, TokenKind.Ident, TokenKind.Eof])
+    expect(tokens[1]?.text).toBe('card')
+  })
+
   it('lexes `style { … }` body as a single CssText token', () => {
     const tokens = tokenize('let App = () => style { .card { padding: 1rem; } }')
     // Last five tokens are: Ident("style"), LBrace, CssText, RBrace, Eof
