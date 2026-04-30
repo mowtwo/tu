@@ -10,7 +10,7 @@
     "check": "echo 'no checks'"
   },
   "dependencies": {
-    "@tu-ui/compiler": "workspace:*",
-    "@tu-ui/runtime": "workspace:*"
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/runtime": "workspace:*"
   }
 }

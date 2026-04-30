@@ -1,4 +1,4 @@
-import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu-ui/compiler'
+import { getScopedClassMap, parse, tokenize, TokenKind, type LetDecl, type Token } from '@tu-lang/compiler'
 import { cssService, findCssContextAt } from './css-lsp.js'
 import { htmlTagNames, renderHtmlTagDocs } from './html-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'

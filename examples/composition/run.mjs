@@ -2,12 +2,12 @@
 // a jsdom-simulated browser, print the resulting DOM. Showcases:
 //   - Capitalized components (Layout, Card) as function calls
 //   - `children: VNode[]` as the last positional arg
-//   - `Fragment { … }` from @tu-ui/runtime for multi-child returns
+//   - `Fragment { … }` from @tu-lang/runtime for multi-child returns
 //   - Local `let greeting = …` inside a component body
 //   - Dual class injection: `class="card card-tu-XXX"` in markup,
 //     `.card-tu-XXX` only in the scoped CSS.
-import { compile } from '@tu-ui/compiler'
-import { mount } from '@tu-ui/runtime'
+import { compile } from '@tu-lang/compiler'
+import { mount } from '@tu-lang/runtime'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

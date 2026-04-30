@@ -52,7 +52,7 @@ const STATIC_TAG = '$static'
  *
  * Usage:
  *   ```tu
- *   import { Fragment } from "@tu-ui/runtime"
+ *   import { Fragment } from "@tu-lang/runtime"
  *   let Layout = (children) => Fragment {
  *     header { "Title" }
  *     children
@@ -628,7 +628,7 @@ function describeNode(n: Node | undefined): string {
 
 function warnHydrationMismatch(msg: string): void {
   if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-    console.warn(`[@tu-ui/runtime] hydration mismatch: ${msg}`)
+    console.warn(`[@tu-lang/runtime] hydration mismatch: ${msg}`)
   }
 }
 

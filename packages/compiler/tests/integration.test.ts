@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { renderToString } from '@tu-ui/runtime'
+import { renderToString } from '@tu-lang/runtime'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../src/index.js'
 
@@ -317,7 +317,7 @@ describe('compile + render end-to-end', () => {
   it('M6.0: scoped class hash baked into static html still matches the rewritten CSS', async () => {
     const html = await compileAndRun(
       `
-        import { Fragment } from "@tu-ui/runtime"
+        import { Fragment } from "@tu-lang/runtime"
         export let Card = () => Fragment {
           .card() {
             h1 { "title" }

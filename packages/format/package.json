@@ -1,5 +1,5 @@
 {
-  "name": "@tu-ui/format",
+  "name": "@tu-lang/format",
   "version": "0.1.0-alpha.0",
   "description": "Tu formatter — Prettier plugin in M3, moves to a real dprint plugin in R4.",
   "keywords": [
@@ -39,7 +39,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu-ui/compiler": "workspace:*"
+    "@tu-lang/compiler": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

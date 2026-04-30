@@ -1,5 +1,5 @@
 {
-  "name": "@tu-ui/cli",
+  "name": "@tu-lang/cli",
   "version": "0.1.0-alpha.0",
   "description": "Tu command-line interface — tu build / dev / check / fmt.",
   "keywords": [
@@ -41,8 +41,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu-ui/compiler": "workspace:*",
-    "@tu-ui/lsp": "workspace:*"
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/lsp": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

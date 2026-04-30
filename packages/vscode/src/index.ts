@@ -13,7 +13,7 @@ let log: vscode.OutputChannel | undefined
 
 /**
  * Activated by VS Code when a `.tu` file is opened (`onLanguage:tu` in the
- * extension manifest). Spawns the @tu-ui/lsp diagnostics server and routes
+ * extension manifest). Spawns the @tu-lang/lsp diagnostics server and routes
  * .tu documents through it.
  *
  * Every step writes to the "Tu (vscode-tu)" output channel so it's obvious
@@ -25,14 +25,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(log)
   log.appendLine(`vscode-tu activate() — extension path: ${context.extensionPath}`)
 
-  // Resolve the @tu-ui/lsp server entry by walking up node_modules from this
+  // Resolve the @tu-lang/lsp server entry by walking up node_modules from this
   // extension. We're in CJS, so `require.resolve` is available globally.
   let serverModule: string
   try {
-    serverModule = require.resolve('@tu-ui/lsp/server')
-    log.appendLine(`  resolved @tu-ui/lsp/server → ${serverModule}`)
+    serverModule = require.resolve('@tu-lang/lsp/server')
+    log.appendLine(`  resolved @tu-lang/lsp/server → ${serverModule}`)
   } catch (err) {
-    const msg = `vscode-tu: could not locate @tu-ui/lsp server (${err instanceof Error ? err.message : String(err)})`
+    const msg = `vscode-tu: could not locate @tu-lang/lsp server (${err instanceof Error ? err.message : String(err)})`
     log.appendLine(`  ERROR: ${msg}`)
     void vscode.window.showErrorMessage(msg)
     return

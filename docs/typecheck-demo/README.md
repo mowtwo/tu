@@ -1,6 +1,6 @@
 # M3 V1 typecheck demo
 
-A `.tu` file with three intentional type errors, plus one well-typed binding for contrast. Open it in VS Code (after `pnpm --filter vscode-tu dev:install` and a window reload) to see the `@tu-ui/lsp` diagnostics in action.
+A `.tu` file with three intentional type errors, plus one well-typed binding for contrast. Open it in VS Code (after `pnpm --filter vscode-tu dev:install` and a window reload) to see the `@tu-lang/lsp` diagnostics in action.
 
 ## How to view it
 
@@ -37,7 +37,7 @@ These are V2 work. V1 is "open a file, see your type errors as red squiggles."
 You can run the same diagnostics from Node:
 
 ```js
-import { checkTuFile } from '@tu-ui/lsp'
+import { checkTuFile } from '@tu-lang/lsp'
 
 console.log(checkTuFile('docs/typecheck-demo/Errors.tu'))
 // → 3 entries with severity: 'error' on lines 15, 22, 28

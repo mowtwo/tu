@@ -3,7 +3,7 @@ import { compile } from '../src/index.js'
 
 describe('codegen', () => {
   it('emits a runtime import header bringing in h and Signal', () => {
-    expect(compile('')).toContain(`import { h, Signal } from '@tu-ui/runtime'`)
+    expect(compile('')).toContain(`import { h, Signal } from '@tu-lang/runtime'`)
   })
 
   it('wraps a top-level let with a primitive value as a Signal.State cell', () => {

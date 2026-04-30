@@ -1,4 +1,4 @@
-import { compileToTSWithMap, parse, tokenize } from '@tu-ui/compiler'
+import { compileToTSWithMap, parse, tokenize } from '@tu-lang/compiler'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import ts from 'typescript'

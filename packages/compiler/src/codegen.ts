@@ -32,8 +32,8 @@ import { lineColAt } from './diagnostics.js'
  * legal ESM at runtime).
  */
 function runtimeImportLine(tsMode: boolean): string {
-  if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu-ui/runtime'`
-  return `import { h, Signal } from '@tu-ui/runtime'`
+  if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu-lang/runtime'`
+  return `import { h, Signal } from '@tu-lang/runtime'`
 }
 
 export interface SourceMapV3 {
@@ -1291,7 +1291,7 @@ function countStaticNodes(expr: Expr | Child): number {
 
 /**
  * Serialize a known-static subtree to an HTML string. Mirror of
- * `renderVNode` from `@tu-ui/runtime`, but operating on AST nodes instead of
+ * `renderVNode` from `@tu-lang/runtime`, but operating on AST nodes instead of
  * VNodes. Uses the same escape rules so the output round-trips through
  * `renderToString` without double-escaping.
  */

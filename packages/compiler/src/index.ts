@@ -28,10 +28,10 @@ export interface CompileResult {
 /**
  * Compile a Tu source string to ESM JavaScript with an inline V3 source map.
  *
- * The output imports `h` from `@tu-ui/runtime` and exports each top-level `let`
+ * The output imports `h` from `@tu-lang/runtime` and exports each top-level `let`
  * binding as a `const`. A `//# sourceMappingURL=` footer carries a
  * base64-inlined V3 source map; the same map is also returned as `result.map`
- * for tooling (e.g. `@tu-ui/vite`) that prefers structured access.
+ * for tooling (e.g. `@tu-lang/vite`) that prefers structured access.
  *
  * Compile errors include `filename:line:col` and a code-frame caret when
  * `filename` is supplied.

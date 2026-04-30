@@ -1,6 +1,6 @@
 // Compile Greeting.tu, execute the result, render to HTML, print.
-import { compile } from '@tu-ui/compiler'
-import { renderToString } from '@tu-ui/runtime'
+import { compile } from '@tu-lang/compiler'
+import { renderToString } from '@tu-lang/runtime'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'

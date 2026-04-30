@@ -7,7 +7,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Item | Introduced | Target | Notes |
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
-| Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu-ui/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
+| Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu-lang/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
 | Local reactivity (per-cell-read subscriptions) | M1.7 | M2+ | Keyed diff is cheap, but the component thunk still re-runs in full on every cell mutation. Solid-style per-binding patches that only touch the affected text node / attribute are a deeper rework — needs a different compiler IR that wraps each cell read in its own reactive scope. |
 | Suspense / async components | M1.7 | M2+ | No async story yet. |
 | Default export (`export default …`) | M1.10 | TBD | Tu's no-`function`-keyword aesthetic argues against it; revisit when component-as-file becomes idiomatic. |
@@ -26,11 +26,11 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M3.11
 
-- ~~CSS completion inside `style { … }` blocks~~ — landed: `@tu-ui/lsp` now depends on `vscode-css-languageservice`. The parser was extended to record `cssStart` / `cssEnd` byte offsets on the `StyleBlock` AST node so completion can find the inner CSS span; `completionsAtTuPosition` checks first whether the cursor is inside any StyleBlock's CSS region and, if so, slices that text into a synthetic CSS `TextDocument`, calls `ls.doComplete()` at the cursor's CSS-relative position, and maps the items to `TuCompletionItem`. tsserver/HTML-tag/ClassRef paths skip entirely while inside a style block — CSS context is exclusive. CSS hover and diagnostics are split out as a fresh open row.
+- ~~CSS completion inside `style { … }` blocks~~ — landed: `@tu-lang/lsp` now depends on `vscode-css-languageservice`. The parser was extended to record `cssStart` / `cssEnd` byte offsets on the `StyleBlock` AST node so completion can find the inner CSS span; `completionsAtTuPosition` checks first whether the cursor is inside any StyleBlock's CSS region and, if so, slices that text into a synthetic CSS `TextDocument`, calls `ls.doComplete()` at the cursor's CSS-relative position, and maps the items to `TuCompletionItem`. tsserver/HTML-tag/ClassRef paths skip entirely while inside a style block — CSS context is exclusive. CSS hover and diagnostics are split out as a fresh open row.
 
 ## Closed in M3.10
 
-- ~~Tu-aware completion (HTML tags + ClassRefs)~~ — landed: `completionsAtTuPosition` now augments tsserver's results with two Tu-specific sources. (1) HTML tag names appear when the cursor is at expression-head — detected by tokenizing up to the cursor and checking that the previous token is one of `{`, `(`, `,`, `=`, `:`, `=>`, or `else`. (2) Declared class names appear when the cursor sits right after a `.` inside a scoped component — found by parsing the source (with a placeholder-retry for incomplete forms like `class: .`) and looking up the host LetDecl's style-block classes via the new `getScopedClassMap` export from `@tu-ui/compiler`. Existing tsserver-based completions stay; this only adds items, deduped by label. CSS-content completion inside `style { … }` is split out as a fresh open row for later.
+- ~~Tu-aware completion (HTML tags + ClassRefs)~~ — landed: `completionsAtTuPosition` now augments tsserver's results with two Tu-specific sources. (1) HTML tag names appear when the cursor is at expression-head — detected by tokenizing up to the cursor and checking that the previous token is one of `{`, `(`, `,`, `=`, `:`, `=>`, or `else`. (2) Declared class names appear when the cursor sits right after a `.` inside a scoped component — found by parsing the source (with a placeholder-retry for incomplete forms like `class: .`) and looking up the host LetDecl's style-block classes via the new `getScopedClassMap` export from `@tu-lang/compiler`. Existing tsserver-based completions stay; this only adds items, deduped by label. CSS-content completion inside `style { … }` is split out as a fresh open row for later.
 
 ## Closed in M2.5 (empty-array widening)
 
@@ -38,7 +38,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M4 V1
 
-- ~~Client-side `hydrate(thunk, container)`~~ — landed: `@tu-ui/runtime` ships `hydrate` alongside `mount`. The first render adopts existing DOM children rather than creating new ones — same `<button>` / `<input>` instance pre- and post-hydrate, so focus / scroll / `<input>.value` survives the server-to-client handoff. Event listeners (which SSR can't serialize) and DOM-property props (`value`, `checked`, `selected`) are applied during the walk. The runtime splits any Text node that SSR fused from adjacent text vnodes (e.g. `"count = " count` → one Text "count = 0" → two Text nodes) so future cell mutations only touch the dynamic tail. Whitespace-only text nodes between elements (incidental from pretty-printed HTML) are skipped. Structural mismatches log `[@tu-ui/runtime] hydration mismatch: …` warnings and fall back to materializing the offending vnode. A new `examples/ssr/` runs the full round-trip (renderToString → jsdom-with-pre-stamped-HTML → hydrate → simulated clicks) end-to-end. Pre-resumability — Qwik-style "no first-frame thunk re-execution" is deferred to a later M4 milestone.
+- ~~Client-side `hydrate(thunk, container)`~~ — landed: `@tu-lang/runtime` ships `hydrate` alongside `mount`. The first render adopts existing DOM children rather than creating new ones — same `<button>` / `<input>` instance pre- and post-hydrate, so focus / scroll / `<input>.value` survives the server-to-client handoff. Event listeners (which SSR can't serialize) and DOM-property props (`value`, `checked`, `selected`) are applied during the walk. The runtime splits any Text node that SSR fused from adjacent text vnodes (e.g. `"count = " count` → one Text "count = 0" → two Text nodes) so future cell mutations only touch the dynamic tail. Whitespace-only text nodes between elements (incidental from pretty-printed HTML) are skipped. Structural mismatches log `[@tu-lang/runtime] hydration mismatch: …` warnings and fall back to materializing the offending vnode. A new `examples/ssr/` runs the full round-trip (renderToString → jsdom-with-pre-stamped-HTML → hydrate → simulated clicks) end-to-end. Pre-resumability — Qwik-style "no first-frame thunk re-execution" is deferred to a later M4 milestone.
 
 ## Closed in M2.5
 
@@ -54,7 +54,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M2.3
 
-- ~~Imported names are always classified as functions in codegen~~ — landed: `compileWithMap` / `compileToTSWithMap` accept an optional `importedNameKinds: Map<string, CellKind>` so the caller can tell codegen which imported names are state / computed / function cells. Imports without an explicit kind still default to `'function'`, preserving the standalone-compile path. The LSP's shadow graph and the `@tu-ui/vite` plugin both build this map by AST-classifying each `.tu` neighbor's `export let` bindings; the M2.1 reactivity bug (importing a `Signal.State` silently dropped `.get()` injection) is fixed for both flows. Multi-hop re-export chains still fall through to `'function'` — small follow-up.
+- ~~Imported names are always classified as functions in codegen~~ — landed: `compileWithMap` / `compileToTSWithMap` accept an optional `importedNameKinds: Map<string, CellKind>` so the caller can tell codegen which imported names are state / computed / function cells. Imports without an explicit kind still default to `'function'`, preserving the standalone-compile path. The LSP's shadow graph and the `@tu-lang/vite` plugin both build this map by AST-classifying each `.tu` neighbor's `export let` bindings; the M2.1 reactivity bug (importing a `Signal.State` silently dropped `.get()` injection) is fixed for both flows. Multi-hop re-export chains still fall through to `'function'` — small follow-up.
 
 ## Closed in M1.14
 
@@ -87,11 +87,11 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M3.6
 
-- ~~`tu check` CLI command~~ — landed: `tu check <file…>` in `@tu-ui/cli` calls `checkTuFile` from `@tu-ui/lsp` and pretty-prints each diagnostic as `path:line:col: SEVERITY [TS####] message` followed by a 3-line code frame with `^^^` carets sized by the source-byte token range from M3.2. Empty input, non-`.tu` extension, missing files, and any error-severity diagnostic exit `1`; clean files print a one-line `tu check: N file(s) OK` summary and exit `0`. The CLI logic is exposed as `runCheck(args, options)` from `@tu-ui/cli` so the test suite drives it without spawning a subprocess.
+- ~~`tu check` CLI command~~ — landed: `tu check <file…>` in `@tu-lang/cli` calls `checkTuFile` from `@tu-lang/lsp` and pretty-prints each diagnostic as `path:line:col: SEVERITY [TS####] message` followed by a 3-line code frame with `^^^` carets sized by the source-byte token range from M3.2. Empty input, non-`.tu` extension, missing files, and any error-severity diagnostic exit `1`; clean files print a one-line `tu check: N file(s) OK` summary and exit `0`. The CLI logic is exposed as `runCheck(args, options)` from `@tu-lang/cli` so the test suite drives it without spawning a subprocess.
 
 ## Closed in M3.5
 
-- ~~LSP V2: goto-definition~~ — landed: same `LanguageService` + reverse-mapping infrastructure as hover/completion. New `definitionAtTuPosition` calls `getDefinitionAtPosition`, then maps each TS `DefinitionInfo` back through the **target** shadow's `tokenMappings` (the definition might live in a different `.tu` file when crossing imports). Definitions whose `fileName` falls outside the shadow graph (e.g. `@tu-ui/runtime`'s `.d.ts`) are dropped — we don't surface internal `.ts` files as a goto target. LSP server now advertises `definitionProvider: true`. Verified end-to-end: jumping from a `count` read to its `let count = 0` lands on cols 11..15 of line 0; jumping from a cross-file `Card("hi")` call lands on the `Card` ident in `Card.tu`.
+- ~~LSP V2: goto-definition~~ — landed: same `LanguageService` + reverse-mapping infrastructure as hover/completion. New `definitionAtTuPosition` calls `getDefinitionAtPosition`, then maps each TS `DefinitionInfo` back through the **target** shadow's `tokenMappings` (the definition might live in a different `.tu` file when crossing imports). Definitions whose `fileName` falls outside the shadow graph (e.g. `@tu-lang/runtime`'s `.d.ts`) are dropped — we don't surface internal `.ts` files as a goto target. LSP server now advertises `definitionProvider: true`. Verified end-to-end: jumping from a `count` read to its `let count = 0` lands on cols 11..15 of line 0; jumping from a cross-file `Card("hi")` call lands on the `Card` ident in `Card.tu`.
 
 ## Closed in M3.4
 
@@ -112,7 +112,7 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M3 V1
 
-- ~~LSP — diagnostics-only V1~~ — landed: `@tu-ui/lsp` package boots a `vscode-languageserver` server; on document events it runs `compileToTS()` + the in-process TypeScript Compiler API and publishes diagnostics with positions mapped back to `.tu` line/col via the embedded V3 source map. `vscode-tu` activates the client on `onLanguage:tu`. End-to-end smoke-tested: a typed-param mismatch (`G(42)` against `(name: string) =>`) produces TS error 2345 mapped to the right `.tu` line. Hover / completion / goto-definition are all V2 work tracked in new rows above.
+- ~~LSP — diagnostics-only V1~~ — landed: `@tu-lang/lsp` package boots a `vscode-languageserver` server; on document events it runs `compileToTS()` + the in-process TypeScript Compiler API and publishes diagnostics with positions mapped back to `.tu` line/col via the embedded V3 source map. `vscode-tu` activates the client on `onLanguage:tu`. End-to-end smoke-tested: a typed-param mismatch (`G(42)` against `(name: string) =>`) produces TS error 2345 mapped to the right `.tu` line. Hover / completion / goto-definition are all V2 work tracked in new rows above.
 
 ## Closed in M2.1
 
@@ -135,8 +135,8 @@ A living list of every "leave for later" decision made during a milestone, with 
 
 ## Closed in M1.9
 
-- ~~Source maps from compiled JS back to `.tu` source~~ — V3 source map (per-top-level-statement) emitted both as inline data-URL footer and as the `map` field returned by `compileWithMap` / the `@tu-ui/vite` `load` hook. Token-level granularity tracked as a new row above.
-- ~~Better error messages with source location + caret~~ — `formatError` helper used by lexer + parser produces `file:line:col` plus a 3-line code-frame caret. Threaded via `compile(src, { filename })` and through `@tu-ui/vite` so Vite's overlay shows the formatted message.
+- ~~Source maps from compiled JS back to `.tu` source~~ — V3 source map (per-top-level-statement) emitted both as inline data-URL footer and as the `map` field returned by `compileWithMap` / the `@tu-lang/vite` `load` hook. Token-level granularity tracked as a new row above.
+- ~~Better error messages with source location + caret~~ — `formatError` helper used by lexer + parser produces `file:line:col` plus a 3-line code-frame caret. Threaded via `compile(src, { filename })` and through `@tu-lang/vite` so Vite's overlay shows the formatted message.
 
 ## Closed in M1.8
 

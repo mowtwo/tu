@@ -8,12 +8,12 @@
 //   • Component lambdas conventionally take `children` as the last
 //     parameter. The annotation `(children: Child[])` resolves the
 //     `VNode` type via the auto-injected runtime import.
-//   • `Fragment { … }` (from @tu-ui/runtime) lets a component return
+//   • `Fragment { … }` (from @tu-lang/runtime) lets a component return
 //     multiple sibling vnodes without an enclosing wrapper element.
 //   • Local `let` inside a block body is a plain const (not a Signal
 //     cell), useful for closures and small computations.
 
-import { Fragment } from "@tu-ui/runtime"
+import { Fragment } from "@tu-lang/runtime"
 
 // Layout component: renders a header + the children + a footer.
 export let Layout = (title: string, children: Child[]) => Fragment {

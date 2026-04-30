@@ -1,4 +1,4 @@
-import { lineColAt } from '@tu-ui/compiler'
+import { lineColAt } from '@tu-lang/compiler'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { cssService, findCssContextAt } from './css-lsp.js'

@@ -1,7 +1,7 @@
 // M2 demo: compile Clicker.tu to BOTH .mjs (runtime) and .ts (typecheck +
 // .d.ts emit). Run `tsc --noEmit` over the .ts to prove tsserver accepts the
 // shape, then `tsc --emitDeclarationOnly` to produce dist/Clicker.d.ts.
-import { compileToTS } from '@tu-ui/compiler'
+import { compileToTS } from '@tu-lang/compiler'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -25,7 +25,7 @@ writeFileSync(tsPath, ts)
 console.log('--- compiled TS (with preserved param types) ---')
 console.log(ts.split('//# sourceMappingURL=')[0].trim())
 
-// Minimal tsconfig pointing at @tu-ui/runtime's bundled .d.ts so tsc resolves
+// Minimal tsconfig pointing at @tu-lang/runtime's bundled .d.ts so tsc resolves
 // the import without needing node_modules to be hoisted into dist/.
 const runtimeTypes = resolve(repoRoot, 'packages', 'runtime', 'dist', 'index.d.ts')
 writeFileSync(
@@ -42,7 +42,7 @@ writeFileSync(
         emitDeclarationOnly: true,
         outDir: 'dist',
         paths: {
-          '@tu-ui/runtime': [runtimeTypes],
+          '@tu-lang/runtime': [runtimeTypes],
         },
       },
       include: ['Clicker.ts'],

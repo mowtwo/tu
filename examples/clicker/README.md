@@ -27,8 +27,8 @@ The runner mounts the component, simulates clicks, and prints the DOM after each
 `mount()` requires `document`, `Element`, etc. — browser APIs. Rather than depend on a bundler + real browser for a CLI demo, we boot jsdom in Node and install its globals before mounting. This lets us drive the demo and assert behavior with plain `pnpm demo`.
 
 For a real-browser demo you'd:
-1. Compile the `.tu` source with `@tu-ui/compiler`.
-2. Bundle `@tu-ui/runtime` for browser ESM (Vite / esbuild).
+1. Compile the `.tu` source with `@tu-lang/compiler`.
+2. Bundle `@tu-lang/runtime` for browser ESM (Vite / esbuild).
 3. Call `mount(Clicker, document.getElementById('app'))` from a `<script type="module">`.
 
 A bundler-integrated dev server lands in M5.
@@ -44,9 +44,9 @@ This runs `compileToTS()` on `Clicker.tu`, drops the result next to the source a
 Output:
 
 ```ts
-import { Signal } from '@tu-ui/runtime';
+import { Signal } from '@tu-lang/runtime';
 export declare const count: Signal.State<number>;
-export declare const Clicker: () => import("@tu-ui/runtime").VNode[];
+export declare const Clicker: () => import("@tu-lang/runtime").VNode[];
 ```
 
 Notice:

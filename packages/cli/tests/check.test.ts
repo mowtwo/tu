@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { formatDiagnostic, runCheck } from '../src/check.js'
-import type { TuDiagnostic } from '@tu-ui/lsp'
+import type { TuDiagnostic } from '@tu-lang/lsp'
 
 let tmp: string
 beforeEach(() => {

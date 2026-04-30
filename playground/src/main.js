@@ -8,7 +8,7 @@
 //   3. demo lifecycle (mount, teardown previous, swap into #mount)
 //   4. Diff-only setInterval + array-controls (escape hatch — these need
 //      JS-side `[...]` spread + Math.random which Tu V1 doesn't surface).
-import { mount } from '@tu/runtime'
+import { mount } from '@tu-lang/runtime'
 
 import * as Sidebar from './Sidebar.tu'
 import * as Header from './StageHeader.tu'
@@ -36,7 +36,7 @@ const demoBlurbs = {
   scoped:
     "Two components both declare a `.card` style. Symbolic class refs (`.card()` shorthand and `class: .card`) get a per-component hash suffix in markup AND CSS, so the rules don't bleed across components.",
   composition:
-    "Capitalized components compile as real function calls (not `h(\"Card\", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component's `children` argument. `Fragment` from `@tu/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell).",
+    "Capitalized components compile as real function calls (not `h(\"Card\", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component's `children` argument. `Fragment` from `@tu-lang/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell).",
   typed:
     'M5.6 + M5.7 + M5.8: object literals (`{ x: 1, y: 2 }`), lambda return-type annotations (`(n): Point => …`), type aliases, and member access (`origin.x`). The whole typed-data path round-trips reactively through state and computed cells.',
   diff:

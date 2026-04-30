@@ -1,8 +1,8 @@
 // Compile Clicker.tu, simulate a browser via jsdom, mount the component,
 // click the buttons, and print the DOM after each click. Verifies M1.5
 // end-to-end without needing a real browser.
-import { compile } from '@tu-ui/compiler'
-import { mount } from '@tu-ui/runtime'
+import { compile } from '@tu-lang/compiler'
+import { mount } from '@tu-lang/runtime'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -19,7 +19,7 @@ writeFileSync(outPath, compiled)
 console.log('--- compiled JS ---')
 console.log(compiled.trim())
 
-// Boot a jsdom and install document/Element/Event globals so @tu-ui/runtime's
+// Boot a jsdom and install document/Element/Event globals so @tu-lang/runtime's
 // browser code paths work in Node.
 const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>')
 globalThis.document = dom.window.document

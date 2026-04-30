@@ -1,4 +1,4 @@
-# @tu-ui/std
+# @tu-lang/std
 
 Tu's standard library — placeholder. The actual surface (Result, Option, Range, iterator helpers) will be designed alongside the language.
 

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import tu from '@tu-ui/vite'
+import tu from '@tu-lang/vite'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 

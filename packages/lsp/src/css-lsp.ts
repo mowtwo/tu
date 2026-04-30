@@ -1,4 +1,4 @@
-import { lineColAt, parse, tokenize, type Program, type StyleBlock } from '@tu-ui/compiler'
+import { lineColAt, parse, tokenize, type Program, type StyleBlock } from '@tu-lang/compiler'
 import { getCSSLanguageService, type LanguageService as CssLanguageService } from 'vscode-css-languageservice'
 import { TextDocument } from 'vscode-languageserver-textdocument'
 import { lineColToOffset } from './source-map.js'

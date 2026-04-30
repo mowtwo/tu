@@ -1,4 +1,4 @@
-# @tu-ui/compiler
+# @tu-lang/compiler
 
 Lexer, parser, AST, type-mapper, and codegen for the Tu language.
 

@@ -1,4 +1,4 @@
-import { classifyTopLevel, parse, tokenize, type CellKind } from '@tu-ui/compiler'
+import { classifyTopLevel, parse, tokenize, type CellKind } from '@tu-lang/compiler'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 

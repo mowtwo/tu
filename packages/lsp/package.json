@@ -1,5 +1,5 @@
 {
-  "name": "@tu-ui/lsp",
+  "name": "@tu-lang/lsp",
   "version": "0.1.0-alpha.0",
   "description": "Language Server Protocol implementation for Tu — diagnostics-only V1 powered by the TypeScript compiler API.",
   "keywords": [
@@ -48,7 +48,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu-ui/compiler": "workspace:*",
+    "@tu-lang/compiler": "workspace:*",
     "typescript": "^5.9.3",
     "vscode-css-languageservice": "^6.3.7",
     "vscode-html-languageservice": "^5.3.0",

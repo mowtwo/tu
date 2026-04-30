@@ -7,7 +7,7 @@ name: Release
 # push tag.)
 #
 # AUTH: npm Trusted Publishing (OIDC) — no NPM_TOKEN needed.
-# Configure once on npmjs.com: for each `@tu-ui/*` package and `create-tu`,
+# Configure once on npmjs.com: for each `@tu-lang/*` package and `create-tu`,
 # go to "Trusted Publishers" and add this workflow:
 #   GitHub repo:        mowtwo/tu
 #   Workflow filename:  release.yml
@@ -79,7 +79,7 @@ jobs:
             --tag "$DIST_TAG" \
             --no-git-checks \
             --provenance \
-            --filter '@tu-ui/*' \
+            --filter '@tu-lang/*' \
             --filter 'create-tu'
 
       - name: Create GitHub Release

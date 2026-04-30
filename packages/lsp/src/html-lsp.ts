@@ -7,7 +7,7 @@
 // Implementation note: we don't run the HTML language service over a
 // synthetic `<…>` document — Tu's grammar is its own and the AST already
 // gives us the tag span. We just consume the static tag-data tables.
-import { parse, tokenize, type Program, type TagCall } from '@tu-ui/compiler'
+import { parse, tokenize, type Program, type TagCall } from '@tu-lang/compiler'
 import {
   getDefaultHTMLDataProvider,
   type IHTMLDataProvider,

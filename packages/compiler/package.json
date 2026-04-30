@@ -1,5 +1,5 @@
 {
-  "name": "@tu-ui/compiler",
+  "name": "@tu-lang/compiler",
   "version": "0.1.0-alpha.0",
   "description": "Tu compiler — lexer, parser, type-mapper, codegen.",
   "keywords": [
@@ -42,7 +42,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "devDependencies": {
-    "@tu-ui/runtime": "workspace:*",
+    "@tu-lang/runtime": "workspace:*",
     "jsdom": "^26.0.0"
   },
   "publishConfig": {

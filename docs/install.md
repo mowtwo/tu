@@ -1,20 +1,20 @@
 # Install
 
-Tu is published to npm under the `@tu-ui/*` scope (and `create-tu` for the project starter). It is currently **pre-alpha** — the `latest` tag is not used; releases land on the `alpha` tag.
+Tu is published to npm under the `@tu-lang/*` scope (and `create-tu` for the project starter). It is currently **pre-alpha** — the `latest` tag is not used; releases land on the `alpha` tag.
 
 ## Use Tu in a project
 
 ### Compiler + runtime + Vite plugin
 
 ```sh
-pnpm add -D @tu-ui/vite@alpha @tu-ui/compiler@alpha
-pnpm add @tu-ui/runtime@alpha
+pnpm add -D @tu-lang/vite@alpha @tu-lang/compiler@alpha
+pnpm add @tu-lang/runtime@alpha
 ```
 
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite'
-import tu from '@tu-ui/vite'
+import tu from '@tu-lang/vite'
 
 export default defineConfig({
   plugins: [tu()],
@@ -36,7 +36,7 @@ pnpm dev
 ### Type-check `.tu` files in CI
 
 ```sh
-pnpm add -D @tu-ui/cli@alpha
+pnpm add -D @tu-lang/cli@alpha
 pnpx tu check src/**/*.tu
 ```
 
@@ -81,13 +81,13 @@ If you're an LLM (or driving one), the [skill page](./skill) is written for dire
 
 | Package | Role | Stage |
 |---|---|---|
-| [`@tu-ui/runtime`](https://www.npmjs.com/package/@tu-ui/runtime) | Signal cells + DOM glue (`h`, `mount`, `hydrate`, `renderToString`, `Fragment`, `defineCustomElement`) | alpha |
-| [`@tu-ui/compiler`](https://www.npmjs.com/package/@tu-ui/compiler) | Lexer / parser / codegen / source maps | alpha |
-| [`@tu-ui/vite`](https://www.npmjs.com/package/@tu-ui/vite) | Vite plugin — load `.tu` modules on import | alpha |
-| [`@tu-ui/lsp`](https://www.npmjs.com/package/@tu-ui/lsp) | Language server (diagnostics + hover + completion + def + rename) | alpha |
-| [`@tu-ui/cli`](https://www.npmjs.com/package/@tu-ui/cli) | `tu build` / `tu dev` / `tu check` / `tu fmt` | alpha |
-| [`@tu-ui/format`](https://www.npmjs.com/package/@tu-ui/format) | Prettier plugin (dprint port later) | alpha |
-| [`@tu-ui/std`](https://www.npmjs.com/package/@tu-ui/std) | Standard library — placeholder | alpha |
+| [`@tu-lang/runtime`](https://www.npmjs.com/package/@tu-lang/runtime) | Signal cells + DOM glue (`h`, `mount`, `hydrate`, `renderToString`, `Fragment`, `defineCustomElement`) | alpha |
+| [`@tu-lang/compiler`](https://www.npmjs.com/package/@tu-lang/compiler) | Lexer / parser / codegen / source maps | alpha |
+| [`@tu-lang/vite`](https://www.npmjs.com/package/@tu-lang/vite) | Vite plugin — load `.tu` modules on import | alpha |
+| [`@tu-lang/lsp`](https://www.npmjs.com/package/@tu-lang/lsp) | Language server (diagnostics + hover + completion + def + rename) | alpha |
+| [`@tu-lang/cli`](https://www.npmjs.com/package/@tu-lang/cli) | `tu build` / `tu dev` / `tu check` / `tu fmt` | alpha |
+| [`@tu-lang/format`](https://www.npmjs.com/package/@tu-lang/format) | Prettier plugin (dprint port later) | alpha |
+| [`@tu-lang/std`](https://www.npmjs.com/package/@tu-lang/std) | Standard library — placeholder | alpha |
 | [`create-tu`](https://www.npmjs.com/package/create-tu) | `npm create tu` scaffold | alpha |
 
 Source for everything: [github.com/mowtwo/tu](https://github.com/mowtwo/tu).

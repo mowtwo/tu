@@ -55,7 +55,7 @@
     "dev:uninstall": "node scripts/install-dev.mjs --uninstall"
   },
   "dependencies": {
-    "@tu-ui/lsp": "workspace:*",
+    "@tu-lang/lsp": "workspace:*",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {

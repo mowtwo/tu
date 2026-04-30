@@ -58,7 +58,7 @@ pnpm --filter @tu-examples/typed demo
 pnpm --filter tu-playground dev
 ```
 
-The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files via the [@tu-ui/vite](packages/vite-tu) plugin. Edit any `.tu` file under `examples/` while the dev server is up and the page reloads.
+The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files via the [@tu-lang/vite](packages/vite-tu) plugin. Edit any `.tu` file under `examples/` while the dev server is up and the page reloads.
 
 ## Feature tour
 
@@ -81,7 +81,7 @@ The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files
 | Array literals | `let xs = [1, 2, 3]` | ✅ |
 | Cross-`.tu` imports + re-exports | `import { Card } from "./Card.tu"` | ✅ |
 | `tu check` CLI | type-check `.tu` files with code-frame output | ✅ |
-| LSP — diagnostics, hover, completion, goto-def, rename | `@tu-ui/lsp` + `vscode-tu` | ✅ |
+| LSP — diagnostics, hover, completion, goto-def, rename | `@tu-lang/lsp` + `vscode-tu` | ✅ |
 | SSR | `renderToString(thunk())` | ✅ |
 | Hydration | `hydrate(thunk, container)` (focus / scroll / `<input>` value preserved) | ✅ |
 | Custom Elements wrapper | `defineCustomElement(thunk, "my-tag", { attributes })` | ✅ |
@@ -94,15 +94,15 @@ For everything that's been **deferred** (per-component HMR, static-HTML optimiza
 
 ```
 packages/
-├── compiler/    @tu-ui/compiler   lexer, parser, codegen, source maps
-├── runtime/     @tu-ui/runtime    Signal + DOM glue (h, mount, hydrate, renderToString, Fragment)
-├── vite-tu/     @tu-ui/vite       Vite plugin: load .tu files via the compiler
-├── lsp/         @tu-ui/lsp        Language server (diagnostics + hover + completion + def + rename)
+├── compiler/    @tu-lang/compiler   lexer, parser, codegen, source maps
+├── runtime/     @tu-lang/runtime    Signal + DOM glue (h, mount, hydrate, renderToString, Fragment)
+├── vite-tu/     @tu-lang/vite       Vite plugin: load .tu files via the compiler
+├── lsp/         @tu-lang/lsp        Language server (diagnostics + hover + completion + def + rename)
 ├── vscode/      vscode-tu      VS Code extension (syntax + icon + LSP client)
-├── cli/         @tu-ui/cli        tu build / tu dev / tu check / tu fmt
-├── format/      @tu-ui/format     formatter (Prettier plugin)
+├── cli/         @tu-lang/cli        tu build / tu dev / tu check / tu fmt
+├── format/      @tu-lang/format     formatter (Prettier plugin)
 ├── create-tu/   create-tu      project scaffold (npx create-tu-app)
-└── std/         @tu-ui/std        standard library (placeholder)
+└── std/         @tu-lang/std        standard library (placeholder)
 
 examples/      hello, counter, todo, styled, scoped, clicker, diff, composition, typed, ssr
 docs/          LANGUAGE.md, DEFERRED.md

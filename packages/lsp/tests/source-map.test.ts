@@ -1,4 +1,4 @@
-import { compileToTSWithMap } from '@tu-ui/compiler'
+import { compileToTSWithMap } from '@tu-lang/compiler'
 import { describe, expect, it } from 'vitest'
 import { decodeMappings, mapSourceLineColToTS, mapToSource } from '../src/source-map.js'
 

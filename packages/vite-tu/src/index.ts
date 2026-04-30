@@ -1,4 +1,4 @@
-import { compileWithMap } from '@tu-ui/compiler'
+import { compileWithMap } from '@tu-lang/compiler'
 import { readFile } from 'node:fs/promises'
 import type { Plugin } from 'vite'
 import { importedNameKindsFor } from './import-kinds.js'
@@ -18,7 +18,7 @@ export interface TuPluginOptions {
  *
  * Usage:
  * ```ts
- * import tu from '@tu-ui/vite'
+ * import tu from '@tu-lang/vite'
  * export default { plugins: [tu()] }
  * ```
  *

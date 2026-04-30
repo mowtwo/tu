@@ -298,16 +298,16 @@ splices into the parent's children list at render time. **Use `Child[]`
 | undefined | Child[]` reflects the runtime contract, and a component
 body that ends in a `style` block returns an array fragment, which
 `VNode[]` would reject. Both `Child` and `VNode` are auto-imported from
-`@tu-ui/runtime` in TS-mode emit, so the annotation resolves without an
+`@tu-lang/runtime` in TS-mode emit, so the annotation resolves without an
 explicit user import.
 
 ### Fragment
 
-`Fragment { … }` from `@tu-ui/runtime` lets a component return multiple
+`Fragment { … }` from `@tu-lang/runtime` lets a component return multiple
 sibling vnodes without an enclosing wrapper element (React's `<>…</>`):
 
 ```tu
-import { Fragment } from "@tu-ui/runtime"
+import { Fragment } from "@tu-lang/runtime"
 
 let Layout = (title: string, children: Child[]) => Fragment {
   header { h1 { title } }
@@ -385,7 +385,7 @@ let inc = () => count = count + 1   // emits: count.set((count.get() + 1))
 `computed(expr)` cells are invalidated when any cell read by `expr`
 changes. Assigning to a computed cell is a compile error.
 
-`mount(thunk, container)` from `@tu-ui/runtime` wires a thunk into the DOM
+`mount(thunk, container)` from `@tu-lang/runtime` wires a thunk into the DOM
 and re-renders on cell mutation. The keyed diff reuses element identity
 across renders (M1.7); LIS-based reorder minimizes moves on long-range
 list shuffles (M1.15).
@@ -525,7 +525,7 @@ statement and without binding `Card` locally.
 
 ### Cross-`.tu` reactivity (M2.3)
 
-When the LSP, `tu check`, or the `@tu-ui/vite` plugin compile a graph of
+When the LSP, `tu check`, or the `@tu-lang/vite` plugin compile a graph of
 `.tu` files, they pre-classify each file's `export let` bindings (state /
 computed / function). The compiler uses that classification to inject
 `.get()` for imported state cells, so:
@@ -559,7 +559,7 @@ The TS shadow looks like normal TypeScript: `Signal.State<T>` cells,
 synthesized `interface ${Name}Props { … }`.
 
 `tu check <file>` runs the shadow through tsserver and pretty-prints
-diagnostics back at the `.tu` source. The `@tu-ui/lsp` package exposes the
+diagnostics back at the `.tu` source. The `@tu-lang/lsp` package exposes the
 same logic plus hover, completion, definition, and rename — all token-
 ranged so squiggles / underlines target individual identifiers.
 
