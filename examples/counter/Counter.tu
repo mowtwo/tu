@@ -1,8 +1,8 @@
-let count = 0
-let doubled = computed(count * 2)
-let plusOne = computed(count + 1)
+export let count = 0
+export let doubled = computed(count * 2)
+export let plusOne = computed(count + 1)
 
-let Counter = () => {
+export let Counter = () => {
   div(class: "counter") {
     p { "count   = " count }
     p { "doubled = " doubled }

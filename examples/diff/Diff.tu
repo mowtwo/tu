@@ -8,10 +8,10 @@
 //      so reordering them moves DOM nodes instead of recreating them — any
 //      animation, focus, or input state inside an `<li>` would survive.
 
-let items = 0
-let count = 0
+export let items = 0
+export let count = 0
 
-let Diff = () => {
+export let Diff = () => {
   div(class: "diff") {
     section(class: "section") {
       h2 { "Focus test" }

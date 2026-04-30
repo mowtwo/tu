@@ -26,7 +26,7 @@ describe('@tu/vite', () => {
 
   it('load() compiles a .tu file to ESM', async () => {
     const file = join(tmp, 'Greet.tu')
-    writeFileSync(file, 'let Greet = (name: string) => p { name }\n')
+    writeFileSync(file, 'export let Greet = (name: string) => p { name }\n')
     const plugin = tu()
     const load = plugin.load as (
       this: unknown,
@@ -48,7 +48,7 @@ describe('@tu/vite', () => {
 
   it('load() strips a Vite-style ?query suffix before matching', async () => {
     const file = join(tmp, 'X.tu')
-    writeFileSync(file, 'let X = "hi"\n')
+    writeFileSync(file, 'export let X = "hi"\n')
     const plugin = tu()
     const load = plugin.load as (
       this: unknown,
@@ -61,7 +61,7 @@ describe('@tu/vite', () => {
 
   it('respects a custom include regex', async () => {
     const file = join(tmp, 'X.tuf')
-    writeFileSync(file, 'let X = "hi"\n')
+    writeFileSync(file, 'export let X = "hi"\n')
     const plugin = tu({ include: /\.tuf$/ })
     const load = plugin.load as (
       this: unknown,

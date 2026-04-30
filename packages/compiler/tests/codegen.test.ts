@@ -7,38 +7,38 @@ describe('codegen', () => {
   })
 
   it('wraps a top-level let with a primitive value as a Signal.State cell', () => {
-    const js = compile('let greeting = "hi"')
+    const js = compile('export let greeting = "hi"')
     expect(js).toContain(`export const greeting = new Signal.State("hi")`)
   })
 
   it('wraps a top-level numeric let as Signal.State', () => {
-    const js = compile('let count = 0')
+    const js = compile('export let count = 0')
     expect(js).toContain(`export const count = new Signal.State(0)`)
   })
 
   it('emits a Signal.Computed cell for `let X = computed(expr)`', () => {
     const js = compile(`
       let count = 0
-      let doubled = computed(count * 2)
+      export let doubled = computed(count * 2)
     `)
     expect(js).toContain(`export const doubled = new Signal.Computed(() => (count.get() * 2))`)
   })
 
   it('emits a top-level let bound to a lambda as a plain const (no signal wrap)', () => {
-    const js = compile('let App = () => div { "Hi" }')
+    const js = compile('export let App = () => div { "Hi" }')
     expect(js).toContain(`export const App = () => h("div", {}, ["Hi"])`)
     expect(js).not.toContain(`new Signal.State(`)
   })
 
   it('treats lambda params as plain identifiers, not cells', () => {
-    const js = compile('let G = (name: string) => div { name }')
+    const js = compile('export let G = (name: string) => div { name }')
     expect(js).toContain(`export const G = (name) => h("div", {}, [name])`)
   })
 
   it('emits .get() when a top-level cell is read inside a lambda body', () => {
     const js = compile(`
-      let count = 0
-      let Counter = () => p { count }
+      export let count = 0
+      export let Counter = () => p { count }
     `)
     expect(js).toContain(`export const count = new Signal.State(0)`)
     expect(js).toContain(`export const Counter = () => h("p", {}, [count.get()])`)
@@ -47,7 +47,7 @@ describe('codegen', () => {
   it('shadows a top-level cell when a lambda param has the same name', () => {
     const js = compile(`
       let name = "outer"
-      let G = (name: string) => p { name }
+      export let G = (name: string) => p { name }
     `)
     // Inside the lambda, `name` refers to the param — emit as-is.
     expect(js).toContain(`export const G = (name) => h("p", {}, [name])`)
@@ -69,7 +69,7 @@ describe('codegen', () => {
 
   it('flattens block-bodied lambdas to expression form when single child', () => {
     const js = compile(`
-      let App = () => {
+      export let App = () => {
         div { "hi" }
       }
     `)
@@ -128,7 +128,7 @@ describe('codegen', () => {
 
   it('emits a fragment array when a Block contains both a tag-call and a style block', () => {
     const js = compile(`
-      let App = () => {
+      export let App = () => {
         div(class: "card") { "hi" }
         style { .card { padding: 1rem; } }
       }
@@ -139,7 +139,7 @@ describe('codegen', () => {
   it('emits an assignment to a state cell as cell.set(rhs)', () => {
     const js = compile(`
       let count = 0
-      let inc = () => count = count + 1
+      export let inc = () => count = count + 1
     `)
     expect(js).toContain('export const inc = () => count.set((count.get() + 1))')
   })
@@ -155,14 +155,14 @@ describe('codegen', () => {
   it('emits a lambda-valued prop as a JS arrow function (event handler)', () => {
     const js = compile(`
       let count = 0
-      let App = () => button(onClick: () => count = count + 1) { "+" }
+      export let App = () => button(onClick: () => count = count + 1) { "+" }
     `)
     expect(js).toContain('h("button", { "onClick": () => count.set((count.get() + 1)) }, ["+"])')
   })
 
   it('does not turn a lambda parameter assignment into .set()', () => {
     // Inside the lambda body, `n` is a param — assignment must stay plain JS.
-    const js = compile('let f = (n: number) => n = n + 1')
+    const js = compile('export let f = (n: number) => n = n + 1')
     expect(js).toContain('export const f = (n) => (n = (n + 1))')
   })
 
@@ -268,7 +268,7 @@ describe('codegen', () => {
 
   it('compiles the canonical greeting example', () => {
     const js = compile(`
-      let Greeting = (name: string) => {
+      export let Greeting = (name: string) => {
         div(class: "greet") {
           h1 { "Hello, " name "!" }
           p { "Welcome to Tu" }
@@ -278,5 +278,39 @@ describe('codegen', () => {
     expect(js).toContain(`export const Greeting = (name) => (h(`)
     expect(js).toContain(`h("h1", {}, ["Hello, ", name, "!"])`)
     expect(js).toContain(`h("p", {}, ["Welcome to Tu"])`)
+  })
+
+  // M1.10 visibility — bare `let` is module-private; `export let` is public.
+
+  it('M1.10: bare `let` emits `const` (module-private), no leading export', () => {
+    const js = compile('let x = 1')
+    expect(js).toContain('const x = new Signal.State(1)')
+    expect(js).not.toContain('export const x')
+  })
+
+  it('M1.10: `export let` emits `export const`', () => {
+    const js = compile('export let x = 1')
+    expect(js).toContain('export const x = new Signal.State(1)')
+  })
+
+  it('M1.10: a private state cell still wraps in Signal.State and is callable from a same-module lambda', () => {
+    const js = compile(`
+      let count = 0
+      export let App = () => p { count }
+    `)
+    expect(js).toContain('const count = new Signal.State(0)')
+    expect(js).not.toContain('export const count')
+    // The exported lambda still reads it via .get().
+    expect(js).toContain('export const App = () => h("p", {}, [count.get()])')
+  })
+
+  it('M1.10: a private function (lambda) is callable from a same-module exported component', () => {
+    const js = compile(`
+      let helper = (x: number) => x + 1
+      export let App = () => p { helper(2) }
+    `)
+    expect(js).toContain('const helper = (x) => (x + 1)')
+    expect(js).not.toContain('export const helper')
+    expect(js).toContain('export const App = () => h("p", {}, [helper(2)])')
   })
 })

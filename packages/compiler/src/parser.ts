@@ -69,19 +69,24 @@ export class Parser {
   }
 
   private parseStmt(): Stmt {
-    if (this.peek().kind === TokenKind.Let) {
-      return this.parseLetDecl()
+    const start = this.peek().start
+    let exported = false
+    if (this.peek().kind === TokenKind.Export) {
+      this.pos++
+      exported = true
     }
-    throw this.error(`expected 'let'`)
+    if (this.peek().kind === TokenKind.Let) {
+      return this.parseLetDecl(start, exported)
+    }
+    throw this.error(`expected 'let' or 'export let'`)
   }
 
-  private parseLetDecl(): LetDecl {
-    const start = this.peek().start
+  private parseLetDecl(start: number, exported: boolean): LetDecl {
     this.expect(TokenKind.Let)
     const name = this.expect(TokenKind.Ident).text
     this.expect(TokenKind.Equals)
     const value = this.parseExpr()
-    return { kind: 'LetDecl', exported: true, name, value, start }
+    return { kind: 'LetDecl', exported, name, value, start }
   }
 
   // Pratt-style precedence climber for binary expressions, with a

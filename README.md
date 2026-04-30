@@ -92,7 +92,8 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.7 | Keyed diff (focus-preserving + reorder) | ✅ |
 | M1.8 | Style scoping + `.card` symbolic refs + pug shorthand | ✅ |
 | M1.9 | Error UX: file:line:col + code frame, V3 source maps | ✅ |
-| M2 | Type inference + `.d.ts` emit | … |
+| M1.10 | Module visibility: private-by-default + `export let` | ✅ |
+| M2 | Type system via TypeScript (Volar pattern) + `.d.ts` emit | … |
 | M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |
 | M5 | CLI + dev server + project template | … |

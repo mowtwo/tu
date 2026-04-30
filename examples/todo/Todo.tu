@@ -6,16 +6,16 @@
 // Tu has no member access yet (no `items.length`), so we keep a separate `count` cell
 // and update both together from the runner.
 
-let items = 0
-let count = 0
+export let items = 0
+export let count = 0
 
-let label = computed(match (count) {
+export let label = computed(match (count) {
   0 => "no items"
   1 => "1 item"
   _ => "many items"
 })
 
-let Todo = () => {
+export let Todo = () => {
   div(class: "todo") {
     h1 { "Todo — " label }
 

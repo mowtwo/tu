@@ -4,6 +4,8 @@
 // With scoping, each component's `.card` becomes `.card-tu-{differentHash}`,
 // and the two cards keep their own visual treatment.
 
+// `RedCard` and `BlueCard` are referenced only by `Scoped` below (same module),
+// so they stay private. Only `Scoped` is part of the module's public surface.
 let RedCard = (label: string) => {
   .card() { label }
   style {
@@ -31,7 +33,7 @@ let BlueCard = (label: string) => {
   }
 }
 
-let Scoped = () => {
+export let Scoped = () => {
   div(class: .stage) {
     RedCard("I'm a red `.card`")
     BlueCard("I'm a blue `.card` — same class name, different scope")

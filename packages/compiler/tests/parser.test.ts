@@ -11,8 +11,23 @@ describe('parser', () => {
     expect(ast('')).toEqual({ kind: 'Program', body: [] })
   })
 
-  it('parses a let with a string literal value', () => {
+  it('parses a bare `let` as module-private (exported: false)', () => {
     expect(ast('let x = "hi"')).toEqual({
+      kind: 'Program',
+      body: [
+        {
+          kind: 'LetDecl',
+          exported: false,
+          name: 'x',
+          value: { kind: 'StringLit', value: 'hi' },
+          start: 0,
+        },
+      ],
+    })
+  })
+
+  it('parses `export let` as public (exported: true)', () => {
+    expect(ast('export let x = "hi"')).toEqual({
       kind: 'Program',
       body: [
         {
@@ -68,7 +83,7 @@ describe('parser', () => {
       {
         "body": [
           {
-            "exported": true,
+            "exported": false,
             "kind": "LetDecl",
             "name": "App",
             "start": 7,

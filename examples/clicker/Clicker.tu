@@ -8,13 +8,16 @@
 //   • Calling `mount(Clicker, container)` (from the runner) materializes the
 //     component into real DOM and re-renders on every cell change.
 
-let count = 0
+// M1.10 — `count` is `export` because the runner reads it externally; the
+// `dec` / `inc` / `reset` helpers are referenced only from inside this module
+// (by the onClick props below), so they stay module-private.
+export let count = 0
 
 let dec = () => count = count - 1
 let inc = () => count = count + 1
 let reset = () => count = 0
 
-let Clicker = () => {
+export let Clicker = () => {
   div(class: "clicker") {
     p(class: "label") { "count = " count }
     div(class: "row") {

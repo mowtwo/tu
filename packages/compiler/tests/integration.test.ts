@@ -27,7 +27,7 @@ describe('compile + render end-to-end', () => {
   it('renders the canonical Greeting example', async () => {
     const html = await compileAndRun(
       `
-        let Greeting = (name: string) => {
+        export let Greeting = (name: string) => {
           div(class: "greet") {
             h1 { "Hello, " name "!" }
             p { "Welcome to Tu" }
@@ -44,7 +44,7 @@ describe('compile + render end-to-end', () => {
 
   it('handles void elements correctly', async () => {
     const html = await compileAndRun(
-      `let Card = () => div { img(src: "/a.png") }`,
+      `export let Card = () => div { img(src: "/a.png") }`,
       (mod) => {
         const fn = mod['Card'] as () => unknown
         return renderToString(fn() as never)
@@ -55,7 +55,7 @@ describe('compile + render end-to-end', () => {
 
   it('escapes user data in text and attributes', async () => {
     const html = await compileAndRun(
-      `let Risk = (raw: string) => p(title: raw) { raw }`,
+      `export let Risk = (raw: string) => p(title: raw) { raw }`,
       (mod) => {
         const fn = mod['Risk'] as (s: string) => unknown
         return renderToString(fn('<x>"&y') as never)
@@ -73,9 +73,9 @@ describe('compile + render end-to-end', () => {
   it('top-level let auto-binds to a Signal cell with reactive computed', async () => {
     const result = await compileAndRun(
       `
-        let count = 0
-        let doubled = computed(count * 2)
-        let App = () => p { count }
+        export let count = 0
+        export let doubled = computed(count * 2)
+        export let App = () => p { count }
       `,
       (mod) => {
         const count = mod['count'] as SignalCell<number>
@@ -98,8 +98,8 @@ describe('compile + render end-to-end', () => {
   it('binary arithmetic with mixed cell + literal operands', async () => {
     const result = await compileAndRun(
       `
-        let n = 10
-        let derived = computed(n * 2 + 1)
+        export let n = 10
+        export let derived = computed(n * 2 + 1)
       `,
       (mod) => {
         const n = mod['n'] as SignalCell<number>
@@ -117,8 +117,8 @@ describe('compile + render end-to-end', () => {
   it('renders a for-loop list reactively as the iter cell mutates', async () => {
     const result = await compileAndRun(
       `
-        let items = 0
-        let List = () => ul {
+        export let items = 0
+        export let List = () => ul {
           for item in items {
             li { item }
           }
@@ -144,8 +144,8 @@ describe('compile + render end-to-end', () => {
   it('renders an if/else branch reactively', async () => {
     const result = await compileAndRun(
       `
-        let count = 0
-        let App = () => div {
+        export let count = 0
+        export let App = () => div {
           if (count > 0) {
             p { "positive: " count }
           } else {
@@ -169,8 +169,8 @@ describe('compile + render end-to-end', () => {
   it('renders a match expression reactively, with wildcard fallback', async () => {
     const result = await compileAndRun(
       `
-        let n = 0
-        let App = () => p {
+        export let n = 0
+        export let App = () => p {
           match (n) {
             0 => "zero"
             1 => "one"
@@ -197,7 +197,7 @@ describe('compile + render end-to-end', () => {
   it('renders a component with a style block as a fragment with un-escaped CSS', async () => {
     const html = await compileAndRun(
       `
-        let Card = () => {
+        export let Card = () => {
           div(class: "card") { h1 { "Hello" } }
           style {
             .card { padding: 1rem; color: #333; }
@@ -220,7 +220,7 @@ describe('compile + render end-to-end', () => {
   it('renders a scoped component with hashed class names matching the markup', async () => {
     const html = await compileAndRun(
       `
-        let Card = () => {
+        export let Card = () => {
           .card() { "hi" }
           style { .card { padding: 1rem; } }
         }
@@ -241,11 +241,11 @@ describe('compile + render end-to-end', () => {
   it('renders two components with the same class declaration without collision', async () => {
     const html = await compileAndRun(
       `
-        let A = () => {
+        export let A = () => {
           div(class: .card) { "A body" }
           style { .card { color: red; } }
         }
-        let B = () => {
+        export let B = () => {
           div(class: .card) { "B body" }
           style { .card { color: blue; } }
         }
@@ -268,7 +268,7 @@ describe('compile + render end-to-end', () => {
     const result = await compileAndRun(
       `
         let name = "outer"
-        let G = (name: string) => p { name }
+        export let G = (name: string) => p { name }
       `,
       (mod) => {
         const G = mod['G'] as (s: string) => unknown

@@ -8,7 +8,7 @@
 //
 // The pug-style shorthand `.body() { … }` desugars to `div(class: .body)`.
 
-let Card = (title: string, body: string) => {
+export let Card = (title: string, body: string) => {
   .card() {
     h1(class: .card__title) { title }
     .body() { body }
