@@ -1,17 +1,42 @@
 {
-  "name": "@tu/vscode",
+  "name": "vscode-tu",
   "displayName": "Tu",
-  "description": "VS Code extension for the Tu language.",
+  "description": "Tu language support for VS Code — syntax highlighting and file association.",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "type": "module",
-  "main": "./dist/index.js",
+  "publisher": "mowtwo",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tu",
+        "aliases": ["Tu", "tu", "图"],
+        "extensions": [".tu"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/tu.svg",
+          "dark": "./icons/tu.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tu",
+        "scopeName": "source.tu",
+        "path": "./syntaxes/tu.tmLanguage.json"
+      }
+    ]
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "echo 'vscode-tu is declarative-only; nothing to build'",
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist *.tsbuildinfo"
-  },
-  "$comment": "VS Code extension manifest fields (engines, contributes, activationEvents) are added in M3 when the LSP client is implemented."
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "dev:install": "node scripts/install-dev.mjs",
+    "dev:uninstall": "node scripts/install-dev.mjs --uninstall"
+  }
 }

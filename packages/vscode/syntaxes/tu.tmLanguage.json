@@ -1,0 +1,112 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Tu",
+  "scopeName": "source.tu",
+  "fileTypes": ["tu"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#constant" },
+    { "include": "#type-primitive" },
+    { "include": "#operator" },
+    { "include": "#prop-key" },
+    { "include": "#tag-call" },
+    { "include": "#component-name" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "match": "//.*$",
+          "name": "comment.line.double-slash.tu"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.tu",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "match": "\\\\(n|t|r|\"|\\\\)",
+          "name": "constant.character.escape.tu"
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b\\d+(\\.\\d+)?\\b",
+          "name": "constant.numeric.tu"
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "match": "\\b(let|export|import|from|as|if|else|for|of|in|where|order|by|take|skip|match|computed|effect|watch|server|client|stream|defer|async|await)\\b",
+          "name": "keyword.control.tu"
+        }
+      ]
+    },
+    "constant": {
+      "patterns": [
+        {
+          "match": "\\b(true|false|null|undefined)\\b",
+          "name": "constant.language.tu"
+        }
+      ]
+    },
+    "type-primitive": {
+      "patterns": [
+        {
+          "match": "(?<=:\\s*)\\b(string|number|boolean|any|unknown|void|never)\\b",
+          "name": "support.type.primitive.tu"
+        }
+      ]
+    },
+    "operator": {
+      "patterns": [
+        {
+          "match": "=>|\\?\\?|\\?\\.|\\?|\\.\\.\\.?=?|[+\\-*/%=!<>&|]=?",
+          "name": "keyword.operator.tu"
+        }
+      ]
+    },
+    "prop-key": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_-]*)(?=\\s*:)",
+          "name": "entity.other.attribute-name.tu"
+        }
+      ]
+    },
+    "tag-call": {
+      "patterns": [
+        {
+          "match": "\\b([a-z][a-zA-Z0-9-]*)\\b(?=\\s*[\\({])",
+          "name": "entity.name.tag.tu"
+        }
+      ]
+    },
+    "component-name": {
+      "patterns": [
+        {
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b",
+          "name": "entity.name.type.tu"
+        }
+      ]
+    },
+    "identifier": {
+      "patterns": [
+        {
+          "match": "\\b[a-z_$][a-zA-Z0-9_$]*\\b",
+          "name": "variable.other.tu"
+        }
+      ]
+    }
+  }
+}

@@ -20,7 +20,7 @@ packages/
 ├── compiler/    @tu/compiler   lexer, parser, type-mapper, codegen
 ├── runtime/     @tu/runtime    ~3 KB Signal + DOM glue
 ├── lsp/         @tu/lsp        Volar-based language server
-├── vscode/      @tu/vscode     VS Code extension
+├── vscode/      vscode-tu      VS Code extension (syntax + icon)
 ├── cli/         @tu/cli        tu build / tu dev / tu check / tu fmt
 ├── format/      @tu/format     formatter (Prettier plugin; dprint later)
 ├── create-tu/   create-tu      project scaffold (npx create-tu-app)
@@ -40,14 +40,38 @@ pnpm test
 pnpm check
 ```
 
+### Run the M1.0 demo
+
+```bash
+pnpm --filter @tu-examples/hello demo          # default name "World"
+pnpm --filter @tu-examples/hello demo Alice    # custom argument
+```
+
+Prints both the compiled JavaScript and the rendered HTML.
+
+### VS Code syntax highlighting (M1.1)
+
+```bash
+pnpm --filter vscode-tu dev:install
+# Then in VS Code: Cmd+Shift+P → "Developer: Reload Window"
+```
+
+After the reload, opening any `.tu` file gives you syntax highlighting, bracket matching, comment toggling, and the language icon. To remove later: `pnpm --filter vscode-tu dev:uninstall`.
+
+Alternatively press **F5** in this workspace to launch a separate "Extension Development Host" window with the extension preloaded — preferred for iterating on the grammar.
+
 ## Roadmap
 
 | Milestone | Goal | Status |
 |---|---|---|
 | M0 | Monorepo scaffold | ✅ |
-| M1 | Compile `Counter.tu` → ESM, run on Node | … |
+| M1.0 | Static `Greeting.tu` → ESM → HTML | ✅ |
+| M1.1 | VS Code syntax highlighting + file icon | ✅ |
+| M1.2 | Reactivity: `let count = 0` auto-binds to a Signal | … |
+| M1.3 | `if` / `for` / `match` expressions | … |
+| M1.4 | `style { … }` block | … |
 | M2 | Type inference + `.d.ts` emit | … |
-| M3 | LSP + VS Code extension + formatter | … |
+| M3 | Full LSP via Volar + formatter | … |
 | M4 | SSR / CE / wrapper targets | … |
 | M5 | CLI + dev server + project template | … |
 | M6 | Docs + playground + v0.1 alpha release | … |
