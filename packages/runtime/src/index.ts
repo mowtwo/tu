@@ -155,6 +155,45 @@ export function mount(thunk: () => Child, container: Element): () => void {
 }
 
 /**
+ * Wrap a Tu thunk in a custom-element class and register it under
+ * `tagName`. The resulting element mounts the thunk on `connectedCallback`
+ * and tears down (`stop()`) on `disconnectedCallback`.
+ *
+ * V1 limitations:
+ *   - The thunk's reactive scope is the MODULE's top-level cells. Multiple
+ *     instances of the same custom element share state — useful for once-
+ *     per-page components, limiting otherwise. Per-instance state needs
+ *     local-`let` support in Tu (not in V1).
+ *   - No attribute bridging. HTML attributes don't auto-bind to Tu cells
+ *     yet; users hand-roll observedAttributes via a custom subclass if
+ *     they need it.
+ *
+ * Throws a `TypeError` outside a browser-like environment (no
+ * `customElements`).
+ */
+export function defineCustomElement(
+  thunk: () => Child,
+  tagName: string
+): void {
+  if (typeof customElements === 'undefined') {
+    throw new TypeError(
+      `defineCustomElement requires a browser-like environment with customElements; got none`
+    )
+  }
+  const TuElement = class extends HTMLElement {
+    private _stop?: () => void
+    connectedCallback(): void {
+      this._stop = mount(thunk, this)
+    }
+    disconnectedCallback(): void {
+      this._stop?.()
+      this._stop = undefined
+    }
+  }
+  customElements.define(tagName, TuElement)
+}
+
+/**
  * Adopt an SSR-rendered DOM tree under `container` and wire it up to a
  * reactive `thunk`. The first render does NOT create or move elements —
  * existing children are walked in lockstep with the thunk's first-frame

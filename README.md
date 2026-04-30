@@ -117,7 +117,8 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M1.14 | Counter.tu owns its own `+`/`−`/`reset` buttons | ✅ |
 | M1.15 | LIS-based keyed reorder (Vue/Inferno-style) | ✅ |
 | M4 V1 | Client-side `hydrate(thunk, container)` for SSR | ✅ |
-| M4 | Custom Elements + framework wrapper targets | … |
+| M4.1 | `defineCustomElement(thunk, tagName)` runtime helper | ✅ |
+| M4 | Framework wrapper targets (React / Vue / Svelte / Solid) | … |
 | M5 | Dev server polish + project template | … |
 | M6 | Docs + playground + v0.1 alpha release | … |
 

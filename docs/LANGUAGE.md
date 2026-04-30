@@ -295,6 +295,13 @@ fused into a single Text node are split during hydration so cell updates
 can target individual fragments (`p { "count = " count }` keeps the
 static prefix Text node untouched when `count` ticks).
 
+`defineCustomElement(thunk, tagName)` (M4.1) registers a Tu thunk as a
+standard Custom Element. The element mounts on `connectedCallback`,
+stops on `disconnectedCallback`, and re-renders reactively while
+connected. V1 caveats: the thunk's reactive scope is the module's
+top-level cells (multiple instances share state), and HTML attributes
+don't auto-bind to Tu cells yet.
+
 ---
 
 ## Style block
