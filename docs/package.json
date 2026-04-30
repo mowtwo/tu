@@ -1,0 +1,17 @@
+{
+  "name": "tu-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tu (图) documentation site (VitePress).",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview .",
+    "test": "echo 'no tests — vitepress site'",
+    "check": "echo 'no checks'"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}

@@ -13,6 +13,10 @@ coverage/
 # Playwright MCP scratch — page/console snapshots from in-session browser tests
 .playwright-mcp/
 
+# VitePress site build output (deployed via .github/workflows/deploy-docs.yml)
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
 # M2 typecheck artifacts: per-example compiled .ts shadow + project tsconfig
 examples/*/Clicker.ts
 examples/*/Greeting.ts
