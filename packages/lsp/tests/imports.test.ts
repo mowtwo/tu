@@ -79,6 +79,26 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     expect(diags[0]?.line).toBe(1)
   })
 
+  it('M2.3: importing a state cell across files now reads via `.get()`', async () => {
+    // Pre-M2.3, importing `count` from another .tu silently lost its `.get()`
+    // injection because the importing file's compiler couldn't classify
+    // imported names. With cross-file kind propagation, the read now emits
+    // `count.get()` in the TS shadow so reactivity works as expected.
+    const cellPath = join(tmp, 'cell.tu')
+    writeFileSync(cellPath, 'export let count = 0\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { count } from "./cell.tu"',
+      'export let App = () => p { count }',
+    ].join('\n')
+    // Reach into the shadow-graph to inspect the emitted TS for App.tu.
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const appShadow = shadows.get(tuPathToTs(appPath))!
+    expect(appShadow.ts).toContain('count.get()')
+    expect(appShadow.ts).not.toMatch(/\[count\]/) // no bare-ident read
+  })
+
   it('cycles are tolerated (a imports b imports a)', () => {
     // Slightly contrived but valid: two .tu files each export something the
     // other imports. The BFS should terminate via the seen-set.

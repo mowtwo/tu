@@ -2,7 +2,7 @@
 
 A reactive UI language with first-class signals, immutable-by-default state, and resumability-based SSR. Designed to compile cleanly to standard Web Components and play well with React / Vue / Svelte ecosystems.
 
-> **Status**: pre-alpha (v0.0.0). Not usable yet — language design and compiler are under active development.
+> **Status**: pre-alpha (v0.0.0). Compiler, runtime, type-system, and full LSP (diagnostics + hover + completion + definition + rename) are landed; SSR, CE wrappers, and the v0.1 release are next.
 
 ## Concept
 
@@ -97,10 +97,21 @@ Alternatively press **F5** in this workspace to launch a separate "Extension Dev
 | M2 | Type system via TypeScript + `.d.ts` emit (V1: erasure-only) | ✅ |
 | M2.1 | Cross-`.tu` `import { X } from "./other.tu"` + re-exports | ✅ |
 | M3 V1 | LSP — diagnostics via TypeScript Compiler API | ✅ |
-| M3.1 | LSP — cross-`.tu` import resolution (no more false cannot-find-module) | ✅ |
-| M3 | Full LSP via Volar + formatter | … |
+| M3.1 | LSP — cross-`.tu` import resolution | ✅ |
+| M3.2 | Token-level diagnostic ranges + per-token V3 source maps | ✅ |
+| M3.3 | LSP hover (type + JSDoc at cursor) | ✅ |
+| M3.4 | LSP completion (idents, params, cross-`.tu` imports) | ✅ |
+| M3.5 | LSP goto-definition (same-file + cross-`.tu`) | ✅ |
+| M3.6 | `tu check` CLI — type-check `.tu` files with code-frame output | ✅ |
+| M3.7 | LanguageService cache (single-slot, mtime-aware) | ✅ |
+| M3.8 | LSP rename (cross-`.tu` workspace edits) | ✅ |
+| M2.2 | Annotated `let X: T = …` declarations | ✅ |
+| M1.12 | Pug-shorthand multi-class + `tag:` override | ✅ |
+| M1.13 | `:global(.foo)` CSS escape hatch | ✅ |
+| M1.14 | Counter.tu owns its own `+`/`−`/`reset` buttons | ✅ |
+| M1.15 | LIS-based keyed reorder (Vue/Inferno-style) | ✅ |
 | M4 | SSR / CE / wrapper targets | … |
-| M5 | CLI + dev server + project template | … |
+| M5 | Dev server polish + project template | … |
 | M6 | Docs + playground + v0.1 alpha release | … |
 
 ## License

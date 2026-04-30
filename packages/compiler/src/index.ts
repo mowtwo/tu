@@ -1,4 +1,4 @@
-import { generateTSWithMap, generateWithMap, type SourceMapV3, type TokenMapping } from './codegen.js'
+import { generateTSWithMap, generateWithMap, type CodegenOptions, type SourceMapV3, type TokenMapping } from './codegen.js'
 import { parse } from './parser.js'
 import { tokenize } from './lexer.js'
 
@@ -6,13 +6,13 @@ export const VERSION = '0.0.0'
 
 export { Lexer, tokenize } from './lexer.js'
 export { Parser, parse } from './parser.js'
-export { generate, generateTSWithMap, generateWithMap } from './codegen.js'
+export { classifyTopLevel, generate, generateTSWithMap, generateWithMap } from './codegen.js'
 export { TokenKind, type Token } from './tokens.js'
 export { formatError, lineColAt } from './diagnostics.js'
-export type { SourceMapV3, TokenMapping } from './codegen.js'
+export type { CellKind, CodegenOptions, SourceMapV3, TokenMapping } from './codegen.js'
 export type * from './ast.js'
 
-export interface CompileOptions {
+export interface CompileOptions extends CodegenOptions {
   /** Filename surfaced in compile errors and the source map's `sources` field. */
   filename?: string
 }
@@ -43,7 +43,7 @@ export function compileWithMap(source: string, options: CompileOptions = {}): Co
   const filename = options.filename
   const tokens = tokenize(source, filename)
   const ast = parse(tokens, source, filename)
-  return generateWithMap(ast, source, filename)
+  return generateWithMap(ast, source, filename, options)
 }
 
 /**
@@ -73,7 +73,7 @@ export function compileToTSWithMap(source: string, options: CompileOptions = {})
   const filename = options.filename
   const tokens = tokenize(source, filename)
   const ast = parse(tokens, source, filename)
-  return generateTSWithMap(ast, source, filename)
+  return generateTSWithMap(ast, source, filename, options)
 }
 
 /** String-only TS entrypoint; mirrors `compile()`. */

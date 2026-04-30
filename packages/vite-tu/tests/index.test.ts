@@ -72,6 +72,22 @@ describe('@tu/vite', () => {
     expect(result!.code).toContain('export const X')
   })
 
+  it('M2.3: load() resolves an imported state cell so reads emit `.get()`', async () => {
+    const cellPath = join(tmp, 'cell.tu')
+    writeFileSync(cellPath, 'export let count = 0\n')
+    const appPath = join(tmp, 'App.tu')
+    writeFileSync(
+      appPath,
+      'import { count } from "./cell.tu"\nexport let App = () => p { count }\n'
+    )
+    const plugin = tu()
+    const load = plugin.load as (this: unknown, id: string) => Promise<{ code: string } | null>
+    const result = await load.call({}, appPath)
+    expect(result).not.toBeNull()
+    // Pre-M2.3, this would be `[count]` (broken reactivity). Post-fix:
+    expect(result!.code).toContain('count.get()')
+  })
+
   it('load() returns a V3 source map alongside the code', async () => {
     const file = join(tmp, 'M.tu')
     writeFileSync(file, 'let count = 0\n')

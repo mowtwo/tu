@@ -1,6 +1,7 @@
 import { compileWithMap } from '@tu/compiler'
 import { readFile } from 'node:fs/promises'
 import type { Plugin } from 'vite'
+import { importedNameKindsFor } from './import-kinds.js'
 
 export const VERSION = '0.0.0'
 
@@ -38,10 +39,16 @@ export default function tu(options: TuPluginOptions = {}): Plugin {
       const cleanId = id.split('?', 1)[0] ?? id
       if (!include.test(cleanId)) return null
       const src = await readFile(cleanId, 'utf-8')
+      // Resolve cross-`.tu` imports' kinds so a `Signal.State` cell imported
+      // from a sibling file still emits `.get()` at the use site (M2.3 fix).
+      const importedNameKinds = importedNameKindsFor(src, cleanId)
       // Pass the resolved file path as the filename so compile errors carry
       // a clickable location and the source map's `sources` field resolves
       // back to the original `.tu` file in browser stack traces.
-      const { code, map } = compileWithMap(src, { filename: cleanId })
+      const { code, map } = compileWithMap(src, {
+        filename: cleanId,
+        ...(importedNameKinds ? { importedNameKinds } : {}),
+      })
       return { code, map }
     },
     handleHotUpdate(ctx) {

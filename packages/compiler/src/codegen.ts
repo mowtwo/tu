@@ -54,7 +54,7 @@ export interface TokenMapping {
  * Top-level binding kinds — drives whether an identifier read becomes
  * `name.get()` or stays as a plain reference.
  */
-type CellKind = 'state' | 'computed' | 'function'
+export type CellKind = 'state' | 'computed' | 'function'
 
 /** Tu `==` / `!=` map to JS strict equality to avoid coercion surprises. */
 const BINARY_OP_JS: Record<BinaryOp, string> = {
@@ -86,8 +86,26 @@ interface BuildResult {
   tokenMappings: TokenMapping[]
 }
 
-function buildBody(program: Program, tsMode: boolean): BuildResult {
-  const cells = analyzeProgram(program)
+/**
+ * Per-emit options that the rest of the toolchain (LSP, CLI, vite plugin)
+ * uses to give codegen extra context it can't derive from a single source
+ * file.
+ */
+export interface CodegenOptions {
+  /**
+   * Per-imported-name classification. The compiler defaults to `'function'`
+   * for any name brought in by `import { X } from "./M.tu"` because, looking
+   * at the importing source alone, it can't tell what kind `X` was declared
+   * as in the exporting module. Callers who DO know (the LSP's shadow graph,
+   * the CLI's BFS, the vite plugin's resolver) pass the map here so reads of
+   * imported state / computed cells emit `X.get()` instead of `X` — fixing
+   * the M2.1 reactivity bug.
+   */
+  importedNameKinds?: ReadonlyMap<string, CellKind>
+}
+
+function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): BuildResult {
+  const cells = analyzeProgram(program, opts?.importedNameKinds)
   const scopes = analyzeScopedComponents(program)
   const cg = new Codegen(cells, scopes, tsMode)
   cg.write(`${RUNTIME_IMPORT}\n\n`)
@@ -99,8 +117,8 @@ function buildBody(program: Program, tsMode: boolean): BuildResult {
   return cg.finish()
 }
 
-export function generate(program: Program): string {
-  return buildBody(program, false).code
+export function generate(program: Program, opts?: CodegenOptions): string {
+  return buildBody(program, false, opts).code
 }
 
 /**
@@ -112,9 +130,10 @@ export function generate(program: Program): string {
 export function generateWithMap(
   program: Program,
   source: string,
-  filename?: string
+  filename?: string,
+  opts?: CodegenOptions
 ): { code: string; map: SourceMapV3; tokenMappings: TokenMapping[] } {
-  const result = buildBody(program, false)
+  const result = buildBody(program, false, opts)
   const sourceName = filename ?? 'input.tu'
   const map = buildV3Map(result.stmtMappings, result.tokenMappings, result.code, source, sourceName)
   const inline = base64Encode(JSON.stringify(map))
@@ -126,15 +145,15 @@ export function generateWithMap(
  * Generate TypeScript source with a V3 source map. Same semantics as
  * `generateWithMap` but lambda parameter type annotations from the Tu source
  * are preserved (`(name: string)` instead of `(name)`), so tsserver can infer
- * the rest. M2 V1 — type-erasure-only; no synthesized component-prop
- * interfaces or style-class literal types yet.
+ * the rest.
  */
 export function generateTSWithMap(
   program: Program,
   source: string,
-  filename?: string
+  filename?: string,
+  opts?: CodegenOptions
 ): { code: string; map: SourceMapV3; tokenMappings: TokenMapping[] } {
-  const result = buildBody(program, true)
+  const result = buildBody(program, true, opts)
   const sourceName = filename ?? 'input.tu'
   const map = buildV3Map(result.stmtMappings, result.tokenMappings, result.code, source, sourceName)
   const inline = base64Encode(JSON.stringify(map))
@@ -142,22 +161,30 @@ export function generateTSWithMap(
   return { code: result.code + footer, map, tokenMappings: result.tokenMappings }
 }
 
-function analyzeProgram(program: Program): Map<string, CellKind> {
+function analyzeProgram(
+  program: Program,
+  importedNameKinds?: ReadonlyMap<string, CellKind>
+): Map<string, CellKind> {
   const cells = new Map<string, CellKind>()
   for (const stmt of program.body) {
     if (stmt.kind === 'LetDecl') {
       cells.set(stmt.name, classifyValue(stmt.value))
     }
-    // Imported names: classify as 'function' so they emit as plain idents
-    // (no `.get()` injection). This handles imported components / pure
-    // functions correctly. Importing a Signal cell is a known limitation —
-    // codegen has no way to tell the kind without type inference. Workaround:
-    // export a getter (`export let getCount = () => count.get()`).
+    // Imported names: prefer the caller-provided kind (state / computed /
+    // function); otherwise default to 'function' for the standalone-compile
+    // path that has no graph view.
     if (stmt.kind === 'ImportDecl') {
-      for (const name of stmt.names) cells.set(name, 'function')
+      for (const name of stmt.names) {
+        cells.set(name, importedNameKinds?.get(name) ?? 'function')
+      }
     }
   }
   return cells
+}
+
+/** Public re-export so callers (LSP, CLI) can build the importedNameKinds map. */
+export function classifyTopLevel(value: Expr): CellKind {
+  return classifyValue(value)
 }
 
 function classifyValue(expr: Expr): CellKind {

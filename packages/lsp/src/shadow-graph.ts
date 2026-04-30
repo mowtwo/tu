@@ -1,4 +1,12 @@
-import { compileToTSWithMap, parse, tokenize, type Program, type TokenMapping } from '@tu/compiler'
+import {
+  classifyTopLevel,
+  compileToTSWithMap,
+  parse,
+  tokenize,
+  type CellKind,
+  type Program,
+  type TokenMapping,
+} from '@tu/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -66,20 +74,66 @@ export interface Shadow {
   tokenMappings: TokenMapping[]
 }
 
+interface ParsedFile {
+  source: string
+  filename: string
+  ast: Program
+}
+
 /**
  * Walk the import graph rooted at `(rootSource, rootFilename)`, compile every
  * reachable `.tu` to a TS shadow, and return the closure as a Map keyed by
- * the shadow's virtual path. The root is included; transitively imported
- * `.tu` files are read from disk (in-memory edits to OTHER files are not
- * picked up — V2 will surface them by routing through the LSP's open-doc
- * cache).
+ * the shadow's virtual path.
  *
- * Files we can't read (missing, permission denied) are skipped silently;
- * tsserver will produce its own "Cannot find module" diagnostic mapped to
- * the import line.
+ * Two phases:
+ *   1. BFS-parse every reachable file and record its direct `export let`
+ *      kinds (state / computed / function).
+ *   2. Compile each file with `importedNameKinds` derived from its
+ *      `ImportDecl`s + the cross-file export map. This fixes the M2.1
+ *      reactivity bug where importing a Signal cell silently dropped
+ *      `.get()` injection because the compiler couldn't tell its kind.
  */
 export function buildShadowGraph(rootSource: string, rootFilename: string): Map<string, Shadow> {
+  const parsed = bfsParseGraph(rootSource, rootFilename)
+  const exportKinds = collectDirectExportKinds(parsed)
   const shadows = new Map<string, Shadow>()
+  for (const file of parsed.values()) {
+    const importedNameKinds = buildImportedNameKinds(file, exportKinds)
+    let compiled
+    try {
+      compiled = compileToTSWithMap(file.source, {
+        filename: file.filename,
+        ...(importedNameKinds ? { importedNameKinds } : {}),
+      })
+    } catch {
+      // Should not happen — bfsParseGraph already proved this file parses.
+      // Defensive skip; downstream sees no shadow and behaves as before.
+      continue
+    }
+    const virtualPath = tuPathToTs(file.filename)
+    shadows.set(virtualPath, {
+      virtualPath,
+      tuPath: file.filename,
+      ts: compiled.code,
+      tuSource: file.source,
+      mappings: decodeMappings(compiled.map.mappings),
+      mapPos: buildSourceMapper(compiled.map),
+      tokenMappings: compiled.tokenMappings,
+    })
+  }
+  return shadows
+}
+
+/**
+ * BFS over the import graph; parse every reachable `.tu`. Files that fail
+ * to parse are dropped (the eventual diagnostics flow surfaces the syntax
+ * error when the user opens that file directly).
+ */
+function bfsParseGraph(
+  rootSource: string,
+  rootFilename: string
+): Map<string, ParsedFile> {
+  const out = new Map<string, ParsedFile>()
   const queue: { source: string; filename: string }[] = [
     { source: rootSource, filename: rootFilename },
   ]
@@ -88,36 +142,16 @@ export function buildShadowGraph(rootSource: string, rootFilename: string): Map<
     const { source, filename } = queue.shift()!
     if (seen.has(filename)) continue
     seen.add(filename)
-    let compiled
     let ast: Program
     try {
-      compiled = compileToTSWithMap(source, { filename })
       ast = parse(tokenize(source, filename), source, filename)
     } catch {
-      // A Tu compile error in an imported module short-circuits its analysis,
-      // but doesn't tank the whole LSP — the importer will still be checked,
-      // and tsserver will emit "cannot find module" if the broken file's
-      // exports aren't reachable. The compile error itself surfaces when the
-      // user opens that broken file directly.
       continue
     }
-    const virtualPath = tuPathToTs(filename)
-    shadows.set(virtualPath, {
-      virtualPath,
-      tuPath: filename,
-      ts: compiled.code,
-      tuSource: source,
-      mappings: decodeMappings(compiled.map.mappings),
-      mapPos: buildSourceMapper(compiled.map),
-      tokenMappings: compiled.tokenMappings,
-    })
-
-    // Walk top-level imports + re-exports for relative `.tu` paths.
+    out.set(filename, { source, filename, ast })
     for (const stmt of ast.body) {
       if (stmt.kind !== 'ImportDecl' && stmt.kind !== 'ReExportDecl') continue
       if (!stmt.source.endsWith('.tu')) continue
-      // Only follow relative paths — bare-specifier imports are npm modules
-      // resolved by tsserver against node_modules, not part of our graph.
       if (!stmt.source.startsWith('.')) continue
       const importPath = resolve(dirname(filename), stmt.source)
       if (seen.has(importPath)) continue
@@ -125,9 +159,59 @@ export function buildShadowGraph(rootSource: string, rootFilename: string): Map<
         const importedSource = readFileSync(importPath, 'utf-8')
         queue.push({ source: importedSource, filename: importPath })
       } catch {
-        // missing / unreadable — let tsserver complain at the import site
+        // missing / unreadable — diagnostic flow handles it
       }
     }
   }
-  return shadows
+  return out
+}
+
+/**
+ * For each parsed file, classify its DIRECT `export let` bindings (state /
+ * computed / function). Re-exports (`export { X } from "./other.tu"`) and
+ * transitive chains are intentionally not chased — V1 fix covers the
+ * common case (direct import of a sibling cell). Multi-hop re-exports
+ * still fall back to `'function'`, identical to pre-M2.3 behavior.
+ */
+function collectDirectExportKinds(
+  parsed: Map<string, ParsedFile>
+): Map<string, Map<string, CellKind>> {
+  const out = new Map<string, Map<string, CellKind>>()
+  for (const [filename, file] of parsed) {
+    const exports = new Map<string, CellKind>()
+    for (const stmt of file.ast.body) {
+      if (stmt.kind === 'LetDecl' && stmt.exported) {
+        exports.set(stmt.name, classifyTopLevel(stmt.value))
+      }
+    }
+    out.set(filename, exports)
+  }
+  return out
+}
+
+/**
+ * Build the `importedNameKinds` map for a single importing file by walking
+ * its `ImportDecl`s and looking each name up in the cross-file export
+ * table. Names that we can't resolve (file not in graph, name not exported)
+ * fall through and the compiler defaults them to `'function'`.
+ */
+function buildImportedNameKinds(
+  file: ParsedFile,
+  exportKinds: Map<string, Map<string, CellKind>>
+): Map<string, CellKind> | undefined {
+  let result: Map<string, CellKind> | undefined
+  for (const stmt of file.ast.body) {
+    if (stmt.kind !== 'ImportDecl') continue
+    if (!stmt.source.endsWith('.tu') || !stmt.source.startsWith('.')) continue
+    const importPath = resolve(dirname(file.filename), stmt.source)
+    const targetExports = exportKinds.get(importPath)
+    if (!targetExports) continue
+    for (const name of stmt.names) {
+      const kind = targetExports.get(name)
+      if (kind === undefined) continue
+      if (!result) result = new Map()
+      result.set(name, kind)
+    }
+  }
+  return result
 }

@@ -327,6 +327,30 @@ describe('codegen', () => {
     expect(js).toContain(`h("div", { "class": "card-tu-${hash}" }, ["hi"])`)
   })
 
+  it('M2.3: importedNameKinds={state} causes imported reads to emit `.get()`', () => {
+    // Without the option, `count` is treated as a plain function/value and
+    // emits as a bare ident — that's the M2.1 reactivity bug.
+    const bareJs = compile('import { count } from "./M.tu"\nexport let App = () => p { count }')
+    expect(bareJs).toContain('h("p", {}, [count])')
+
+    // With the option, the same imported name is classified as state and
+    // reads emit `.get()`, restoring reactivity.
+    const fixedJs = compile(
+      'import { count } from "./M.tu"\nexport let App = () => p { count }',
+      { importedNameKinds: new Map([['count', 'state']]) }
+    )
+    expect(fixedJs).toContain('h("p", {}, [count.get()])')
+  })
+
+  it('M2.3: importedNameKinds={function} keeps the bare-ident behavior (default)', () => {
+    const js = compile(
+      'import { Card } from "./M.tu"\nexport let App = () => Card("hi")',
+      { importedNameKinds: new Map([['Card', 'function']]) }
+    )
+    expect(js).toContain('Card("hi")')
+    expect(js).not.toContain('Card.get()')
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       export let Greeting = (name: string) => {
