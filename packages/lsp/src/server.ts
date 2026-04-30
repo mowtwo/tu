@@ -33,13 +33,15 @@ const SEVERITY_MAP: Record<TuDiagnostic['severity'], DiagnosticSeverity> = {
   info: DiagnosticSeverity.Information,
 }
 
-function toLspDiagnostic(d: TuDiagnostic): Diagnostic {
-  // V1 source-map granularity is per-statement, so the .tu position points
-  // at the start of the offending statement. Highlight a 1-character range
-  // — VS Code renders this as a squiggle on that single column. Real
-  // token-level ranges land in V2.
+function toLspDiagnostic(d: TuDiagnostic, documentText: string): Diagnostic {
+  // V1 source maps are per top-level statement, so we land on column 0 of
+  // the offending `let` line. Highlight from there up to the `=` (or the
+  // end of the line if no `=`) so the squiggle covers the binding header
+  // — `export let bad1` — and clearly identifies which binding is broken
+  // without dragging across the whole multi-line body. Token-level ranges
+  // are V2 work.
   const start = { line: d.line, character: d.col }
-  const end = { line: d.line, character: d.col + 1 }
+  const end = { line: d.line, character: lineEndForRange(documentText, d.line, d.col) }
   const range: Range = { start, end }
   return {
     severity: SEVERITY_MAP[d.severity],
@@ -48,6 +50,30 @@ function toLspDiagnostic(d: TuDiagnostic): Diagnostic {
     source: '@tu/lsp',
     code: d.code === -1 ? undefined : d.code,
   } satisfies Diagnostic
+}
+
+/**
+ * Compute the end column for a per-statement diagnostic squiggle. Looks at
+ * the source text of the line containing the error and returns the column
+ * of the first `=` that appears after `startCol`, or the end of the line if
+ * no `=` is found. Falls back to `startCol + 1` (single character) for
+ * defensive corner cases.
+ */
+function lineEndForRange(documentText: string, line: number, startCol: number): number {
+  const lines = documentText.split('\n')
+  const lineText = lines[line]
+  if (lineText === undefined) return startCol + 1
+  // Look for the first `=` at or after startCol. Prefer ending right BEFORE
+  // it so the squiggle covers `export let bad1 ` rather than including `=`.
+  const eqIdx = lineText.indexOf('=', startCol)
+  if (eqIdx > startCol) {
+    // Trim a trailing space so the squiggle ends on the binding name itself.
+    let end = eqIdx
+    while (end > startCol && /\s/.test(lineText.charAt(end - 1))) end--
+    return Math.max(end, startCol + 1)
+  }
+  // No `=` on this line — squiggle the rest of the line.
+  return Math.max(lineText.length, startCol + 1)
 }
 
 const debounceTimers = new Map<string, NodeJS.Timeout>()
@@ -68,9 +94,10 @@ function runCheck(uri: string): void {
   if (!doc) return
   const filename = uri.startsWith('file://') ? fileURLToPath(uri) : uri
   let diagnostics: Diagnostic[]
+  const documentText = doc.getText()
   try {
-    const tuDiags = checkTuSource(doc.getText(), filename)
-    diagnostics = tuDiags.map(toLspDiagnostic)
+    const tuDiags = checkTuSource(documentText, filename)
+    diagnostics = tuDiags.map((d) => toLspDiagnostic(d, documentText))
   } catch (err) {
     // Defensive: never crash the server. Surface unexpected errors as a
     // single diagnostic at the top of the file so the user sees something.
