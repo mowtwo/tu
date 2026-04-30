@@ -45,13 +45,17 @@ export default function tu(options: TuPluginOptions = {}): Plugin {
       return { code, map }
     },
     handleHotUpdate(ctx) {
-      // Trigger a full module invalidation when a .tu file changes; Vite's
-      // default HMR will then re-import via load() and the playground will
-      // re-fetch + re-mount. Per-component HMR boundaries are future work.
-      if (include.test(ctx.file)) {
-        return ctx.modules
+      if (!include.test(ctx.file)) return undefined
+      // Vite's HMR doesn't automatically drop the cached load() result for
+      // a plugin that handled `load` — without this the moduleGraph still
+      // serves the previous compile, even across page reload. Force-
+      // invalidate so the next request re-reads .tu from disk and re-
+      // compiles. (Per-component fine-grained HMR boundaries — keeping
+      // component state across the reload — remain future work.)
+      for (const mod of ctx.modules) {
+        ctx.server.moduleGraph.invalidateModule(mod)
       }
-      return undefined
+      return ctx.modules
     },
   }
 }

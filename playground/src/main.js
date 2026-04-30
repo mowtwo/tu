@@ -92,17 +92,26 @@ const demos = [
   {
     id: 'diff',
     label: 'M1.7  Diff',
-    blurb: 'Keyed diff — focus + caret in the input survive unrelated cell mutation; reordering the `<li>` list with `key:` moves DOM nodes instead of recreating them.',
+    blurb: 'Keyed diff — the counter cell ticks every 600 ms in the background. Click into the input and type: focus + caret + your text all survive the re-renders, because M1.7 reuses the existing input DOM node rather than rebuilding it. Then try the list buttons — DOM identity is preserved across reorders too.',
     setup() {
       DiffMod.count.set(0)
       DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date'])
+      // Auto-tick the count cell — the demo's whole point is "cell mutates,
+      // input survives." If the trigger is a button click, the click steals
+      // focus from the input the instant we want to verify focus is kept.
+      // setInterval has no DOM focus to steal.
+      diffTickHandle = setInterval(() => {
+        DiffMod.count.set(DiffMod.count.get() + 1)
+      }, 600)
+    },
+    teardown() {
+      if (diffTickHandle !== null) {
+        clearInterval(diffTickHandle)
+        diffTickHandle = null
+      }
     },
     thunk: () => DiffMod.Diff(),
     controls: () => [
-      {
-        label: 'tick count',
-        run: () => DiffMod.count.set(DiffMod.count.get() + 1),
-      },
       {
         label: 'shuffle list',
         run: () => {
@@ -130,15 +139,14 @@ const demos = [
         run: () => DiffMod.items.set(DiffMod.items.get().slice(1)),
       },
       {
-        label: 'reset',
-        run: () => {
-          DiffMod.count.set(0)
-          DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date'])
-        },
+        label: 'reset list',
+        run: () => DiffMod.items.set(['Apple', 'Banana', 'Cherry', 'Date']),
       },
     ],
   },
 ]
+
+let diffTickHandle = null
 
 const mountEl = document.getElementById('mount')
 const navEl = document.getElementById('demos')
@@ -148,13 +156,19 @@ const headerEl = document.querySelector('.stage__header')
 
 let stop = null
 let activeId = null
+let activeDemo = null
 
 function activate(demo) {
   if (stop) {
     stop()
     stop = null
   }
+  // Tear down the previous demo before swapping. setInterval handles, etc.
+  // need a chance to clear so they don't keep firing while another demo is
+  // mounted.
+  if (activeDemo?.teardown) activeDemo.teardown()
   activeId = demo.id
+  activeDemo = demo
   for (const link of navEl.querySelectorAll('a')) {
     link.classList.toggle('is-active', link.dataset.id === demo.id)
   }

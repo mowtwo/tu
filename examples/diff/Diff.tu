@@ -1,9 +1,12 @@
 // M1.7 demo: showcases keyed diffing.
 //
 // Two scenarios you couldn't see before M1.7:
-//   1. Focus survives unrelated cell mutation. Type into the input; click the
-//      "tick" button to bump the counter cell. The input keeps focus and
-//      preserves its caret/value because the diff reuses the same DOM node.
+//   1. Focus / caret / typed text survive unrelated cell mutation. The
+//      playground host auto-ticks `count` every 600 ms via setInterval (a
+//      timer can't steal focus the way a button click does). Click into the
+//      input and type — your text isn't disturbed and your cursor doesn't
+//      move while the cell mutates in the background, because the diff
+//      reuses the same DOM node instead of recreating it.
 //   2. Keyed reorder preserves DOM identity. The list items have `key: it`,
 //      so reordering them moves DOM nodes instead of recreating them — any
 //      animation, focus, or input state inside an `<li>` would survive.
@@ -15,9 +18,9 @@ export let Diff = () => {
   div(class: "diff") {
     section(class: "section") {
       h2 { "Focus test" }
-      p { "counter cell: " count }
-      p(class: "muted") { "Type into the input. The chrome buttons mutate `count`. The input should keep focus + caret + value." }
-      input(id: "diff-input", placeholder: "type something")
+      p { "counter cell (auto-ticking): " count }
+      p(class: "muted") { "Click into the input and type. The cell ticks every 600 ms in the background, but your focus, caret, and text stay put — the input DOM node is reused across re-renders, not destroyed and rebuilt." }
+      input(id: "diff-input", placeholder: "type and watch the counter tick")
     }
     section(class: "section") {
       h2 { "Keyed list" }
