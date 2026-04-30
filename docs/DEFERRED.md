@@ -8,13 +8,16 @@ A living list of every "leave for later" decision made during a milestone, with 
 |---|---|---|---|
 | CSS4 nesting / `@layer` / `@scope` awareness in style block | M1.4 | M1.9+ | M1.8 ships a regex-style class scanner that handles flat selectors and most nested rules correctly (the regex matches `.foo` anywhere, including inside nested blocks). Edge cases like `:is()`, `@scope`, and selector lists need a real CSS parser. |
 | Per-component fine-grained HMR boundaries | M1.6 | post-M1.7 | The `@tu/vite` plugin currently triggers a full module re-import + re-mount on `.tu` save. Per-component preserve-state HMR is future work. |
-| Todo.tu needs its own controls | M1.6 | when array literals land | Counter.tu owned its buttons in M1.14, but Todo.tu can't yet because Tu has no array literal / spread syntax — it can't construct a fresh items list inline. Revisit when adding `[a, b, c]` literals. |
 | Local reactivity (per-cell-read subscriptions) | M1.7 | M2+ | Keyed diff is cheap, but the component thunk still re-runs in full on every cell mutation. Solid-style per-binding patches that only touch the affected text node / attribute are a deeper rework — needs a different compiler IR that wraps each cell read in its own reactive scope. |
 | Suspense / async components | M1.7 | M2+ | No async story yet. |
 | Default export (`export default …`) | M1.10 | TBD | Tu's no-`function`-keyword aesthetic argues against it; revisit when component-as-file becomes idiomatic. |
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M2.5
+
+- ~~Array literals `[a, b, c]`~~ — landed: parser recognizes `[` in expression position as an `ArrayLit` (the `[` / `]` tokens that M2.4 added for type spans now do double duty for value syntax). AST walkers (class-ref + style-block scanners) descend into elements. Codegen emits the JS-equivalent literal verbatim. Todo.tu now owns its empty/one/three-items controls via three private lambdas that build fresh items arrays inline — playground's external controls block deleted, narrowing M1.14's scope and closing the "Todo.tu needs its own controls" row.
 
 ## Closed in M3.9
 

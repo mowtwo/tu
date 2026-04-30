@@ -1,4 +1,5 @@
 import type {
+  ArrayLit,
   AssignExpr,
   BinaryExpr,
   BinaryOp,
@@ -338,10 +339,27 @@ export class Parser {
     const k = this.peek().kind
     if (k === TokenKind.LParen) return this.parseLambda()
     if (k === TokenKind.LBrace && !this.noBraceBlock) return this.parseBlock()
+    if (k === TokenKind.LBracket) return this.parseArrayLit()
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
     return this.parsePrimary()
+  }
+
+  private parseArrayLit(): ArrayLit {
+    const lbracket = this.expect(TokenKind.LBracket)
+    const elements: Expr[] = []
+    while (this.peek().kind !== TokenKind.RBracket) {
+      elements.push(this.parseExpr())
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+    }
+    const rbracket = this.expect(TokenKind.RBracket)
+    return {
+      kind: 'ArrayLit',
+      elements,
+      start: lbracket.start,
+      end: rbracket.end,
+    }
   }
 
   /**

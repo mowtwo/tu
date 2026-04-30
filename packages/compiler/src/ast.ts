@@ -94,6 +94,7 @@ export type Expr =
   | StyleBlock
   | AssignExpr
   | ClassRef
+  | ArrayLit
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -141,6 +142,7 @@ export type Child =
   | ForExpr
   | StyleBlock
   | ClassRef
+  | ArrayLit
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -217,6 +219,16 @@ export interface AssignExpr extends Ranged {
   /** Source byte range of the assignment target identifier. */
   targetStart: number
   targetEnd: number
+}
+
+/**
+ * `[a, b, c]` — array literal. Codegen emits the JS-equivalent literal
+ * verbatim. Empty (`[]`) is allowed. Used in markup positions, the runtime
+ * flattens arrays so `div { [1, 2] }` renders as two siblings.
+ */
+export interface ArrayLit extends Ranged {
+  kind: 'ArrayLit'
+  elements: Expr[]
 }
 
 /**

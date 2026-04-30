@@ -31,35 +31,12 @@ const demos = [
   {
     id: 'todo',
     label: 'M1.3  Todo',
-    blurb: 'Control flow: `for item in items`, plus chained `if (count == 0) … else if (count == 1) … else …` for the pluralized label. The header buttons swap the items list.',
+    blurb: 'Control flow: `for item in items`, plus chained `if (count == 0) … else if (count == 1) … else …` for the pluralized label. M2.5: Todo.tu now owns its empty/one/three-items buttons via array literals — no external wiring.',
     setup() {
       TodoMod.items.set([])
       TodoMod.count.set(0)
     },
     thunk: () => TodoMod.Todo(),
-    controls: () => [
-      {
-        label: 'empty',
-        run: () => {
-          TodoMod.items.set([])
-          TodoMod.count.set(0)
-        },
-      },
-      {
-        label: 'one item',
-        run: () => {
-          TodoMod.items.set(['buy milk'])
-          TodoMod.count.set(1)
-        },
-      },
-      {
-        label: 'three items',
-        run: () => {
-          TodoMod.items.set(['buy milk', 'walk the dog', 'write Tu'])
-          TodoMod.count.set(3)
-        },
-      },
-    ],
   },
   {
     id: 'card',

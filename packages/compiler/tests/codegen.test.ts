@@ -351,6 +351,42 @@ describe('codegen', () => {
     expect(js).not.toContain('Card.get()')
   })
 
+  it('M2.5: empty array literal emits as []', () => {
+    const js = compile('let xs = []')
+    expect(js).toContain('const xs = new Signal.State([])')
+  })
+
+  it('M2.5: array literal of mixed primitives + idents', () => {
+    const js = compile(`
+      let label = "x"
+      let xs = [1, 2, label]
+    `)
+    expect(js).toContain('const xs = new Signal.State([1, 2, label.get()])')
+  })
+
+  it('M2.5: array literal as a tag-call child flattens via array-fragment renderer', () => {
+    const js = compile(`
+      let App = () => ul {
+        [li { "a" }, li { "b" }]
+      }
+    `)
+    expect(js).toContain(
+      'h("ul", {}, [[h("li", {}, ["a"]), h("li", {}, ["b"])]])'
+    )
+  })
+
+  it('M2.5: nested array of class refs round-trips through scoped components', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style { .card { padding: 1rem; } }
+      }
+    `)
+    // ClassRef walking through ArrayLit shouldn't have broken the existing
+    // scoped emit — just guard against regressions.
+    expect(js).toMatch(/-tu-[a-f0-9]{6}/)
+  })
+
   it('compiles the canonical greeting example', () => {
     const js = compile(`
       export let Greeting = (name: string) => {

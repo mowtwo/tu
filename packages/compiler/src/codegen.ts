@@ -1,4 +1,5 @@
 import type {
+  ArrayLit,
   AssignExpr,
   BinaryExpr,
   BinaryOp,
@@ -396,7 +397,19 @@ class Codegen {
       case 'ClassRef':
         this.emitClassRef(expr)
         return
+      case 'ArrayLit':
+        this.emitArrayLit(expr)
+        return
     }
+  }
+
+  private emitArrayLit(node: ArrayLit): void {
+    this.write('[')
+    for (let i = 0; i < node.elements.length; i++) {
+      if (i > 0) this.write(', ')
+      this.emitExpr(node.elements[i]!)
+    }
+    this.write(']')
   }
 
   private emitLambda(node: Lambda): void {
@@ -676,6 +689,9 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'AssignExpr':
       collectClassRefs(expr.value, out)
       return
+    case 'ArrayLit':
+      for (const e of expr.elements) collectClassRefs(e, out)
+      return
     default:
       return
   }
@@ -715,6 +731,9 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'AssignExpr':
       collectStyleBlockBodies(expr.value, out)
+      return
+    case 'ArrayLit':
+      for (const e of expr.elements) collectStyleBlockBodies(e, out)
       return
     default:
       return
