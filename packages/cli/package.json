@@ -23,6 +23,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu/compiler": "workspace:*"
+    "@tu/compiler": "workspace:*",
+    "@tu/lsp": "workspace:*"
   }
 }

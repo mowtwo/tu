@@ -22,11 +22,17 @@ A living list of every "leave for later" decision made during a milestone, with 
 | Synthesize component-prop interfaces in TS emit | M2 | M3 / LSP polish | M2 V1 lets tsserver INFER prop types from the lambda body. For richer IDE hover ("CardProps { title: string; body: string }") synthesize an explicit interface per exported component lambda. |
 | Synthesize style-class literal-type union in TS emit | M2 | M3 / LSP polish | Today the codegen rejects undeclared `.classRef` at compile time (M1.8). For IDE completion of `.foo` against the declared set, emit a `type ClassesOf_X = "card" \| "card__title"` and type the `class:` prop accordingly. |
 | Annotated `let X: type = …` declarations | M2 | when needed | Tu currently has lambda-param annotations only. Adding type annotations on let-decls lets users override TS inference (rare but useful for opaque cells). |
-| `tu check` CLI command | M2 | post-M3 | The `examples/clicker/typecheck.mjs` script proves the recipe; the M3 V1 LSP also exposes `checkTuFile`/`checkTuSource` from `@tu/lsp` programmatically. Lift into `@tu/cli` for a CLI entrypoint. |
 | LSP V2: rename | M3 V1 | post-M3 | Completion landed in M3.4 and goto-definition in M3.5. Rename remains — it needs symbol-graph traversal across all open shadows + applyEdits round-trips through `mapTSRangeToSource` for every reference. |
-| LSP hover: cache LanguageService across hovers | M3.3 | post-M3.3 | Each hover currently rebuilds the import-graph BFS + a fresh `ts.LanguageService`. Acceptable for V1 correctness, but for snappier interactive feel cache by `(rootFilename, hash of every shadow source)` and reuse the LanguageService until any shadow changes. |
 | Static-HTML optimization (skip h() for non-reactive subtrees) | M1.0 | post-M2 | User-flagged 2026-04-30. Detect markup subtrees that don't read any cell or parameter and emit them as `<template>`-cloned static HTML strings, like Svelte/Solid. Sizable perf + bundle win for typical UIs. |
 | Style ↔ JS state interop (CSS variables auto-bound to cells) | M1.8 | post-M1.8 | User-flagged 2026-04-30. Want a syntax for declaring style values driven by Tu cells (probably CSS custom properties bound to Signal cells, surfaced as `var(--brand)` in CSS and `brand.set(...)` in JS). Pair with M1.8's scoping infrastructure. |
+
+## Closed in M3.7
+
+- ~~LSP hover: cache LanguageService across hovers~~ — landed: new `packages/lsp/src/lsp-session.ts` owns a single-slot cache keyed by `(rootSource, rootFilename)` plus a snapshot of every transitively-imported `.tu` file's mtime. Hover / completion / definition all delegate through `getOrCreateSession` instead of building a fresh `ts.LanguageService` each call; the duplicate `createLsHost` was deleted from each surface. Cache invalidates when the root text changes, the filename changes, or any imported file's mtime advances. Disposal hook (`disposeSessionCache`) keeps tests isolated. The interactive loop (hover → click another ident → completion → goto-def) now reuses one TS Program.
+
+## Closed in M3.6
+
+- ~~`tu check` CLI command~~ — landed: `tu check <file…>` in `@tu/cli` calls `checkTuFile` from `@tu/lsp` and pretty-prints each diagnostic as `path:line:col: SEVERITY [TS####] message` followed by a 3-line code frame with `^^^` carets sized by the source-byte token range from M3.2. Empty input, non-`.tu` extension, missing files, and any error-severity diagnostic exit `1`; clean files print a one-line `tu check: N file(s) OK` summary and exit `0`. The CLI logic is exposed as `runCheck(args, options)` from `@tu/cli` so the test suite drives it without spawning a subprocess.
 
 ## Closed in M3.5
 

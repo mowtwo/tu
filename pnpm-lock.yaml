@@ -92,6 +92,9 @@ importers:
       '@tu/compiler':
         specifier: workspace:*
         version: link:../compiler
+      '@tu/lsp':
+        specifier: workspace:*
+        version: link:../lsp
 
   packages/compiler: {}
 
