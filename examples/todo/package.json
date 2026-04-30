@@ -1,0 +1,12 @@
+{
+  "name": "@tu-examples/todo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Example: a server-backed todo list (placeholder).",
+  "scripts": {
+    "build": "echo 'todo example: implementation pending M5'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  }
+}

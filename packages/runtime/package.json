@@ -1,0 +1,22 @@
+{
+  "name": "@tu/runtime",
+  "version": "0.0.0",
+  "description": "Minimal runtime for Tu — Signal cells, DOM glue, ~3KB target.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

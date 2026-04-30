@@ -1,0 +1,17 @@
+{
+  "name": "@tu/vscode",
+  "displayName": "Tu",
+  "description": "VS Code extension for the Tu language.",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "$comment": "VS Code extension manifest fields (engines, contributes, activationEvents) are added in M3 when the LSP client is implemented."
+}

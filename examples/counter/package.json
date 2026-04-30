@@ -1,0 +1,12 @@
+{
+  "name": "@tu-examples/counter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Example: a single-component reactive counter (placeholder).",
+  "scripts": {
+    "build": "echo 'counter example: implementation pending M5'",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  }
+}
