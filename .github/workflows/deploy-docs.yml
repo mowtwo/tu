@@ -93,6 +93,18 @@ jobs:
           mkdir -p docs/.tu-shu/dist/playground
           cp -r playground/dist/* docs/.tu-shu/dist/playground/
 
+      # Build the tu-xing preview SPA (storybook-style: every primitive
+      # in one Tu app, themed with tu-xing tokens) and embed under
+      # /tu-xing-preview/. Independent of the playground so users can
+      # link straight to the UI library showcase.
+      - name: Build tu-xing preview
+        run: TU_BASE='/tu/tu-xing-preview/' pnpm --filter '@tu-examples/tu-xing-demo' build
+
+      - name: Stage tu-xing preview into /tu-xing-preview/
+        run: |
+          mkdir -p docs/.tu-shu/dist/tu-xing-preview
+          cp -r examples/tu-xing-demo/dist/* docs/.tu-shu/dist/tu-xing-preview/
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

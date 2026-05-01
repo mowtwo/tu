@@ -139,6 +139,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  examples/tu-entry:
+    dependencies:
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu-lang/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite-tu
+      vite:
+        specifier: ^7.0.0
+        version: 7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)
+
   examples/tu-shu-demo:
     dependencies:
       '@tu-lang/tu-shu':

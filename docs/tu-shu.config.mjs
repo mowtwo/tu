@@ -55,6 +55,7 @@ export default {
       text: 'Live',
       items: [
         { text: 'Playground', link: '/playground/' },
+        { text: 'tu-xing preview', link: '/tu-xing-preview/' },
         { text: 'tu-shu preview', link: '/tu-shu-preview/' },
       ],
     },

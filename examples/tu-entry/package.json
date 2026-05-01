@@ -1,0 +1,22 @@
+{
+  "name": "@tu-examples/tu-entry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tu file as Vite entry — no index.html / no .ts bootstrap, just src/main.tu.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu-lang/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/vite": "workspace:*",
+    "vite": "^7.0.0"
+  }
+}
