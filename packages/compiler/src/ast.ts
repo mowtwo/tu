@@ -122,6 +122,7 @@ export type Expr =
   | ExternalLambda
   | MemberAssignExpr
   | InvokeExpr
+  | RegexLit
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -236,6 +237,7 @@ export type Child =
   | ExternalLambda
   | MemberAssignExpr
   | InvokeExpr
+  | RegexLit
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -488,6 +490,14 @@ export interface InvokeExpr extends Ranged {
   kind: 'InvokeExpr'
   callee: Expr
   args: Expr[]
+}
+
+/** `/pattern/flags` — a JS regex literal. The full source slice
+ *  (incl. delimiters and flags) round-trips through `text`; codegen
+ *  emits it unchanged. */
+export interface RegexLit extends Ranged {
+  kind: 'RegexLit'
+  text: string
 }
 
 /** `throw expr` — JS-spec is statement-only, but Tu treats it as an

@@ -167,7 +167,7 @@ let demos = () => [
 
 let loadLiveDemo = () => {
   if (!liveDemoPromise) {
-    liveDemoPromise = import("./live-demo.js").then((m) => {
+    liveDemoPromise = import("./live-demo.tu").then((m) => {
       // Fill in the live demo blurb once the chunk lands. The cached
       // factory result inside `demoBlurbs()` rebuilds the object every
       // call, so we instead set it via a mutable global — see the

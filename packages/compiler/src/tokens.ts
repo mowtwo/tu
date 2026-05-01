@@ -81,8 +81,17 @@ export enum TokenKind {
   TemplateChunk,
   /** `${` — starts an embedded expression inside a template literal. */
   DollarLBrace,
+  /** `}` that closes an embedded `${ … }` inside a template literal.
+   *  Distinct from a regular `RBrace` so brace-balanced raw-block
+   *  scanners (external JS, etc.) don't mistakenly underflow on the
+   *  template-expr terminator. */
+  TemplateExprClose,
   /** `new` operator — JS constructor call. */
   New,
+  /** `/pattern/flags` regex literal. The `text` field carries the
+   *  full source slice (incl. delimiters and flags); a separate
+   *  `value` carries `{ pattern, flags }` as a string for codegen. */
+  Regex,
   // keywords
   Let,
   Export,

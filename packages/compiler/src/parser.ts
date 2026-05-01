@@ -786,7 +786,7 @@ export class Parser {
         quasis.push(lastChunkText)
         lastChunkText = ''
         expressions.push(this.parseExpr())
-        this.expect(TokenKind.RBrace)
+        this.expect(TokenKind.TemplateExprClose)
       } else if (t.kind === TokenKind.Backtick) {
         const end = t.end
         this.pos++
@@ -1537,6 +1537,10 @@ export class Parser {
       this.pos++
       return this.parseIdentTail(t)
     }
+    if (t.kind === TokenKind.Regex) {
+      this.pos++
+      return { kind: 'RegexLit', text: t.text, start: t.start, end: t.end }
+    }
     throw this.error(`unexpected token ${TokenKind[t.kind]}`)
   }
 
@@ -1832,6 +1836,7 @@ function isMemberAccessibleExpr(expr: Expr): boolean {
   if (expr.kind === 'ImportExpr') return true
   if (expr.kind === 'NewExpr') return true
   if (expr.kind === 'TemplateLit') return true
+  if (expr.kind === 'RegexLit') return true
   // `(lambda)()` IIFE-style invocation, `(lambda).bind(this)` etc.
   if (expr.kind === 'Lambda') return true
   // `x!.foo` / `x!()` — the non-null assertion preserves the underlying

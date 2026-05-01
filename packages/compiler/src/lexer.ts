@@ -11,6 +11,22 @@ type Mode =
   | { kind: 'template' }
   | { kind: 'template-expr'; braceDepth: number }
 
+/** Token kinds that yield a value — after one of these, `/` is a
+ *  division operator, never a regex-literal opener. */
+const VALUE_YIELDING_TOKENS: ReadonlySet<TokenKind> = new Set([
+  TokenKind.Ident,
+  TokenKind.Number,
+  TokenKind.String,
+  TokenKind.Regex,
+  TokenKind.RParen,
+  TokenKind.RBracket,
+  TokenKind.RBrace,
+  TokenKind.PlusPlus,
+  TokenKind.MinusMinus,
+  TokenKind.Bang,
+  TokenKind.Backtick, // closing backtick of a template literal
+])
+
 export class Lexer {
   private pos = 0
   /** True when the previous non-trivia token was Ident `style` or `markdown`. */
@@ -21,6 +37,11 @@ export class Lexer {
   /** True when `markdown {` was just emitted; next token is MarkdownText body. */
   private markdownPending = false
   private modes: Mode[] = [{ kind: 'normal' }]
+  /** Tracks whether the next `/` starts a regex literal (true) or is
+   *  a division operator (false). Set to false after a value-yielding
+   *  token (ident, number, closing bracket, postfix op, etc.); true
+   *  in any expression-starting position. */
+  private regexAllowed = true
   constructor(private readonly src: string, private readonly filename?: string) {}
 
   tokenize(): Token[] {
@@ -62,12 +83,19 @@ export class Lexer {
       // Mode transitions for template-expr frames: count braces so the
       // closing `}` of `${ … }` pops back to template-collect mode
       // even if the embedded expression contained `{ … }` of its own
-      // (object literals, blocks, etc.).
+      // (object literals, blocks, etc.). The terminator `}` is
+      // re-tagged as TemplateExprClose so external-block scanners
+      // (which use brace balance to find their own end) don't
+      // miscount it as a regular RBrace.
       if (top.kind === 'template-expr') {
         if (tok.kind === TokenKind.LBrace) top.braceDepth++
         else if (tok.kind === TokenKind.RBrace) {
-          if (top.braceDepth === 0) this.modes.pop()
-          else top.braceDepth--
+          if (top.braceDepth === 0) {
+            this.modes.pop()
+            tok.kind = TokenKind.TemplateExprClose
+          } else {
+            top.braceDepth--
+          }
         }
       }
       // Backtick at top-level opens a new template frame.
@@ -91,6 +119,11 @@ export class Lexer {
         this.styleSeen = false
         this.markdownSeen = false
       }
+      // Update regex-allowed flag for the NEXT `/` we encounter. After
+      // a value-yielding token (ident, number, closing bracket, etc.)
+      // a `/` is division; after operators / opening brackets / start
+      // of file it's a regex literal opener.
+      this.regexAllowed = !VALUE_YIELDING_TOKENS.has(tok.kind)
     }
     out.push({ kind: TokenKind.Eof, text: '', start: this.pos, end: this.pos })
     return out
@@ -206,6 +239,7 @@ export class Lexer {
         if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.StarEq, start, 2)
         return this.punct(TokenKind.Star, start, 1)
       case '/':
+        if (this.regexAllowed) return this.lexRegex(start)
         if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.SlashEq, start, 2)
         return this.punct(TokenKind.Slash, start, 1)
       case '%':
@@ -248,6 +282,50 @@ export class Lexer {
   private punct(kind: TokenKind, start: number, len: number): Token {
     this.pos += len
     return { kind, text: this.src.slice(start, this.pos), start, end: this.pos }
+  }
+
+  /** `/pattern/flags` regex literal. Tracks character classes (`[…]`)
+   *  so a `/` inside a class (`[a-z/]`) doesn't close the literal,
+   *  and respects backslash escapes. After the closing `/`, collects
+   *  any trailing flag letters. */
+  private lexRegex(start: number): Token {
+    this.pos++ // skip the opening `/`
+    let inClass = false
+    while (this.pos < this.src.length) {
+      const ch = this.src.charAt(this.pos)
+      if (ch === '\\') {
+        // Skip the next char (escape sequence — could be a newline,
+        // we tolerate it, JS does too as long as it's escaped).
+        this.pos += 2
+        continue
+      }
+      if (ch === '[') inClass = true
+      else if (ch === ']') inClass = false
+      else if (ch === '/' && !inClass) {
+        this.pos++ // consume closing `/`
+        // Collect flags.
+        while (this.pos < this.src.length) {
+          const c = this.src.charAt(this.pos)
+          if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) this.pos++
+          else break
+        }
+        return {
+          kind: TokenKind.Regex,
+          text: this.src.slice(start, this.pos),
+          start,
+          end: this.pos,
+        }
+      } else if (ch === '\n') {
+        // JS forbids unescaped newlines in regex literals.
+        throw new SyntaxError(
+          formatError(this.src, this.pos, 'unterminated regex literal (newline before /)', this.filename)
+        )
+      }
+      this.pos++
+    }
+    throw new SyntaxError(
+      formatError(this.src, start, 'unterminated regex literal', this.filename)
+    )
   }
 
   private skipTrivia(): void {

@@ -561,6 +561,9 @@ class Codegen {
         }
         this.write(')')
         return
+      case 'RegexLit':
+        this.mark(expr.start, expr.end, () => this.write(expr.text))
+        return
       case 'ClassRef':
         this.emitClassRef(expr)
         return
