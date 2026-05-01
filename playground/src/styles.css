@@ -23,3 +23,34 @@ body {
   min-height: 100vh;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
+
+/* Tailwind v4's Preflight resets every element to a no-style baseline
+ * (no button border / padding, no list bullets, no heading sizes, …).
+ * That's correct for utility-driven UI but breaks the legacy demos
+ * (counter / todo / clicker / …) that rely on the browser defaults.
+ * Restore the bits those demos need so they render like a plain HTML
+ * page would. Scoped to `#mount` so the playground chrome (Sidebar /
+ * StageHeader / tu-xing) keeps its utility-only styling. */
+#mount button {
+  appearance: button;
+  background-color: buttonface;
+  color: buttontext;
+  border: 1px solid buttonborder;
+  padding: 1px 6px;
+  font: inherit;
+  cursor: pointer;
+}
+#mount h1 { font-size: 2em; margin: 0.67em 0; font-weight: bold; }
+#mount h2 { font-size: 1.5em; margin: 0.83em 0; font-weight: bold; }
+#mount h3 { font-size: 1.17em; margin: 1em 0; font-weight: bold; }
+#mount h4 { margin: 1.33em 0; font-weight: bold; }
+#mount p { margin: 1em 0; }
+#mount ul, #mount ol { padding-left: 40px; margin: 1em 0; }
+#mount ul { list-style: disc outside; }
+#mount ol { list-style: decimal outside; }
+#mount li { display: list-item; }
+#mount input[type="text"], #mount input:not([type]), #mount textarea {
+  border: 1px solid #888;
+  padding: 2px 4px;
+  font: inherit;
+}
