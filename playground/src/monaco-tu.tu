@@ -158,6 +158,15 @@ let defineTuTheme = external JS (monaco: any) {
 let _registerLang = registerTuLanguage(monaco)
 let _registerTheme = defineTuTheme(monaco)
 
+// Stash the monaco namespace globally so peer .tu modules (live-demo)
+// can spawn read-only editors / models without re-importing it (Tu
+// doesn't yet have a clean way to share a namespace import between
+// modules at the value level).
+let _stashMonaco = external JS (monaco: any): void {
+  globalThis.__tuMonaco = monaco
+}
+let _stashed = _stashMonaco(monaco)
+
 // Snippet completion + symbol completion + hover + go-to-definition.
 // All runs in-browser using @tu-lang/compiler's parser — no LSP, no
 // typescript. Provides:

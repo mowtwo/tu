@@ -54,3 +54,199 @@ body {
   padding: 2px 4px;
   font: inherit;
 }
+
+/* Live editor — VS Code-style chrome. The reset rules above are scoped
+ * to demo content; the live-grid renders its own chrome and shouldn't
+ * inherit the bullet lists / inflated heading sizes. */
+#mount > .live-grid {
+  height: calc(100vh - 11rem);
+  min-height: 38rem;
+}
+#mount > .live-grid ul,
+#mount > .live-grid ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+#mount > .live-grid li {
+  display: block;
+}
+#mount > .live-grid h1,
+#mount > .live-grid h2,
+#mount > .live-grid h3,
+#mount > .live-grid h4 {
+  margin: 0;
+  font-size: revert;
+}
+/* Reset is scoped to the chrome (sidebar / pane headers / tabs) — the
+ * preview area inside the editor must keep the legacy button / input
+ * defaults so user-authored Tu demos render with proper button chrome. */
+.live-sidebar button,
+.live-pane-header button,
+.live-tabs button {
+  appearance: revert;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.live-sidebar input,
+.live-sidebar select,
+.live-pane-header input,
+.live-pane-header select {
+  border: 1px solid hsl(var(--tu-border));
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  background: hsl(var(--tu-surface));
+  color: hsl(var(--tu-fg));
+}
+#mount > .live-grid p {
+  margin: 0;
+}
+
+/* Sidebar */
+.live-sidebar {
+  background: hsl(var(--tu-surface));
+  border-right: 1px solid hsl(var(--tu-border));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.live-sidebar-section {
+  padding: 0.75rem 0.75rem 0.5rem;
+}
+.live-sidebar-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: hsl(var(--tu-fg-muted));
+  margin-bottom: 0.5rem;
+}
+.live-case-list,
+.live-file-list {
+  display: flex;
+  flex-direction: column;
+}
+.live-case-item,
+.live-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: hsl(var(--tu-fg-muted));
+  cursor: pointer;
+  user-select: none;
+  transition: background 80ms, color 80ms;
+}
+.live-case-item:hover,
+.live-file:hover {
+  background: hsl(var(--tu-surface-elevated));
+  color: hsl(var(--tu-fg));
+}
+.live-case-item.active,
+.live-file.active {
+  background: hsl(var(--tu-brand) / 0.18);
+  color: hsl(var(--tu-brand));
+  font-weight: 500;
+}
+.live-file {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+.live-file::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background-color: currentColor;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1v4h4l-4-4zM3 1h5v5h5v9H3V1z"/></svg>') center / contain no-repeat;
+          mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1v4h4l-4-4zM3 1h5v5h5v9H3V1z"/></svg>') center / contain no-repeat;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.live-blurb {
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: hsl(var(--tu-fg-muted));
+  background: hsl(var(--tu-surface-elevated));
+  border-radius: 4px;
+}
+
+/* Editor + preview panes share a common shell */
+.live-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: hsl(var(--tu-bg));
+}
+.live-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.75rem;
+  height: 2rem;
+  border-bottom: 1px solid hsl(var(--tu-border));
+  background: hsl(var(--tu-surface));
+  font-size: 0.75rem;
+  color: hsl(var(--tu-fg-muted));
+  flex-shrink: 0;
+}
+.live-pane-header > .breadcrumb {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: hsl(var(--tu-fg));
+}
+.live-tab {
+  padding: 0.15rem 0.6rem !important;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  color: hsl(var(--tu-fg-muted)) !important;
+  transition: background 80ms, color 80ms;
+}
+.live-tab:hover {
+  background: hsl(var(--tu-surface-elevated)) !important;
+  color: hsl(var(--tu-fg)) !important;
+}
+.live-tab.active {
+  background: hsl(var(--tu-brand) / 0.18) !important;
+  color: hsl(var(--tu-brand)) !important;
+  font-weight: 500;
+}
+.live-pane-header > .status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+}
+.live-pane-header > .status.ok {
+  color: hsl(var(--tu-success));
+}
+.live-pane-header > .status.err {
+  color: hsl(var(--tu-danger));
+}
+.live-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.live-pane-body.editor {
+  overflow: hidden;
+}
+.live-pane-body.preview {
+  padding: 1rem;
+  background: hsl(var(--tu-bg));
+}
+.live-pane-body.error {
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  color: hsl(var(--tu-danger));
+  background: hsl(var(--tu-danger) / 0.06);
+  border-left: 3px solid hsl(var(--tu-danger));
+}

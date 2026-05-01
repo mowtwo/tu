@@ -319,17 +319,23 @@ export let App = () => div(class: "form") {
       button(class: "btn", onClick: onReset) { "Reset" }
     }
   } else {
-    div(class: "field") {
-      label { "Name" }
-      input(value: name, onInput: onName, placeholder: "Your name")
-      if (nameError.length > 0) { span(class: "err") { nameError } }
-    }
-    div(class: "field") {
-      label { "Email" }
-      input(value: email, onInput: onEmail, placeholder: "you@example.com")
-      if (emailError.length > 0) { span(class: "err") { emailError } }
-    }
-    button(class: "btn", onClick: onSubmit, disabled: !canSubmit) { "Submit" }
+    // Multiple sibling vnodes — wrap in an array literal to make the
+    // fragment intent explicit. Tu's runtime flattens nested arrays
+    // in children automatically, so [vnode, vnode, ...] renders the
+    // same as if you'd authored siblings directly.
+    [
+      div(class: "field") {
+        label { "Name" }
+        input(value: name, onInput: onName, placeholder: "Your name")
+        if (nameError.length > 0) { span(class: "err") { nameError } }
+      },
+      div(class: "field") {
+        label { "Email" }
+        input(value: email, onInput: onEmail, placeholder: "you@example.com")
+        if (emailError.length > 0) { span(class: "err") { emailError } }
+      },
+      button(class: "btn", onClick: onSubmit, disabled: !canSubmit) { "Submit" }
+    ]
   }
 
   style {
