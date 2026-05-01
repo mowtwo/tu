@@ -414,7 +414,48 @@ export class Parser {
         }
       }
     }
-    return this.parseTernary()
+    // Try parsing a full expression first; if the result is a
+    // MemberExpr / IndexExpr immediately followed by `=` or a compound
+    // assign op, fold it into MemberAssignExpr. This handles
+    // `btn.type = "..."`, `arr[i] = ...`, and the compound forms.
+    const left = this.parseTernary()
+    if (
+      (left.kind === 'MemberExpr' || left.kind === 'IndexExpr') &&
+      this.peek().kind === TokenKind.Equals
+    ) {
+      this.pos++ // consume `=`
+      const value = this.parseExpr()
+      return {
+        kind: 'MemberAssignExpr',
+        target: left,
+        value,
+        start: left.start,
+        end: value.end,
+      }
+    }
+    if (left.kind === 'MemberExpr' || left.kind === 'IndexExpr') {
+      const compound = COMPOUND_ASSIGN_OPS[this.peek().kind]
+      if (compound !== undefined) {
+        this.pos++
+        const rhs = this.parseExpr()
+        const synth: BinaryExpr = {
+          kind: 'BinaryExpr',
+          op: compound,
+          left,
+          right: rhs,
+          start: left.start,
+          end: rhs.end,
+        }
+        return {
+          kind: 'MemberAssignExpr',
+          target: left,
+          value: synth,
+          start: left.start,
+          end: rhs.end,
+        }
+      }
+    }
+    return left
   }
 
   /** Ternary `cond ? then : else` sits BELOW assignment but ABOVE all
@@ -508,6 +549,27 @@ export class Parser {
           arg: expr,
           start: expr.start,
           end: bang.end,
+        }
+        continue
+      }
+      // `<expr>(args)` — call form on any callable expression that
+      // isn't a bare identifier (those go through CallExpr in parse-
+      // Primary, which gates HTML tags / scoping). Same accessibility
+      // gate as dot-access below.
+      if (this.peek().kind === TokenKind.LParen && isMemberAccessibleExpr(expr) && expr.kind !== 'Ident') {
+        this.pos++ // consume `(`
+        const args: Expr[] = []
+        while (this.peek().kind !== TokenKind.RParen) {
+          args.push(this.parseSpreadOrExpr())
+          if (this.peek().kind === TokenKind.Comma) this.pos++
+        }
+        const rparen = this.expect(TokenKind.RParen)
+        expr = {
+          kind: 'InvokeExpr',
+          callee: expr,
+          args,
+          start: expr.start,
+          end: rparen.end,
         }
         continue
       }
@@ -1770,6 +1832,8 @@ function isMemberAccessibleExpr(expr: Expr): boolean {
   if (expr.kind === 'ImportExpr') return true
   if (expr.kind === 'NewExpr') return true
   if (expr.kind === 'TemplateLit') return true
+  // `(lambda)()` IIFE-style invocation, `(lambda).bind(this)` etc.
+  if (expr.kind === 'Lambda') return true
   // `x!.foo` / `x!()` — the non-null assertion preserves the underlying
   // expression's accessibility for chaining.
   if (expr.kind === 'NonNullAssertExpr') return true

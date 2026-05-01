@@ -120,6 +120,8 @@ export type Expr =
   | AwaitExpr
   | ImportExpr
   | ExternalLambda
+  | MemberAssignExpr
+  | InvokeExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -232,6 +234,8 @@ export type Child =
   | AwaitExpr
   | ImportExpr
   | ExternalLambda
+  | MemberAssignExpr
+  | InvokeExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -460,6 +464,30 @@ export interface IndexExpr extends Ranged {
   object: Expr
   index: Expr
   optional?: boolean
+}
+
+/** `obj.prop = value` or `arr[i] = value`. AssignExpr keeps its
+ *  ident-only contract (which drives Tu's `cell.set(…)` injection);
+ *  this node handles every non-ident lvalue. JS-emit is straight-
+ *  through (`<target> = <value>`); Tu's reactive system doesn't
+ *  participate — the target is a plain DOM / JS object property. */
+export interface MemberAssignExpr extends Ranged {
+  kind: 'MemberAssignExpr'
+  /** The lvalue. Parser narrows this to MemberExpr / IndexExpr; a
+   *  bare ident takes the AssignExpr path. */
+  target: Expr
+  value: Expr
+}
+
+/** `<expr>(args)` — call any callable expression that's NOT a bare
+ *  identifier (those go through CallExpr, which has a string callee
+ *  and powers HTML-tag detection / scoping). Used for IIFEs
+ *  (`(lambda)()`), member calls that aren't methods (`(arr.find(p)) (extra)`),
+ *  and anything else where the callee is itself an expression. */
+export interface InvokeExpr extends Ranged {
+  kind: 'InvokeExpr'
+  callee: Expr
+  args: Expr[]
 }
 
 /** `throw expr` — JS-spec is statement-only, but Tu treats it as an

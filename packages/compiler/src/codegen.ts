@@ -545,6 +545,22 @@ class Codegen {
       case 'AssignExpr':
         this.emitAssignExpr(expr)
         return
+      case 'MemberAssignExpr':
+        this.write('(')
+        this.emitExpr(expr.target)
+        this.write(' = ')
+        this.emitExpr(expr.value)
+        this.write(')')
+        return
+      case 'InvokeExpr':
+        this.emitExpr(expr.callee)
+        this.write('(')
+        for (let i = 0; i < expr.args.length; i++) {
+          if (i > 0) this.write(', ')
+          this.emitExpr(expr.args[i]!)
+        }
+        this.write(')')
+        return
       case 'ClassRef':
         this.emitClassRef(expr)
         return
@@ -1451,6 +1467,14 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'AssignExpr':
       collectClassRefs(expr.value, out)
       return
+    case 'MemberAssignExpr':
+      collectClassRefs(expr.target, out)
+      collectClassRefs(expr.value, out)
+      return
+    case 'InvokeExpr':
+      collectClassRefs(expr.callee, out)
+      for (const a of expr.args) collectClassRefs(a, out)
+      return
     case 'ArrayLit':
       for (const e of expr.elements) collectClassRefs(e, out)
       return
@@ -1546,6 +1570,14 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'AssignExpr':
       collectStyleBlockBodies(expr.value, out)
+      return
+    case 'MemberAssignExpr':
+      collectStyleBlockBodies(expr.target, out)
+      collectStyleBlockBodies(expr.value, out)
+      return
+    case 'InvokeExpr':
+      collectStyleBlockBodies(expr.callee, out)
+      for (const a of expr.args) collectStyleBlockBodies(a, out)
       return
     case 'ArrayLit':
       for (const e of expr.elements) collectStyleBlockBodies(e, out)
@@ -1979,6 +2011,10 @@ function containsControlFlow(expr: Expr): boolean {
       return containsControlFlow(expr.arg)
     case 'AssignExpr':
       return containsControlFlow(expr.value)
+    case 'MemberAssignExpr':
+      return containsControlFlow(expr.target) || containsControlFlow(expr.value)
+    case 'InvokeExpr':
+      return containsControlFlow(expr.callee) || expr.args.some(containsControlFlow)
     case 'CallExpr':
       return expr.args.some(containsControlFlow)
     case 'MethodCallExpr':
