@@ -27,12 +27,18 @@ export async function build(cwd: string, config: TuShuConfig): Promise<void> {
       title: md.title,
     }
     const themed = renderTheme(page, config)
+    const links = (config.stylesheets ?? []).map((href) => ({
+      rel: 'stylesheet',
+      href: resolveAssetHref(config.base ?? '/', href),
+    }))
     const html = renderPageHtml(themed.body, {
       lang: config.lang ?? 'en',
       title: page.title
         ? `${page.title} | ${config.title ?? ''}`.replace(/ \| $/, '')
         : config.title,
       meta: config.description ? { description: config.description } : undefined,
+      links,
+      scripts: config.scripts,
       headRaw: themed.head,
       bodyClass: 'min-h-screen bg-[hsl(var(--tu-bg))] text-[hsl(var(--tu-fg))]',
     })
@@ -50,4 +56,19 @@ function urlToFsPath(outDir: string, url: string): string {
   if (url === '/') return join(outDir, 'index.html')
   if (url.endsWith('/')) return join(outDir, url, 'index.html')
   return join(outDir, url + '.html')
+}
+
+function resolveAssetHref(base: string, href: string): string {
+  if (
+    href.startsWith('http://') ||
+    href.startsWith('https://') ||
+    href.startsWith('//') ||
+    href.startsWith('data:')
+  ) {
+    return href
+  }
+  if (href.startsWith('/')) return href
+  // Treat as base-relative.
+  if (base.endsWith('/')) return base + href
+  return base + '/' + href
 }

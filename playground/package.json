@@ -12,11 +12,14 @@
     "check": "echo 'no checks'"
   },
   "dependencies": {
-    "@tu-lang/runtime": "workspace:*"
+    "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/tu-xing": "workspace:*"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
     "@tu-lang/compiler": "workspace:*",
     "@tu-lang/vite": "workspace:*",
+    "tailwindcss": "^4.0.0",
     "vite": "^7.0.0"
   }
 }

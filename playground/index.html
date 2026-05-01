@@ -1,22 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tu Playground</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
-  <body>
+  <body class="bg-[hsl(var(--tu-bg))] text-[hsl(var(--tu-fg))]">
     <!--
-      The sidebar and stage header are rendered by Tu components
-      (Sidebar.tu / StageHeader.tu) into these mount hosts. The container
-      classes (.sidebar, .stage__header) are emitted by the Tu components
-      themselves; these <div>s are just empty roots.
+      Sidebar + stage header are rendered by Tu components (Sidebar.tu /
+      StageHeader.tu) using @tu-lang/tu-xing primitives. The hosts are
+      `display: contents` (see styles.css) so the rendered <aside> /
+      <header> participate in the body grid as direct children.
     -->
     <div id="sidebar-host"></div>
-    <main class="stage">
+    <main class="flex flex-col">
       <div id="header-host"></div>
-      <div class="stage__mount" id="mount"></div>
+      <div class="p-8" id="mount"></div>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

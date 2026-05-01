@@ -10,6 +10,9 @@ hero:
       text: Language reference
       link: /LANGUAGE
     - theme: alt
+      text: Live playground
+      link: /playground/
+    - theme: alt
       text: View on GitHub
       link: https://github.com/mowtwo/tu
 
@@ -32,6 +35,9 @@ features:
   - title: SSR + hydration
     details: |
       <code>renderToString()</code> for server-side rendering, <code>hydrate()</code> for the client handoff (focus / scroll / <code>&lt;input&gt;</code> value preserved across the boundary).
+  - title: Ecosystem
+    details: |
+      <a href="/tu/tu-xing">tu-xing</a> — shadcn-style UI library. <a href="/tu/tu-shu">tu-shu</a> — VitePress-style markdown SSG. <a href="/tu/tailwind">Tailwind</a> drops in via <code>@source</code>. All four projects (Tu / tu-xing / tu-shu / playground) cross-import — V1 is a closed dogfood loop.
 ---
 
 ## Quick taste

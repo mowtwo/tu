@@ -25,8 +25,13 @@ In your entry CSS:
 @import "tailwindcss";
 @import "@tu-lang/tu-xing/theme.css";
 @source "./**/*.tu";
-@source "../node_modules/@tu-lang/tu-xing/src/**/*.tu";
+/* Tell Tailwind to scan tu-xing's installed component sources so its
+   utility classes get included in your build. The package exposes
+   `./src/*` for exactly this purpose. */
+@source "../node_modules/@tu-lang/tu-xing/src";
 ```
+
+Adjust the `../node_modules/...` prefix to match your project's depth (some monorepos may need `../../node_modules/...`). On a flat npm install, the path above works as-is.
 
 ## Use
 

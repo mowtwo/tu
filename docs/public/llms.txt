@@ -415,4 +415,4 @@ When unsure: **stick to the constructs documented above**. The language delibera
 
 ---
 
-*Tu is pre-alpha (v0.0.0). This skill reflects the language as of 2026-04-30 (M5.8). When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*
+*Tu is pre-alpha (`0.1.0-alpha.6` on npm). This skill reflects the language as of 2026-05-01 (M6.2 + tu-xing + tu-shu shipped; obj.x member access and obj.method() method calls both supported). When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*

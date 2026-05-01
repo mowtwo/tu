@@ -56,6 +56,28 @@ jobs:
           mkdir -p docs/public/grammar
           cp packages/vscode/syntaxes/tu.tmLanguage.json docs/public/grammar/
 
+      # Dogfood: build the tu-shu demo (the SSG written in Tu) and embed
+      # its output under /tu-shu-preview/ so visitors see real tu-shu
+      # pages alongside the VitePress-rendered main site. Eventually
+      # the main site will migrate to tu-shu — this is the staging step.
+      - name: Build tu-shu demo
+        run: TU_BASE='/tu/tu-shu-preview/' pnpm --filter '@tu-examples/tu-shu-demo' demo
+
+      - name: Stage tu-shu output into docs/public/tu-shu-preview
+        run: |
+          mkdir -p docs/public/tu-shu-preview
+          cp -r examples/tu-shu-demo/.tu-shu/dist/* docs/public/tu-shu-preview/
+
+      # Build the playground (the dogfood Tu app exercising every demo
+      # plus tu-xing + Tailwind) and embed it under /playground/.
+      - name: Build playground
+        run: TU_BASE='/tu/playground/' pnpm --filter tu-playground build
+
+      - name: Stage playground output into docs/public/playground
+        run: |
+          mkdir -p docs/public/playground
+          cp -r playground/dist/* docs/public/playground/
+
       - name: Build VitePress site
         run: pnpm --filter tu-docs build
 

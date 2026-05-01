@@ -4,7 +4,10 @@ export default {
   description: 'Tu-native static site generator demo.',
   srcDir: 'docs',
   outDir: '.tu-shu/dist',
-  base: '/',
+  // CI sets TU_BASE=/tu/tu-shu-preview/ when staging under the docs site
+  // at https://mowtwo.github.io/tu/tu-shu-preview/. Local `pnpm demo`
+  // keeps the default `/`.
+  base: process.env.TU_BASE ?? '/',
   nav: [
     { text: 'Home', link: '/' },
     { text: 'Guide', link: '/guide/' },
@@ -24,5 +27,11 @@ export default {
         { text: 'Markdown features', link: '/guide/markdown' },
       ],
     },
+  ],
+  // Bundle Tailwind via CDN + tu-xing theme tokens so the static output
+  // is fully styled without a build step.
+  stylesheets: [
+    'https://cdn.jsdelivr.net/npm/@tu-lang/tu-xing@alpha/src/theme.css',
+    'https://cdn.tailwindcss.com',
   ],
 }

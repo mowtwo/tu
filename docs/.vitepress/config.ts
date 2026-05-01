@@ -22,6 +22,10 @@ export default defineConfig({
     // present in local dev builds. The CI step `Stage install artifacts`
     // drops the vsix into docs/public/install/ before vitepress runs.
     /\/vscode-tu-latest\.vsix$/,
+    // Same — playground + tu-shu preview live under docs/public/ only
+    // during CI deploys.
+    /^\/playground\/$/,
+    /^\/tu-shu-preview\/$/,
   ],
   markdown: {
     // Register Tu's TextMate grammar so ```tu code blocks highlight on the
@@ -39,6 +43,21 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Language', link: '/LANGUAGE' },
+      {
+        text: 'Ecosystem',
+        items: [
+          { text: 'tu-xing — UI library', link: '/tu-xing' },
+          { text: 'tu-shu — SSG', link: '/tu-shu' },
+          { text: 'Tailwind compat', link: '/tailwind' },
+        ],
+      },
+      {
+        text: 'Live',
+        items: [
+          { text: 'Playground', link: '/playground/' },
+          { text: 'tu-shu preview', link: '/tu-shu-preview/' },
+        ],
+      },
       { text: 'Skill (for AI)', link: '/skill' },
       { text: 'Install', link: '/install' },
       { text: 'Deferred', link: '/DEFERRED' },
@@ -57,6 +76,14 @@ export default defineConfig({
         items: [
           { text: 'Language', link: '/LANGUAGE' },
           { text: 'Deferred backlog', link: '/DEFERRED' },
+        ],
+      },
+      {
+        text: 'Ecosystem',
+        items: [
+          { text: 'tu-xing — UI library', link: '/tu-xing' },
+          { text: 'tu-shu — SSG', link: '/tu-shu' },
+          { text: 'Tailwind compat', link: '/tailwind' },
         ],
       },
       {

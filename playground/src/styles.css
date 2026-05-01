@@ -1,24 +1,16 @@
-:root {
-  color-scheme: dark;
-  --bg: #0f172a;
-  --bg-2: #1e1b4b;
-  --bg-3: #312e81;
-  --fg: #e0e7ff;
-  --muted: #a5b4fc;
-  --accent: #6366f1;
-  --border: rgba(165, 180, 252, 0.15);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  font-feature-settings: 'cv11';
-}
+@import "tailwindcss";
+@import "@tu-lang/tu-xing/theme.css";
 
-* {
-  box-sizing: border-box;
-}
+/* Scan Tu sources across the playground, the example demos, and the
+ * tu-xing component sources — so any class used by any of them lands
+ * in the bundled CSS. */
+@source "./**/*.tu";
+@source "../../examples/**/*.tu";
+@source "../../packages/tu-xing/src/**/*.tu";
 
-/* Tu mounts append into these hosts; making them layout-transparent lets
-   the rendered <aside class="sidebar"> / <header class="stage__header">
-   participate in the body grid / .stage flex as if they were direct
-   children of those parents. */
+/* Tu mounts append into these hosts; making them layout-transparent
+ * lets the rendered <aside> / <header> participate in the body grid /
+ * .stage flex as if they were direct children. */
 #sidebar-host,
 #header-host {
   display: contents;
@@ -29,132 +21,5 @@ body {
   display: grid;
   grid-template-columns: 280px 1fr;
   min-height: 100vh;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 14px;
-}
-
-.sidebar {
-  padding: 1.5rem 1.25rem;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.brand {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.brand__cn {
-  color: var(--muted);
-  font-weight: 400;
-  margin-left: 0.25rem;
-}
-
-.subtitle {
-  margin: -0.5rem 0 0.75rem 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.demos {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.demos a {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  color: var(--fg);
-  text-decoration: none;
-  font-variant-numeric: tabular-nums;
-  transition: background 0.15s ease;
-}
-
-.demos a:hover {
-  background: rgba(99, 102, 241, 0.12);
-}
-
-.demos a.is-active {
-  background: var(--bg-2);
-  color: var(--muted);
-}
-
-.meta {
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  font-size: 0.75rem;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.meta code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  background: rgba(99, 102, 241, 0.15);
-  padding: 0.1em 0.3em;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
-.stage {
-  padding: 2rem 2.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  min-width: 0;
-}
-
-.stage__header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.stage__header h2 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.stage__header p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.55;
-  max-width: 56ch;
-}
-
-.controls {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.controls button {
-  padding: 0.35rem 0.85rem;
-  border: 1px solid var(--accent);
-  background: var(--bg-2);
-  color: var(--fg);
-  border-radius: 6px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.controls button:hover {
-  background: var(--bg-3);
-}
-
-.stage__mount {
-  flex: 1;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }

@@ -17,6 +17,24 @@ export interface TuShuConfig {
   sidebar?: SidebarSection[]
   /** Lang attribute for `<html>`. Defaults to `'en'`. */
   lang?: string
+  /**
+   * Stylesheets to `<link>` into every page's head. Use this to load
+   * Tailwind output, `@tu-lang/tu-xing/theme.css`, or any custom theme
+   * the site needs. Supports absolute URLs, root-relative paths, or
+   * `base`-relative paths (the build path-joins them with `config.base`).
+   */
+  stylesheets?: string[]
+  /**
+   * Scripts to `<script>` into every page's head. Useful for analytics
+   * or per-page hydration entries.
+   */
+  scripts?: Array<{
+    src?: string
+    type?: 'module' | 'text/javascript' | 'importmap'
+    defer?: boolean
+    async?: boolean
+    body?: string
+  }>
 }
 
 export interface NavItem {

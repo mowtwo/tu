@@ -22,6 +22,8 @@ import * as DiffMod from '../../examples/diff/Diff.tu'
 import * as ScopedMod from '../../examples/scoped/Scoped.tu'
 import * as CompositionMod from '../../examples/composition/Composition.tu'
 import * as TypedMod from '../../examples/typed/Typed.tu'
+import * as TuXingMod from '../../examples/tu-xing-demo/src/App.tu'
+import * as TailwindMod from '../../examples/tailwind/src/App.tu'
 
 const demoBlurbs = {
   hello: 'Static component compiled to ESM and rendered to DOM. No reactivity.',
@@ -39,6 +41,10 @@ const demoBlurbs = {
     "Capitalized components compile as real function calls (not `h(\"Card\", …)`), so hover and goto-definition work on `Layout` / `Card`. The trailing `{ … }` block becomes the component's `children` argument. `Fragment` from `@tu-lang/runtime` lets a component return multiple sibling vnodes. Local `let` inside a component body is a plain const (not a Signal cell).",
   typed:
     'M5.6 + M5.7 + M5.8: object literals (`{ x: 1, y: 2 }`), lambda return-type annotations (`(n): Point => …`), type aliases, and member access (`origin.x`). The whole typed-data path round-trips reactively through state and computed cells.',
+  'tu-xing':
+    '@tu-lang/tu-xing 图形 — Tu-native UI library. Buttons / Inputs / Cards / Badges / Switch / Dialog / Tabs, all styled via Tailwind utilities referencing the theme tokens in `theme.css`. Every component is a `.tu` file; consumers import with `@tu-lang/vite`.',
+  tailwind:
+    'Tu × Tailwind v4 — utility classes coexist with Tu scoped style blocks. Tailwind\'s `@source "**/*.tu"` directive lets it scan `.tu` source files for class usage. M5.9 method calls (`e.preventDefault()`) shipped specifically to make Tailwind interactions work cleanly.',
   diff:
     "Keyed diff — the counter cell ticks every 600 ms in the background. Click into the input and type: focus + caret + your text all survive the re-renders, because M1.7 reuses the existing input DOM node rather than rebuilding it. Then try the list buttons — DOM identity is preserved across reorders too.",
 }
@@ -79,6 +85,24 @@ const demos = [
       TypedMod.n.set(1)
     },
     thunk: () => TypedMod.App(),
+  },
+  {
+    id: 'tu-xing',
+    setup() {
+      TuXingMod.count.set(0)
+      TuXingMod.dialogOpen.set(false)
+      TuXingMod.switchOn.set(false)
+      TuXingMod.activeTab.set('buttons')
+      TuXingMod.inputValue.set('')
+    },
+    thunk: () => TuXingMod.App(),
+  },
+  {
+    id: 'tailwind',
+    setup() {
+      TailwindMod.count.set(0)
+    },
+    thunk: () => TailwindMod.App(),
   },
   {
     id: 'diff',
@@ -190,6 +214,8 @@ function labelFor(id) {
     scoped: 'M1.8  Scoped',
     composition: 'M5    Composition',
     typed: 'M5.6/7/8  Typed',
+    'tu-xing': '图形  tu-xing UI library',
+    tailwind: 'M6.3  Tu × Tailwind',
     diff: 'M1.7  Diff',
   }
   return map[id] ?? id

@@ -2,9 +2,9 @@
 
 A reactive UI language. Trailing-closure DSL over HTML / CSS / state, scoped style blocks per component, top-level `let` auto-binds to TC39 Signals, types via TypeScript (Volar pattern), full LSP — hover, completion, goto-definition, rename, diagnostics.
 
-> **Status**: pre-alpha (v0.0.0). The compiler, runtime, type system, full LSP, SSR (`renderToString` + client-side `hydrate`), and Custom Elements wrapper are all landed. Public preview is what this repo is.
+> **Status**: pre-alpha (`0.1.0-alpha.6` on npm). The compiler, runtime, type system, full LSP, SSR (`renderToString` / `hydrate` / `renderPage`), Custom Elements wrapper, [tu-xing UI library](https://www.npmjs.com/package/@tu-lang/tu-xing), [tu-shu SSG](https://www.npmjs.com/package/@tu-lang/tu-shu), and Tailwind compat are all shipped.
 
-**Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md) · [Examples](examples/) · [Playground](playground/)
+**Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md) · [Examples](examples/) · [Playground](https://mowtwo.github.io/tu/playground/) · [Live docs](https://mowtwo.github.io/tu/)
 
 ---
 
