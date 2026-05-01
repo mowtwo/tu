@@ -9,6 +9,7 @@ import type {
   Child,
   ClassRef,
   Expr,
+  ExternalLambda,
   ForExpr,
   Ident,
   IfExpr,
@@ -611,10 +612,20 @@ export class Parser {
     if (k === TokenKind.Async) {
       const tok = this.peek()
       this.pos++ // consume `async`
+      // `async external JS (…) { … }` — apply async to the external lambda.
+      if (this.peek().kind === TokenKind.External) {
+        const ext = this.parseExternalLambda()
+        ext.async = true
+        ext.start = tok.start
+        return ext
+      }
       const lambda = this.parseLambda()
       lambda.async = true
       lambda.start = tok.start
       return lambda
+    }
+    if (k === TokenKind.External) {
+      return this.parseExternalLambda()
     }
     if (k === TokenKind.Await) {
       const tok = this.peek()
@@ -1045,6 +1056,102 @@ export class Parser {
     const inner = this.parseExpr()
     this.expect(TokenKind.RParen)
     return inner
+  }
+
+  /** `external <Lang> (params) [: returnType] { raw body }` — read the
+   *  lambda head normally, then collect the body as a raw source slice
+   *  by walking forward through tokens with a brace counter until we
+   *  find the matching `}`. The body text comes from `this.source` so
+   *  comments / whitespace round-trip exactly into the emitted JS. */
+  private parseExternalLambda(): ExternalLambda {
+    const externalTok = this.expect(TokenKind.External)
+    const langTok = this.expect(TokenKind.Ident)
+    const lang = langTok.text
+    let params: Param[] = []
+    if (this.peek().kind === TokenKind.LParen) {
+      this.pos++
+      while (this.peek().kind !== TokenKind.RParen) {
+        params.push(this.parseParam())
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      this.expect(TokenKind.RParen)
+    }
+    let returnType: string | undefined
+    let returnTypeStart: number | undefined
+    let returnTypeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilBrace()
+      returnType = span.text
+      returnTypeStart = span.start
+      returnTypeEnd = span.end
+    }
+    const lbrace = this.expect(TokenKind.LBrace)
+    // Walk forward through the lexed token stream balancing braces;
+    // the body's source slice runs from after-the-`{` to before-the-`}`.
+    let depth = 1
+    let endTok = this.peek()
+    while (this.pos < this.tokens.length) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) {
+        throw this.error('unterminated external block')
+      }
+      if (t.kind === TokenKind.LBrace) depth++
+      else if (t.kind === TokenKind.RBrace) {
+        depth--
+        if (depth === 0) {
+          endTok = t
+          this.pos++
+          break
+        }
+      }
+      this.pos++
+    }
+    const body = this.source.slice(lbrace.end, endTok.start)
+    const result: ExternalLambda = {
+      kind: 'ExternalLambda',
+      lang,
+      params,
+      body,
+      bodyStart: lbrace.end,
+      bodyEnd: endTok.start,
+      start: externalTok.start,
+      end: endTok.end,
+    }
+    if (returnType !== undefined) {
+      result.returnType = returnType
+      result.returnTypeStart = returnTypeStart!
+      result.returnTypeEnd = returnTypeEnd!
+    }
+    return result
+  }
+
+  /** Like parseRawTypeUntilFatArrow but stops at `{` (the body opener)
+   *  instead of `=>`. Used by parseExternalLambda to read the optional
+   *  return-type span between `: T` and the body brace. */
+  private parseRawTypeUntilBrace(): { text: string; start: number; end: number } {
+    const start = this.peek().start
+    let depth = 0
+    while (this.pos < this.tokens.length) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) break
+      if (depth === 0 && t.kind === TokenKind.LBrace) break
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
+        t.kind === TokenKind.Lt
+      ) depth++
+      else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
+        t.kind === TokenKind.Gt
+      ) depth--
+      this.pos++
+    }
+    const end = this.tokens[this.pos - 1]?.end ?? start
+    return { text: this.source.slice(start, end).trim(), start, end }
   }
 
   private parseLambda(): Lambda {

@@ -99,6 +99,7 @@ export enum TokenKind {
   Return,
   Async,
   Await,
+  External,
   // misc
   Eof,
 }
@@ -130,4 +131,5 @@ export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   new: TokenKind.New,
   async: TokenKind.Async,
   await: TokenKind.Await,
+  external: TokenKind.External,
 })

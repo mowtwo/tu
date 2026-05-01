@@ -969,4 +969,38 @@ describe('codegen', () => {
     expect(js).toContain('const App = () => h("div", {}, ["hi"])')
     expect(js).not.toContain('async')
   })
+
+  it('M6.9: external JS pastes the body verbatim into a JS arrow', () => {
+    // Body source is opaque to Tu — comments, JS-only operators, and
+    // nested braces all round-trip exactly.
+    const js = compile('let dbl = external JS (a) { /* raw */ return a * 2 }')
+    expect(js).toContain('const dbl = (a) => {')
+    expect(js).toContain('/* raw */')
+    expect(js).toContain('return a * 2')
+  })
+
+  it('M6.9: external JS classifies as function (not a state cell)', () => {
+    // Without this the let would be wrapped in `new Signal.State(...)`,
+    // which is wrong for a function value — calls would fail at runtime.
+    const js = compile('let fn = external JS () { return 1 }')
+    expect(js).not.toContain('Signal.State')
+    expect(js).toContain('const fn = () => {')
+  })
+
+  it('M6.9: `async external JS` sets the async modifier on the emitted arrow', () => {
+    const js = compile('let load = async external JS (url) { const r = await fetch(url); return r.json() }')
+    expect(js).toContain('async (url) => {')
+    expect(js).toContain('await fetch(url)')
+  })
+
+  it('M6.9: external JS preserves param + return-type annotations in TS-shadow', () => {
+    const ts = compileToTS('let safe = external JS (s: string): string { return s.trim() }')
+    expect(ts).toContain('(s: string): string')
+  })
+
+  it('M6.9: external JS body brace-counts so nested objects do not close early', () => {
+    const js = compile('let make = external JS () { const o = { a: { b: 1 } }; return o }')
+    expect(js).toContain('const o = { a: { b: 1 } }')
+    expect(js).toContain('return o')
+  })
 })

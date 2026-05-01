@@ -112,6 +112,7 @@ export type Expr =
   | SpreadElement
   | AwaitExpr
   | ImportExpr
+  | ExternalLambda
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -223,6 +224,7 @@ export type Child =
   | SpreadElement
   | AwaitExpr
   | ImportExpr
+  | ExternalLambda
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -554,6 +556,32 @@ export interface AwaitExpr extends Ranged {
 export interface ImportExpr extends Ranged {
   kind: 'ImportExpr'
   arg: Expr
+}
+
+/** `external <Lang> (params) [: returnType] { raw body }` — an escape
+ *  hatch that emits a function whose body is verbatim raw source in
+ *  the named target language. For Tu V1 the only supported tag is
+ *  `JS`, and codegen pastes the body straight into a JS arrow. The
+ *  body sits inside Tu's brace boundaries but the *content* is opaque
+ *  to the Tu parser — only paren / brace nesting is tracked so we
+ *  find the matching close brace. */
+export interface ExternalLambda extends Ranged {
+  kind: 'ExternalLambda'
+  /** Language tag — `'JS'` for now; future `'WASM'` / `'SQL'` etc. */
+  lang: string
+  params: Param[]
+  returnType?: string
+  returnTypeStart?: number
+  returnTypeEnd?: number
+  /** Raw source slice of the body (excluding the surrounding braces). */
+  body: string
+  /** Source start / end of the raw body — used by the LSP to map any
+   *  TS errors emitted inside the pasted region back to the .tu file. */
+  bodyStart: number
+  bodyEnd: number
+  /** `async external JS (…) { … }` — the emitted arrow gets the async
+   *  modifier so the body can use await. */
+  async?: boolean
 }
 
 /**

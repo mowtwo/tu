@@ -19,6 +19,7 @@ import type {
   Program,
   Prop,
   Stmt,
+  ExternalLambda,
   StyleBlock,
   TagCall,
   TemplateLit,
@@ -282,6 +283,7 @@ function isEmptyArray(expr: Expr | undefined): boolean {
 
 function classifyValue(expr: Expr): CellKind {
   if (expr.kind === 'Lambda') return 'function'
+  if (expr.kind === 'ExternalLambda') return 'function'
   if (expr.kind === 'CallExpr' && expr.callee === 'computed') return 'computed'
   return 'state'
 }
@@ -650,7 +652,36 @@ class Codegen {
         this.emitExpr(expr.arg)
         this.write(')')
         return
+      case 'ExternalLambda':
+        this.emitExternalLambda(expr)
+        return
     }
+  }
+
+  private emitExternalLambda(node: ExternalLambda): void {
+    if (node.lang !== 'JS') {
+      throw new Error(`external ${node.lang} blocks are not yet supported (only \`external JS\`)`)
+    }
+    if (node.async) this.write('async ')
+    this.write('(')
+    for (let i = 0; i < node.params.length; i++) {
+      if (i > 0) this.write(', ')
+      const p = node.params[i]!
+      this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
+      if (this.tsMode && p.type !== undefined) {
+        this.write(`: ${p.type}`)
+      }
+    }
+    this.write(')')
+    if (this.tsMode && node.returnType !== undefined) {
+      this.write(`: ${node.returnType}`)
+    }
+    this.write(' => {')
+    // Paste the raw body verbatim. The `mark` call ties the entire
+    // emitted region back to the source body span so a TS error inside
+    // the pasted JS still squiggles in the .tu file at the right place.
+    this.mark(node.bodyStart, node.bodyEnd, () => this.write(node.body))
+    this.write('}')
   }
 
   /** Inside an `UpdateExpr` we want to bypass cell `.get()` injection
