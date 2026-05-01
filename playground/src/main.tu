@@ -168,12 +168,12 @@ let demos = () => [
 let loadLiveDemo = () => {
   if (!liveDemoPromise) {
     liveDemoPromise = import("./live-demo.tu").then((m) => {
-      // Fill in the live demo blurb once the chunk lands. The cached
-      // factory result inside `demoBlurbs()` rebuilds the object every
-      // call, so we instead set it via a mutable global — see the
-      // `liveBlurbOverride` cell below.
-      liveBlurbOverride = m.liveDemoBlurb
-      return m.liveDemo
+      // `liveDemo` / `liveDemoBlurb` are exported as lambda factories —
+      // Tu cell-wraps every non-lambda module `let`, so a namespace
+      // `m.liveDemo` would otherwise be a Signal.State instance (no
+      // `.setup` field). Invoking the factory yields the actual value.
+      liveBlurbOverride = m.liveDemoBlurb()
+      return m.liveDemo()
     })
   }
   return liveDemoPromise

@@ -55,6 +55,15 @@ let stopLivePreview = () => {
     liveDebounceHandle = null
   }
   liveLastCompiled = ""
+  // attachLiveCompiler injects a `<div class="live-grid">` into #mount
+  // outside the Tu mount root; the runtime's stop fn doesn't know
+  // about it, so the grid stacks up across navigations. Remove it
+  // explicitly here.
+  let mountEl = document.getElementById("mount")
+  if (mountEl) {
+    let grid = mountEl.querySelector(":scope > .live-grid")
+    if (grid) { grid.remove() }
+  }
 }
 
 // Compile the Tu source via @tu-lang/compiler, strip the runtime
@@ -125,7 +134,8 @@ let attachLiveCompiler = () => {
   let tuRight = mountEl.firstElementChild
   if (!tuRight) { return }
   let grid = document.createElement("div")
-  grid.className = "h-full grid grid-cols-1 md:grid-cols-2 gap-4"
+  // `live-grid` marker class so stopLivePreview can find + remove it.
+  grid.className = "live-grid h-full grid grid-cols-1 md:grid-cols-2 gap-4"
   let left = document.createElement("div")
   left.className = "flex flex-col gap-2 min-h-0"
   let leftHeader = document.createElement("div")
@@ -157,13 +167,18 @@ let attachLiveCompiler = () => {
   })
 }
 
-export let liveDemo = {
+// Both exports are lambda factories rather than plain values — Tu wraps
+// every non-lambda module-level `let` in a Signal.State, so a namespace
+// `import * as m from "./live-demo.tu"` consumer would otherwise get
+// the cell instance (with no `.setup`, etc.) instead of the object.
+// Wrapping in a thunk dodges the wrap entirely; consumers call `m.liveDemo()`.
+export let liveDemo = () => ({
   id: "live",
   setup: () => LiveEditorMod.error.set(""),
   teardown: () => stopLivePreview(),
   thunk: () => LiveEditorMod.LiveEditor(),
   afterMount: () => attachLiveCompiler(),
-}
+})
 
-export let liveDemoBlurb =
+export let liveDemoBlurb = () =>
   "In-browser Tu compiler — `@tu-lang/compiler` ships as pure-JS ESM, so it bundles into the playground. Edit the source on the left in Monaco; every keystroke recompiles to JS, the result is `Function`-evaled with `h` + `Signal` injected, and the exported `App` is mounted into the right pane. Compile errors render inline with red squiggles, and the preview pane swaps to a red diagnostic block."
