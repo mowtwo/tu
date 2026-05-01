@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@tu-lang/runtime": "workspace:*",
-    "@tu-lang/tu-xing": "workspace:*"
+    "@tu-lang/tu-xing": "workspace:*",
+    "monaco-editor": "^0.55.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

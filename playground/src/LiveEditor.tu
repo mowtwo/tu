@@ -1,15 +1,13 @@
-// Live Tu editor — textarea on the left, mounted preview on the right.
+// Live Tu editor — Monaco editor on the left, mounted preview on the right.
 // `compile` runs in the browser via @tu-lang/compiler (it's pure-JS ESM,
 // no Node deps). The result is executed in main.js by the Function
 // constructor with `h` / `Signal` injected as parameters (sidestepping
 // bare-module-import resolution in eval).
 //
-// `error` is a reactive cell (toggles the preview pane between mount
-// and red-diagnostic). The textarea is intentionally **uncontrolled** —
-// main.js attaches a plain DOM `input` listener after mount and reads
-// the textarea's value directly. Going through a Signal cell + keyed
-// diff for every keystroke would clobber cursor position; uncontrolled
-// gives the user a normal textarea experience.
+// `error` is a reactive cell (toggles the preview pane between live mount
+// and red-diagnostic). The editor itself is owned by Monaco — we render
+// an empty `#live-source` div, then main.js calls `createTuEditor()` to
+// boot Monaco into it after the Tu chrome has rendered.
 
 export let error = ""
 
@@ -19,10 +17,9 @@ export let LiveEditor = () => div(class: "h-full grid grid-cols-1 md:grid-cols-2
       h3(class: "text-sm font-semibold m-0 text-[hsl(var(--tu-fg))]") { "Source" }
       span(class: "text-xs text-[hsl(var(--tu-fg-muted))]") { "(auto-recompile on edit)" }
     }
-    textarea(
+    div(
       id: "live-source",
-      class: "flex-1 min-h-[400px] p-3 font-mono text-xs leading-relaxed bg-[hsl(var(--tu-surface))] text-[hsl(var(--tu-fg))] border border-[hsl(var(--tu-border))] rounded-[var(--tu-radius-sm)] focus:outline-none focus:border-[hsl(var(--tu-brand))] resize-none",
-      spellcheck: false,
+      class: "flex-1 min-h-[400px] border border-[hsl(var(--tu-border))] rounded-[var(--tu-radius-sm)] overflow-hidden",
     )
   }
   div(class: "flex flex-col gap-2 min-h-0") {

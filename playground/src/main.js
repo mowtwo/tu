@@ -8,15 +8,13 @@
 //   3. demo lifecycle (mount, teardown previous, swap into #mount)
 //   4. Diff-only setInterval + array-controls (escape hatch — these need
 //      JS-side `[...]` spread + Math.random which Tu V1 doesn't surface).
-//   5. Live-editor recompile pipeline — compileToTS-less in-browser
-//      compile via @tu-lang/compiler's pure-JS ESM, then eval via the
-//      Function constructor with `h` / `Signal` injected.
-import { h, mount, Signal } from '@tu-lang/runtime'
-import { compile } from '@tu-lang/compiler'
+//   5. Live-editor demo — lazy-loaded on first navigation to `#live`
+//      (Monaco editor + @tu-lang/compiler in the browser). Lives in
+//      live-demo.js to keep it out of the initial bundle.
+import { mount } from '@tu-lang/runtime'
 
 import * as Sidebar from './Sidebar.tu'
 import * as Header from './StageHeader.tu'
-import * as LiveEditorMod from './LiveEditor.tu'
 
 import * as HelloMod from '../../examples/hello/Greeting.tu'
 import * as CounterMod from '../../examples/counter/Counter.tu'
@@ -52,8 +50,7 @@ const demoBlurbs = {
     'Tu × Tailwind v4 — utility classes coexist with Tu scoped style blocks. Tailwind\'s `@source "**/*.tu"` directive lets it scan `.tu` source files for class usage. M5.9 method calls (`e.preventDefault()`) shipped specifically to make Tailwind interactions work cleanly.',
   diff:
     "Keyed diff — the counter cell ticks every 600 ms in the background. Click into the input and type: focus + caret + your text all survive the re-renders, because M1.7 reuses the existing input DOM node rather than rebuilding it. Then try the list buttons — DOM identity is preserved across reorders too.",
-  live:
-    'In-browser Tu compiler — `@tu-lang/compiler` ships as pure-JS ESM, so it bundles into the playground. Edit the source on the left; every keystroke recompiles to JS, the result is `Function`-evaled with `h` + `Signal` injected, and the exported `App` is mounted into the right pane. Errors render where the preview would.',
+  live: 'Loading the in-browser editor…',
 }
 
 let diffTickHandle = null
@@ -157,125 +154,20 @@ const demos = [
       },
     ],
   },
-  {
-    id: 'live',
-    setup() {
-      // Reset error so the preview pane shows the live mount, not a
-      // stale diagnostic from a previous visit. The textarea content
-      // is restored further down via direct DOM manipulation once the
-      // pane has rendered (`afterMount`).
-      LiveEditorMod.error.set('')
-    },
-    teardown() {
-      stopLivePreview()
-    },
-    thunk: () => LiveEditorMod.LiveEditor(),
-    afterMount: () => attachLiveCompiler(),
-  },
 ]
 
-const LIVE_DEMO_SOURCE = `let count = 0
-let inc = () => count = count + 1
-
-export let App = () => div(class: "live-card") {
-  h2 { "Live Tu" }
-  p { "count = " count }
-  button(onClick: inc) { "+1" }
-
-  style {
-    .live-card {
-      padding: 1rem 1.25rem;
-      border-radius: 8px;
-      background: hsl(var(--tu-surface-elevated));
-      max-width: 24rem;
-    }
+let liveDemoPromise = null
+function loadLiveDemo() {
+  if (!liveDemoPromise) {
+    liveDemoPromise = import('./live-demo.js').then((m) => {
+      // Replace the placeholder blurb with the real one once loaded —
+      // `activate` reads `demoBlurbs` after this promise resolves so
+      // ordering is fine.
+      demoBlurbs.live = m.liveDemoBlurb
+      return m.liveDemo
+    })
   }
-}`
-
-let liveStop = null
-let liveDebounceHandle = null
-let liveInputHandler = null
-let liveTextarea = null
-let liveLastCompiled = ''
-
-function stopLivePreview() {
-  if (liveStop) {
-    liveStop()
-    liveStop = null
-  }
-  if (liveTextarea && liveInputHandler) {
-    liveTextarea.removeEventListener('input', liveInputHandler)
-  }
-  liveTextarea = null
-  liveInputHandler = null
-  if (liveDebounceHandle !== null) {
-    clearTimeout(liveDebounceHandle)
-    liveDebounceHandle = null
-  }
-  liveLastCompiled = ''
-}
-
-/** Compile `text`, eval it, and (re-)mount the resulting `App` into
- *  `#live-preview-mount`. Errors flow into the `error` cell so the
- *  preview pane swaps to the red diagnostic. */
-function recompileLive(text) {
-  if (text === liveLastCompiled) return
-  liveLastCompiled = text
-  let App
-  try {
-    // Strip the runtime import emitted by codegen — we provide `h` /
-    // `Signal` ourselves via the Function constructor's params, since
-    // bare-module imports can't be resolved inside `new Function()`.
-    let js = compile(text)
-    // Strip the runtime import (we inject `h` / `Signal` via Function
-    // params), the source-map footer, and `export` keywords (Function
-    // bodies are not modules — `export` is a syntax error there).
-    js = js.replace(/^import\s+.*?from\s+['"]@tu-lang\/runtime['"];?\s*/m, '')
-    js = js.replace(/\/\/#\s*sourceMappingURL=[^\n]*\n?/g, '')
-    js = js.replace(/^export\s+/gm, '')
-    const factory = new Function('h', 'Signal', `${js}\nreturn typeof App !== 'undefined' ? App : null`)
-    App = factory(h, Signal)
-    if (typeof App !== 'function') {
-      throw new Error("source must export an `App` lambda — `export let App = () => …`")
-    }
-    LiveEditorMod.error.set('')
-  } catch (e) {
-    LiveEditorMod.error.set(e?.message ?? String(e))
-    if (liveStop) {
-      liveStop()
-      liveStop = null
-    }
-    return
-  }
-  // Defer mount until the preview pane has rendered after the `error`
-  // cell flipped — `error` and the preview-mount node live in opposite
-  // arms of the same `if/else`, so the DOM node only exists once
-  // `error` is empty.
-  queueMicrotask(() => {
-    const host = document.getElementById('live-preview-mount')
-    if (!host) return
-    if (liveStop) liveStop()
-    liveStop = mount(() => App(), host)
-  })
-}
-
-function attachLiveCompiler() {
-  liveTextarea = document.getElementById('live-source')
-  if (!liveTextarea) return
-  // Restore the starter snippet on every (re-)visit. The textarea is
-  // uncontrolled, so the only way to refresh its display is to write
-  // to `.value` directly.
-  liveTextarea.value = LIVE_DEMO_SOURCE
-  recompileLive(LIVE_DEMO_SOURCE)
-  liveInputHandler = (e) => {
-    if (liveDebounceHandle !== null) clearTimeout(liveDebounceHandle)
-    const text = e.target.value
-    liveDebounceHandle = setTimeout(() => {
-      liveDebounceHandle = null
-      recompileLive(text)
-    }, 200)
-  }
-  liveTextarea.addEventListener('input', liveInputHandler)
+  return liveDemoPromise
 }
 
 const sidebarEl = document.getElementById('sidebar-host')
@@ -352,9 +244,22 @@ function labelFor(id) {
   return map[id] ?? id
 }
 
-function activateFromHash() {
+async function activateFromHash() {
   const id = window.location.hash.slice(1)
-  const next = demos.find((d) => d.id === id) ?? demos[0]
+  let next
+  if (id === 'live') {
+    // Show the loading blurb immediately so the user sees feedback,
+    // then swap in the real demo when the chunk lands. Re-check the
+    // hash after the await — the user may have navigated elsewhere
+    // while the chunk was downloading.
+    Sidebar.activeId.set('live')
+    Header.title.set(labelFor('live'))
+    Header.blurb.set(demoBlurbs.live)
+    next = await loadLiveDemo()
+    if (window.location.hash.slice(1) !== 'live') return
+  } else {
+    next = demos.find((d) => d.id === id) ?? demos[0]
+  }
   if (next.id !== activeDemo?.id) activate(next)
 }
 
