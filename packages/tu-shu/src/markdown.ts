@@ -1,20 +1,53 @@
 // Markdown → HTML pipeline. Uses markdown-it for parsing + Shiki for code
-// blocks. The output HTML is fed into Tu's `$static` vnode (M6.0) so the
-// runtime can mount it without re-allocating per render.
+// blocks. Tu's TextMate grammar is registered alongside the standard
+// langs so ```tu code blocks highlight on the rendered site.
 import matter from 'gray-matter'
 import MarkdownIt from 'markdown-it'
 import { createHighlighter, type Highlighter } from 'shiki'
+import type { LanguageRegistration } from '@shikijs/types'
+
+/**
+ * Tu's TextMate grammar — same JSON the vscode-tu extension uses. Shiki
+ * happily consumes the file, but the field shapes need a small
+ * `name: 'tu'` patch (the grammar's source `name` is "Tu" capitalized,
+ * which Shiki reads as the language name and breaks alias resolution).
+ */
+async function loadTuGrammar(): Promise<LanguageRegistration | null> {
+  // Resolve relative to this module: tu-shu publishes its dist under
+  // packages/tu-shu/dist/, vscode-tu lives at packages/vscode/syntaxes.
+  // In an npm-installed project the grammar JSON isn't bundled (vscode
+  // is a private workspace package); we just fall back to txt for `tu`
+  // blocks. The grammar can be overridden by consumers via a future
+  // config option.
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const url = new URL('../../vscode/syntaxes/tu.tmLanguage.json', import.meta.url)
+    const text = await readFile(url, 'utf-8')
+    const json = JSON.parse(text) as Record<string, unknown>
+    return { ...json, name: 'tu' } as unknown as LanguageRegistration
+  } catch {
+    return null
+  }
+}
 
 let highlighter: Highlighter | null = null
 async function getHighlighter(): Promise<Highlighter> {
   if (!highlighter) {
+    const baseLangs = ['javascript', 'typescript', 'css', 'html', 'json', 'bash', 'shell', 'markdown', 'yaml', 'tsx', 'jsx']
     highlighter = await createHighlighter({
       themes: ['github-dark'],
-      // Common languages plus Tu's grammar — registered separately when
-      // the consumer's tu-shu.config provides it; for now bundle a
-      // sensible defaults set.
-      langs: ['javascript', 'typescript', 'css', 'html', 'json', 'bash', 'shell', 'markdown'],
+      langs: baseLangs,
     })
+    // Register Tu's grammar separately (LanguageRegistration shape isn't
+    // a string, so it goes via loadLanguage).
+    const tu = await loadTuGrammar()
+    if (tu) {
+      try {
+        await highlighter.loadLanguage(tu)
+      } catch {
+        // Grammar load failure is non-fatal — `tu` blocks fall back to txt.
+      }
+    }
   }
   return highlighter
 }

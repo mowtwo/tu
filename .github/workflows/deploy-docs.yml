@@ -16,6 +16,13 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# **The docs site is built with @tu-lang/tu-shu** — Tu's own static site
+# generator (dogfood). VitePress was the bootstrap renderer; once tu-shu
+# was production-ready the deploy switched over. tu-shu reads docs/*.md,
+# renders via @tu-lang/runtime's renderPage, and writes static HTML to
+# docs/.tu-shu/dist/. The playground (Tu+Vite app) and tu-shu's own demo
+# are staged under sub-paths.
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,11 +43,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Package the VS Code extension into a .vsix so the docs site can offer
-      # it as a direct download (until vscode-tu lands on the Marketplace).
-      # `vsce package` is idempotent; `--no-dependencies` skips re-running
-      # workspace cross-deps (we already built them).
-      - name: Build packages (so vscode-tu can bundle compiled deps)
+      - name: Build all packages
         run: pnpm build
 
       - name: Package VS Code extension
@@ -48,38 +51,45 @@ jobs:
           npx --yes @vscode/vsce package --no-dependencies --skip-license -o vscode-tu-latest.vsix
         working-directory: packages/vscode
 
-      - name: Stage install artifacts into docs/public
-        run: |
-          mkdir -p docs/public/install
-          cp packages/vscode/vscode-tu-latest.vsix docs/public/install/
-          # Refresh the grammar copy too so it's always in sync.
-          mkdir -p docs/public/grammar
-          cp packages/vscode/syntaxes/tu.tmLanguage.json docs/public/grammar/
+      # Build the **main docs site** with tu-shu (Tu's own SSG).
+      - name: Build docs (tu-shu)
+        run: TU_BASE='/tu/' node ../packages/tu-shu/dist/cli.js build
+        working-directory: docs
 
-      # Dogfood: build the tu-shu demo (the SSG written in Tu) and embed
-      # its output under /tu-shu-preview/ so visitors see real tu-shu
-      # pages alongside the VitePress-rendered main site. Eventually
-      # the main site will migrate to tu-shu — this is the staging step.
+      # Stage downloadable artifacts and live demos into the tu-shu output
+      # directory, in parallel with the rendered HTML pages.
+      - name: Stage install artifacts
+        run: |
+          mkdir -p docs/.tu-shu/dist/install
+          cp packages/vscode/vscode-tu-latest.vsix docs/.tu-shu/dist/install/
+          mkdir -p docs/.tu-shu/dist/grammar
+          cp packages/vscode/syntaxes/tu.tmLanguage.json docs/.tu-shu/dist/grammar/
+
+      - name: Stage llms.txt for AI agents
+        run: |
+          cp docs/skill.md docs/.tu-shu/dist/llms.txt
+
+      # Dogfood: build the tu-shu demo (a separate small site) and embed
+      # under /tu-shu-preview/ so the live deploy showcases tu-shu twice
+      # — once rendering the main site, once rendering its own demo.
       - name: Build tu-shu demo
-        run: TU_BASE='/tu/tu-shu-preview/' pnpm --filter '@tu-examples/tu-shu-demo' demo
+        run: TU_BASE='/tu/tu-shu-preview/' node ../../packages/tu-shu/dist/cli.js build
+        working-directory: examples/tu-shu-demo
 
-      - name: Stage tu-shu output into docs/public/tu-shu-preview
+      - name: Stage tu-shu demo into /tu-shu-preview/
         run: |
-          mkdir -p docs/public/tu-shu-preview
-          cp -r examples/tu-shu-demo/.tu-shu/dist/* docs/public/tu-shu-preview/
+          mkdir -p docs/.tu-shu/dist/tu-shu-preview
+          cp -r examples/tu-shu-demo/.tu-shu/dist/* docs/.tu-shu/dist/tu-shu-preview/
 
-      # Build the playground (the dogfood Tu app exercising every demo
-      # plus tu-xing + Tailwind) and embed it under /playground/.
+      # Build the playground (a Tu+Vite SPA exercising every demo plus
+      # the tu-xing UI library and Tailwind) and embed under /playground/.
       - name: Build playground
         run: TU_BASE='/tu/playground/' pnpm --filter tu-playground build
 
-      - name: Stage playground output into docs/public/playground
+      - name: Stage playground into /playground/
         run: |
-          mkdir -p docs/public/playground
-          cp -r playground/dist/* docs/public/playground/
-
-      - name: Build VitePress site
-        run: pnpm --filter tu-docs build
+          mkdir -p docs/.tu-shu/dist/playground
+          cp -r playground/dist/* docs/.tu-shu/dist/playground/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -87,7 +97,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.vitepress/dist
+          path: docs/.tu-shu/dist
 
   deploy:
     needs: build

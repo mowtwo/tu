@@ -17,24 +17,25 @@ export interface RoutedFile {
   url: string
 }
 
-export function discoverPages(srcDir: string): RoutedFile[] {
+export function discoverPages(srcDir: string, exclude: string[] = []): RoutedFile[] {
   const out: RoutedFile[] = []
-  walk(srcDir, srcDir, out)
+  walk(srcDir, srcDir, out, exclude)
   return out.sort((a, b) => a.url.localeCompare(b.url))
 }
 
-function walk(root: string, dir: string, out: RoutedFile[]): void {
+function walk(root: string, dir: string, out: RoutedFile[], exclude: string[]): void {
   for (const name of readdirSync(dir)) {
     if (name.startsWith('.')) continue
     if (name === 'node_modules') continue
     const abs = join(dir, name)
     const stat = statSync(abs)
     if (stat.isDirectory()) {
-      walk(root, abs, out)
+      walk(root, abs, out, exclude)
       continue
     }
     if (!name.endsWith('.md')) continue
     const rel = relative(root, abs).split(sep).join(posix.sep)
+    if (exclude.some((pat) => rel.includes(pat))) continue
     out.push({ abs, rel, url: relToUrl(rel) })
   }
 }

@@ -7,6 +7,14 @@ export interface TuShuConfig {
   description?: string
   /** Where to find markdown source files. Defaults to `'./docs'`. */
   srcDir?: string
+  /**
+   * Glob-ish patterns (relative to `srcDir`) of markdown files to skip.
+   * Each entry is matched as a substring against the relative path —
+   * keep them simple (`'README.md'`, `'typecheck-demo/'`) rather than
+   * full glob syntax. Hidden directories (starting with `.`) are
+   * always skipped.
+   */
+  srcExclude?: string[]
   /** Where to write the static build. Defaults to `'./.tu-shu/dist'`. */
   outDir?: string
   /** Base path for the deployed site (e.g. `/myrepo/`). Defaults to `/`. */

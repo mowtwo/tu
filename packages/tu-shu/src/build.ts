@@ -13,7 +13,7 @@ export async function build(cwd: string, config: TuShuConfig): Promise<void> {
 
   console.log(`tu-shu: building ${srcDir} → ${outDir}`)
 
-  const files = discoverPages(srcDir)
+  const files = discoverPages(srcDir, config.srcExclude)
   console.log(`tu-shu: found ${files.length} markdown files`)
 
   for (const file of files) {
