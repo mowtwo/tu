@@ -98,14 +98,29 @@ jobs:
           fi
           echo "Publishing with dist-tag: $DIST_TAG"
           cd .release
+          # Per-tarball publish with resilient error handling: a single
+          # 404 (typically a missing Pending Publisher for a new package)
+          # shouldn't block the rest from publishing. Track failures and
+          # exit non-zero only at the end, so partial-success runs report
+          # which packages still need attention.
+          failed=()
           for tarball in *.tgz; do
             echo "::group::Publish $tarball"
-            npx -y npm@11 publish "$tarball" \
+            if npx -y npm@11 publish "$tarball" \
               --access public \
               --tag "$DIST_TAG" \
-              --provenance
-            echo "::endgroup::"
+              --provenance; then
+              echo "::endgroup::"
+            else
+              failed+=("$tarball")
+              echo "::error::Failed to publish $tarball — likely missing Pending Trusted Publisher on npm"
+              echo "::endgroup::"
+            fi
           done
+          if [[ ${#failed[@]} -gt 0 ]]; then
+            echo "::warning::Failed packages: ${failed[*]}"
+            exit 1
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

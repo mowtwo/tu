@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/lsp",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Language Server Protocol implementation for Tu — diagnostics-only V1 powered by the TypeScript compiler API.",
   "keywords": [
     "tu",
