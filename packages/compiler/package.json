@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/compiler",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "Tu compiler — lexer, parser, type-mapper, codegen.",
   "keywords": [
     "tu",
@@ -41,8 +41,12 @@
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  },
   "devDependencies": {
     "@tu-lang/runtime": "workspace:*",
+    "@types/markdown-it": "^14.1.2",
     "jsdom": "^26.0.0"
   },
   "publishConfig": {

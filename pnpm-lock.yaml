@@ -189,10 +189,17 @@ importers:
         version: link:../lsp
 
   packages/compiler:
+    dependencies:
+      markdown-it:
+        specifier: ^14.1.0
+        version: 14.1.1
     devDependencies:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.1.2
       jsdom:
         specifier: ^26.0.0
         version: 26.1.0

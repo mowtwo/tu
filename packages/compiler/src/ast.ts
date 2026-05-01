@@ -92,6 +92,7 @@ export type Expr =
   | IfExpr
   | ForExpr
   | StyleBlock
+  | MarkdownBlock
   | AssignExpr
   | ClassRef
   | ArrayLit
@@ -181,6 +182,7 @@ export type Child =
   | IfExpr
   | ForExpr
   | StyleBlock
+  | MarkdownBlock
   | ClassRef
   | ArrayLit
   | ObjectLit
@@ -268,6 +270,30 @@ export interface StyleBlock extends Ranged {
   css: string
   cssStart: number
   cssEnd: number
+}
+
+/**
+ * **M6.3** A `markdown { … }` block. The CSS-style raw-text lexing
+ * collects the inner body verbatim; the codegen runs it through a real
+ * markdown parser (markdown-it) at compile time and emits the result
+ * as a `$static` vnode (M6.0 path), so the runtime sees a
+ * pre-rendered HTML string ready to mount via `<template>` clone.
+ *
+ * Same shape as `StyleBlock`: special-form, single contiguous token
+ * pair (`markdown` ident + LBrace + MarkdownText + RBrace), preserves
+ * source byte ranges of the inner content for source-map fidelity.
+ *
+ * No interpolation in V1 — the body is purely literal markdown. Mixing
+ * Tu values into prose comes later (probably via leading-frontmatter
+ * + per-page Tu state cells, the way astro / mdx do).
+ */
+export interface MarkdownBlock extends Ranged {
+  kind: 'MarkdownBlock'
+  /** Raw markdown text (no leading/trailing braces). */
+  source: string
+  /** Source byte range of the inner markdown text. */
+  bodyStart: number
+  bodyEnd: number
 }
 
 /**

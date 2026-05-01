@@ -37,7 +37,8 @@
         "scopeName": "source.tu",
         "path": "./syntaxes/tu.tmLanguage.json",
         "embeddedLanguages": {
-          "meta.embedded.block.css.tu": "css"
+          "meta.embedded.block.css.tu": "css",
+          "meta.embedded.block.markdown.tu": "markdown"
         }
       }
     ]

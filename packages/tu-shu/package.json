@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/tu-shu",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "tu-shu (图书) — Tu-native static site generator. Markdown-driven docs sites built on @tu-lang/runtime + renderPage.",
   "keywords": [
     "tu",

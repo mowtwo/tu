@@ -8,6 +8,7 @@
     { "include": "#string" },
     { "include": "#number" },
     { "include": "#style-block" },
+    { "include": "#markdown-block" },
     { "include": "#keyword" },
     { "include": "#constant" },
     { "include": "#type-primitive" },
@@ -130,6 +131,22 @@
       "contentName": "source.css",
       "patterns": [
         { "include": "source.css" }
+      ]
+    },
+    "markdown-block": {
+      "begin": "\\b(markdown)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.tu" },
+        "2": { "name": "punctuation.section.embedded.begin.tu" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.embedded.end.tu" }
+      },
+      "name": "meta.embedded.block.markdown.tu",
+      "contentName": "text.html.markdown",
+      "patterns": [
+        { "include": "text.html.markdown" }
       ]
     }
   }

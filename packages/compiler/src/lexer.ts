@@ -3,15 +3,28 @@ import { KEYWORDS, TokenKind, type Token } from './tokens.js'
 
 export class Lexer {
   private pos = 0
-  /** True when the previous non-trivia token was Ident `style`. */
+  /** True when the previous non-trivia token was Ident `style` or `markdown`. */
   private styleSeen = false
-  /** True when an Ident `style` was followed by `{`; next token is the CssText body. */
+  private markdownSeen = false
+  /** True when `style {` was just emitted; next token is CssText body. */
   private cssPending = false
+  /** True when `markdown {` was just emitted; next token is MarkdownText body. */
+  private markdownPending = false
   constructor(private readonly src: string, private readonly filename?: string) {}
 
   tokenize(): Token[] {
     const out: Token[] = []
     while (this.pos < this.src.length) {
+      // For markdown-mode lexing we want the WHOLE body including any
+      // leading whitespace after `{` — the dedent step needs to see
+      // those leading spaces to compute the common indent. So skip
+      // trivia AFTER checking the pending flag.
+      if (this.markdownPending) {
+        out.push(this.lexMarkdownText())
+        this.markdownPending = false
+        this.markdownSeen = false
+        continue
+      }
       this.skipTrivia()
       if (this.pos >= this.src.length) break
       if (this.cssPending) {
@@ -22,14 +35,22 @@ export class Lexer {
       }
       const tok = this.next()
       out.push(tok)
-      // Track contextual `style { ... }` opening sequence.
+      // Track contextual `style { ... }` / `markdown { ... }` openers.
       if (tok.kind === TokenKind.Ident && tok.text === 'style') {
         this.styleSeen = true
+        this.markdownSeen = false
+      } else if (tok.kind === TokenKind.Ident && tok.text === 'markdown') {
+        this.markdownSeen = true
+        this.styleSeen = false
       } else if (tok.kind === TokenKind.LBrace && this.styleSeen) {
         this.cssPending = true
         this.styleSeen = false
+      } else if (tok.kind === TokenKind.LBrace && this.markdownSeen) {
+        this.markdownPending = true
+        this.markdownSeen = false
       } else {
         this.styleSeen = false
+        this.markdownSeen = false
       }
     }
     out.push({ kind: TokenKind.Eof, text: '', start: this.pos, end: this.pos })
@@ -182,6 +203,61 @@ export class Lexer {
     const text = this.src.slice(start, this.pos)
     return {
       kind: TokenKind.CssText,
+      text,
+      value: text,
+      start,
+      end: this.pos,
+    }
+  }
+
+  /**
+   * Lex the body of a `markdown { … }` block as raw text. Same balanced-
+   * outer-brace heuristic as `lexCssText` — each `{` increments depth,
+   * each `}` decrements; the body ends when depth would go below zero.
+   * Backtick-fenced code blocks are respected so braces inside them
+   * don't unbalance the count.
+   */
+  private lexMarkdownText(): Token {
+    const start = this.pos
+    let depth = 0
+    while (this.pos < this.src.length) {
+      const ch = this.src.charAt(this.pos)
+      // Triple-backtick fenced code block — skip to the closing fence.
+      if (
+        ch === '`' &&
+        this.src.charAt(this.pos + 1) === '`' &&
+        this.src.charAt(this.pos + 2) === '`'
+      ) {
+        this.pos += 3
+        const close = this.src.indexOf('```', this.pos)
+        if (close < 0) break
+        this.pos = close + 3
+        continue
+      }
+      // Inline `code` — skip to the closing single backtick.
+      if (ch === '`') {
+        this.pos++
+        const close = this.src.indexOf('`', this.pos)
+        if (close < 0) break
+        this.pos = close + 1
+        continue
+      }
+      if (ch === '{') {
+        depth++
+        this.pos++
+        continue
+      }
+      if (ch === '}') {
+        if (depth === 0) break
+        depth--
+        this.pos++
+        continue
+      }
+      this.pos++
+    }
+    const text = this.src.slice(start, this.pos)
+    return {
+      kind: TokenKind.MarkdownText,
       text,
       value: text,
       start,

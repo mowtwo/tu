@@ -16,6 +16,7 @@ import type {
   Lambda,
   LetDecl,
   LocalLet,
+  MarkdownBlock,
   NumberLit,
   MemberExpr,
   MethodCallExpr,
@@ -883,6 +884,12 @@ export class Parser {
       if (name === 'style' && this.tokens[this.pos + 1]?.kind === TokenKind.CssText) {
         return this.parseStyleBlock(nameTok)
       }
+      // `markdown { … }` (M6.3) — sibling to `style { ... }`. The lexer
+      // emitted the body as a single MarkdownText token; codegen passes
+      // it through markdown-it at build time.
+      if (name === 'markdown' && this.tokens[this.pos + 1]?.kind === TokenKind.MarkdownText) {
+        return this.parseMarkdownBlock(nameTok)
+      }
       if (isComponent) return this.parseComponentCall(nameTok, /* hasParens */ false)
       return this.parseTagCall(nameTok)
     }
@@ -979,6 +986,20 @@ export class Parser {
       end: rbrace.end,
       cssStart: cssTok.start,
       cssEnd: cssTok.end,
+    }
+  }
+
+  private parseMarkdownBlock(mdTok: Token): MarkdownBlock {
+    this.expect(TokenKind.LBrace)
+    const mdText = this.expect(TokenKind.MarkdownText)
+    const rbrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'MarkdownBlock',
+      source: mdText.value as string,
+      start: mdTok.start,
+      end: rbrace.end,
+      bodyStart: mdText.start,
+      bodyEnd: mdText.end,
     }
   }
 

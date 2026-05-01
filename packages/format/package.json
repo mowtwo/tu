@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/format",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "Tu formatter — Prettier plugin in M3, moves to a real dprint plugin in R4.",
   "keywords": [
     "tu",

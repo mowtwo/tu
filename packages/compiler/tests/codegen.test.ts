@@ -536,6 +536,50 @@ describe('codegen', () => {
     expect(js).not.toContain('Card({')
   })
 
+  it('M6.3: markdown { } block compiles to a $static vnode with rendered HTML', () => {
+    const js = compile(`
+      let App = () => div {
+        markdown {
+          # Hello
+
+          Some **bold** text.
+        }
+      }
+    `)
+    expect(js).toContain('"$static"')
+    expect(js).toContain('<h1>Hello</h1>')
+    expect(js).toContain('<strong>bold</strong>')
+    expect(js).toContain('class=\\"tu-markdown\\"')
+  })
+
+  it('M6.3: markdown indent dedents so 4-space-nested content isn\'t a code block', () => {
+    const js = compile(`
+      let App = () => div {
+        markdown {
+          # Heading
+
+          Plain paragraph.
+
+          - bullet
+        }
+      }
+    `)
+    // Without dedent, markdown-it would treat the indented lines as a
+    // CommonMark code block and emit `<pre><code>`. After dedent the
+    // paragraph and list render normally.
+    expect(js).toContain('<p>Plain paragraph.</p>')
+    expect(js).toContain('<ul>')
+    expect(js).not.toContain('<pre><code>Plain paragraph')
+  })
+
+  it('M6.3: fenced code block inside markdown { } stays a code block', () => {
+    const src = '\n      let App = () => div {\n        markdown {\n          # Hi\n\n          \\`\\`\\`js\n          const x = 1\n          \\`\\`\\`\n        }\n      }\n    '
+    const js = compile(src.replace(/\\`/g, '`'))
+    expect(js).toContain('<h1>Hi</h1>')
+    expect(js).toContain('<pre><code')
+    expect(js).toContain('const x = 1')
+  })
+
   it('M5.6: object literal as a let-decl value emits the matching JS object', () => {
     const js = compile('let p = { x: 1, y: 2 }')
     expect(js).toContain('const p = new Signal.State({ x: 1, y: 2 })')

@@ -12,6 +12,7 @@ import type {
   IfExpr,
   Lambda,
   LocalLet,
+  MarkdownBlock,
   MemberExpr,
   MethodCallExpr,
   ObjectLit,
@@ -22,6 +23,18 @@ import type {
   TagCall,
 } from './ast.js'
 import { lineColAt } from './diagnostics.js'
+import MarkdownIt from 'markdown-it'
+
+// Singleton markdown-it — same configuration tu-shu uses (CommonMark +
+// linkify + typographer). Code-block highlighting via Shiki happens
+// downstream in tu-shu; the compiler's emit is plain `<pre><code>`.
+let mdInstance: MarkdownIt | null = null
+function getMd(): MarkdownIt {
+  if (!mdInstance) {
+    mdInstance = new MarkdownIt({ html: true, linkify: true, typographer: true })
+  }
+  return mdInstance
+}
 
 /**
  * Auto-injected import at the head of every compiled module.
@@ -464,6 +477,9 @@ class Codegen {
       case 'StyleBlock':
         this.emitStyleBlock(expr)
         return
+      case 'MarkdownBlock':
+        this.emitMarkdownBlock(expr)
+        return
       case 'AssignExpr':
         this.emitAssignExpr(expr)
         return
@@ -684,6 +700,26 @@ class Codegen {
     }
     this.write(' = ')
     this.emitExpr(node.value)
+  }
+
+  private emitMarkdownBlock(node: MarkdownBlock): void {
+    // Render the markdown source to HTML at compile time, then emit as
+    // a `$static` vnode (M6.0 path). The runtime parses the html via
+    // <template>.innerHTML — no per-render allocation, no markdown
+    // parser at runtime.
+    //
+    // We dedent the markdown body before parsing because Tu source
+    // typically nests `markdown { … }` under at least one indent level
+    // — markdown-it's CommonMark behaviour treats 4-space-indented
+    // lines as code blocks, which would mangle every nested paragraph.
+    const md = getMd()
+    const html = md.render(dedent(node.source))
+    const wrapped = `<article class="tu-markdown">${html}</article>`
+    this.write('h(')
+    this.mark(node.start, node.end, () => this.write('"$static"'))
+    this.write(', {}, [], ')
+    this.write(JSON.stringify(wrapped))
+    this.write(')')
   }
 
   private emitStyleBlock(node: StyleBlock): void {
@@ -1395,6 +1431,31 @@ function escapeStaticText(s: string): string {
 
 function escapeStaticAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+// ─── Markdown dedent (M6.3) ────────────────────────────────────────────────
+
+/**
+ * Strip the common leading-whitespace prefix from every non-blank line
+ * of a multi-line string. Used by `markdown { … }` block emit so users
+ * can indent the markdown body to match surrounding Tu code without
+ * tripping CommonMark's "4-space-indent = code block" rule.
+ *
+ * Tabs are treated as 1 column for prefix calculation — same as
+ * markdown-it's tokenizer treats them. Edge case: an entirely-blank
+ * input returns empty string.
+ */
+function dedent(source: string): string {
+  const lines = source.split('\n')
+  let minIndent = Infinity
+  for (const line of lines) {
+    if (line.trim() === '') continue
+    const m = line.match(/^[ \t]*/)
+    const len = m ? m[0].length : 0
+    if (len < minIndent) minIndent = len
+  }
+  if (!isFinite(minIndent) || minIndent === 0) return source
+  return lines.map((l) => (l.length >= minIndent ? l.slice(minIndent) : l)).join('\n')
 }
 
 // ─── Hash ───────────────────────────────────────────────────────────────────

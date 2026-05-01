@@ -5,6 +5,11 @@ export enum TokenKind {
   Number,
   /** Raw CSS text inside a `style { … }` block; lexed in CSS mode. */
   CssText,
+  /** Raw markdown text inside a `markdown { … }` block (M6.3); lexed
+   *  in markdown mode using the same outer-brace-balance heuristic as
+   *  CssText. The codegen calls markdown-it on the body to produce
+   *  HTML, then emits the result as a `$static` vnode. */
+  MarkdownText,
   // punctuation
   LParen,
   RParen,

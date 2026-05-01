@@ -521,6 +521,51 @@ also disallowed (no place to hash to).
 
 ---
 
+## Markdown block (M6.3)
+
+`markdown { … }` is a special-form block — sibling shape to `style { … }` —
+that lets Tu source mix prose alongside markup. The body is raw markdown;
+the compiler runs it through markdown-it at build time and emits the
+result as a single static-HTML vnode (M6.0 path), so there's no markdown
+parser at runtime.
+
+```tu
+let About = () => .page() {
+  h1 { "About" }
+  markdown {
+    Tu is a **reactive UI language** built around the trailing-closure
+    DSL pattern. See the [language reference](/LANGUAGE) for the full
+    syntax map.
+
+    - One bullet
+    - Another bullet
+
+    \`\`\`ts
+    const x: number = 42
+    \`\`\`
+  }
+
+  style { .page { padding: 1rem; } }
+}
+```
+
+Notes:
+
+- The block body is dedented before parsing so 4-space indents from
+  surrounding Tu source don't trip CommonMark's "indented = code block"
+  rule.
+- Brace-balanced lexing: `{` and `}` characters inside the markdown body
+  must come in matching pairs; backtick-fenced code blocks (```` ``` ````)
+  and inline backticks are skipped over so braces inside code don't
+  unbalance the count.
+- The output is wrapped in `<article class="tu-markdown">` so consumers
+  can style the prose container with one selector.
+- No interpolation in V1 — the markdown body is purely literal. Mixing
+  Tu cells into prose comes later (likely via a `${expr}` form that
+  splits the block into static + dynamic spans).
+
+---
+
 ## Imports / exports
 
 ### Named import
