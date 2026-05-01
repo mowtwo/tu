@@ -19,6 +19,7 @@ let demos = [
   { id: "tu-xing",     label: "tu-xing UI",  mil: "图形" },
   { id: "tailwind",    label: "Tailwind",    mil: "M6.3" },
   { id: "diff",        label: "Diff",        mil: "M1.7" },
+  { id: "live",        label: "Live editor", mil: "图" },
 ]
 
 let linkClass = (id) =>
