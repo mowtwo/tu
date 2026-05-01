@@ -137,6 +137,18 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain('interface ')
   })
 
+  it('M3.9: skips auto-Props emit when the user has hand-declared a `${Name}Props` type alias', () => {
+    // Otherwise tsserver flags `Duplicate identifier 'BadgeProps'` on the
+    // shadow .ts — the hand-written `type BadgeProps = …` collides with
+    // the auto-emitted `interface BadgeProps`.
+    const ts = compileToTS(
+      'export type BadgeProps = { variant?: string }\nexport let Badge = (props: BadgeProps) => span { props.variant }'
+    )
+    expect(ts).toContain('export type BadgeProps =')
+    // The auto-emit would have written `export interface BadgeProps {`.
+    expect(ts).not.toContain('export interface BadgeProps')
+  })
+
   it('M5.7: lambda return-type annotation preserved in TS emit', () => {
     const ts = compileToTS('export let f = (x: number): string => "ok"')
     expect(ts).toContain('export const f = (x: number): string => "ok"')

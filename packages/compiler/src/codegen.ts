@@ -174,7 +174,16 @@ export interface CodegenOptions {
 function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): BuildResult {
   const cells = analyzeProgram(program, opts?.importedNameKinds)
   const scopes = analyzeScopedComponents(program)
-  const cg = new Codegen(cells, scopes, tsMode)
+  // Collect every top-level type-alias name so the Codegen can skip the
+  // auto-`${Name}Props` interface emit when the user has hand-written a
+  // type alias of the same name (which would otherwise collide with TS
+  // diagnostic "Duplicate identifier 'XProps'"). Type aliases are
+  // erased in JS mode but the dedup is cheap to compute either way.
+  const declaredTypeNames = new Set<string>()
+  for (const stmt of program.body) {
+    if (stmt.kind === 'TypeAlias') declaredTypeNames.add(stmt.name)
+  }
+  const cg = new Codegen(cells, scopes, tsMode, declaredTypeNames)
   cg.write(`${runtimeImportLine(tsMode)}\n\n`)
   for (const stmt of program.body) {
     // Type aliases erase entirely in JS mode — they have no runtime presence.
@@ -321,7 +330,8 @@ class Codegen {
   constructor(
     private readonly cells: Map<string, CellKind>,
     private readonly scopedComponents: Map<string, ScopeCtx>,
-    private readonly tsMode: boolean = false
+    private readonly tsMode: boolean = false,
+    private readonly declaredTypeNames: ReadonlySet<string> = new Set()
   ) {}
 
   write(text: string): void {
@@ -384,12 +394,16 @@ class Codegen {
       // `${Name}Props` interface BEFORE the const so downstream consumers
       // (TS code reading the .d.ts) get a reusable shape. Lambdas with any
       // untyped param are skipped — we don't want to invent `unknown` fields.
+      // If the user has hand-declared a `${Name}Props` type alias in this
+      // module, skip the auto-emit to avoid TS "Duplicate identifier" — the
+      // hand-written shape always wins.
       if (
         this.tsMode &&
         decl.exported &&
         decl.value.kind === 'Lambda' &&
         decl.value.params.length >= 1 &&
-        decl.value.params.every((p) => p.type !== undefined)
+        decl.value.params.every((p) => p.type !== undefined) &&
+        !this.declaredTypeNames.has(`${decl.name}Props`)
       ) {
         this.write(`export interface ${decl.name}Props { `)
         for (let i = 0; i < decl.value.params.length; i++) {
