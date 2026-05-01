@@ -59,8 +59,11 @@ jobs:
           mkdir -p docs/public/install docs/public/grammar
           cp packages/vscode/vscode-tu-latest.vsix docs/public/install/
           cp packages/vscode/syntaxes/tu.tmLanguage.json docs/public/grammar/
-          # Keep llms.txt in sync with skill.md.
-          cp docs/skill.md docs/public/llms.txt
+          # Generate llms.txt by extracting the `markdown { … }` body
+          # out of docs/skill.tu (the migrated AI-agent skill page).
+          # Strips the leading 4-space indent we use inside `markdown {`
+          # so the agent gets a clean .md-equivalent file.
+          node scripts/extract-skill-llms.mjs
 
       # Build the **main docs site** with tu-shu (Tu's own SSG). The
       # build automatically copies docs/public/* into the output dir.
