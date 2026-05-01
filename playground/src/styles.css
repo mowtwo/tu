@@ -55,34 +55,57 @@ body {
   font: inherit;
 }
 
-/* Live editor — VS Code-style chrome. The reset rules above are scoped
- * to demo content; the live-grid renders its own chrome and shouldn't
- * inherit the bullet lists / inflated heading sizes. */
-#mount > .live-grid {
-  height: calc(100vh - 11rem);
-  min-height: 38rem;
-}
-#mount > .live-grid ul,
-#mount > .live-grid ol {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-#mount > .live-grid li {
+/* Live editor goes full-screen — when the live demo is active, hide
+ * the playground chrome and let the editor cover the viewport. */
+body.mode-live {
   display: block;
 }
+body.mode-live #sidebar-host,
+body.mode-live #header-host {
+  display: none !important;
+}
+body.mode-live main {
+  height: 100vh;
+  width: 100vw;
+}
+body.mode-live #mount {
+  padding: 0 !important;
+  height: 100vh;
+}
+body.mode-live #mount > .live-grid {
+  height: 100vh;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+
+/* ── Live editor — ReScript-try-style fullscreen layout ──
+ *
+ *  ┌────────────────────────────────────────────────────────────┐
+ *  │ Tu  [Case ▾]  App.tu Card.tu      Preview  JS  .d.ts ✓ live│   .live-toolbar (40px)
+ *  ├──────────────────────────────────┬─────────────────────────┤
+ *  │  Monaco editor                   │  preview / js / dts     │
+ *  └──────────────────────────────────┴─────────────────────────┘
+ */
+
+#mount > .live-grid {
+  height: calc(100vh - 11rem);
+  min-height: 36rem;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--tu-bg));
+}
+#mount > .live-grid ul,
+#mount > .live-grid ol { list-style: none; padding: 0; margin: 0; }
+#mount > .live-grid li { display: block; }
 #mount > .live-grid h1,
 #mount > .live-grid h2,
 #mount > .live-grid h3,
-#mount > .live-grid h4 {
-  margin: 0;
-  font-size: revert;
-}
-/* Reset is scoped to the chrome (sidebar / pane headers / tabs) — the
- * preview area inside the editor must keep the legacy button / input
- * defaults so user-authored Tu demos render with proper button chrome. */
-.live-sidebar button,
-.live-pane-header button,
+#mount > .live-grid h4 { margin: 0; font-size: revert; }
+#mount > .live-grid p { margin: 0; }
+
+/* Reset chrome elements only — preview area keeps demo defaults. */
+.live-toolbar button,
 .live-tabs button {
   appearance: revert;
   background: transparent;
@@ -92,121 +115,104 @@ body {
   font: inherit;
   cursor: pointer;
 }
-.live-sidebar input,
-.live-sidebar select,
-.live-pane-header input,
-.live-pane-header select {
-  border: 1px solid hsl(var(--tu-border));
-  padding: 0.25rem 0.5rem;
-  font: inherit;
-  background: hsl(var(--tu-surface));
-  color: hsl(var(--tu-fg));
-}
-#mount > .live-grid p {
-  margin: 0;
-}
 
-/* Sidebar */
-.live-sidebar {
-  background: hsl(var(--tu-surface));
-  border-right: 1px solid hsl(var(--tu-border));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.live-sidebar-section {
-  padding: 0.75rem 0.75rem 0.5rem;
-}
-.live-sidebar-section-title {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: hsl(var(--tu-fg-muted));
-  margin-bottom: 0.5rem;
-}
-.live-case-list,
-.live-file-list {
-  display: flex;
-  flex-direction: column;
-}
-.live-case-item,
-.live-file {
+/* Top toolbar */
+.live-toolbar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  height: 40px;
+  padding: 0 0.75rem 0 1rem;
+  background: hsl(var(--tu-surface));
+  border-bottom: 1px solid hsl(var(--tu-border));
+  font-size: 0.8rem;
   color: hsl(var(--tu-fg-muted));
-  cursor: pointer;
-  user-select: none;
-  transition: background 80ms, color 80ms;
+  flex-shrink: 0;
 }
-.live-case-item:hover,
-.live-file:hover {
-  background: hsl(var(--tu-surface-elevated));
+.live-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   color: hsl(var(--tu-fg));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-size: 0.9rem;
 }
-.live-case-item.active,
-.live-file.active {
+.live-brand > .live-brand-cn {
+  color: hsl(var(--tu-fg-muted));
+  font-weight: normal;
+}
+.live-brand > .live-brand-tag {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
   background: hsl(var(--tu-brand) / 0.18);
   color: hsl(var(--tu-brand));
   font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
-.live-file {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
-}
-.live-file::before {
-  content: '';
-  width: 12px;
-  height: 12px;
-  background-color: currentColor;
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1v4h4l-4-4zM3 1h5v5h5v9H3V1z"/></svg>') center / contain no-repeat;
-          mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1v4h4l-4-4zM3 1h5v5h5v9H3V1z"/></svg>') center / contain no-repeat;
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-.live-blurb {
-  margin: 0 0.75rem 0.75rem;
-  padding: 0.5rem 0.6rem;
-  font-size: 0.7rem;
-  line-height: 1.4;
-  color: hsl(var(--tu-fg-muted));
-  background: hsl(var(--tu-surface-elevated));
+.live-toolbar select {
+  appearance: none;
+  background-color: hsl(var(--tu-surface-elevated));
+  color: hsl(var(--tu-fg));
+  border: 1px solid hsl(var(--tu-border));
   border-radius: 4px;
+  padding: 0.25rem 1.5rem 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" fill="%23888"><path d="M3 4.5l3 3 3-3z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
 }
-
-/* Editor + preview panes share a common shell */
-.live-pane {
+.live-file-tabs {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: hsl(var(--tu-bg));
+  align-items: stretch;
+  height: 100%;
+  margin-left: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
-.live-pane-header {
-  display: flex;
+.live-file-tab {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 0.75rem;
-  height: 2rem;
-  border-bottom: 1px solid hsl(var(--tu-border));
-  background: hsl(var(--tu-surface));
+  padding: 0 0.85rem;
+  height: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   color: hsl(var(--tu-fg-muted));
-  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid hsl(var(--tu-border));
+  white-space: nowrap;
+  transition: color 80ms, background 80ms;
 }
-.live-pane-header > .breadcrumb {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.live-file-tab:first-child {
+  border-left: 1px solid hsl(var(--tu-border));
+}
+.live-file-tab:hover {
   color: hsl(var(--tu-fg));
+  background: hsl(var(--tu-surface-elevated));
+}
+.live-file-tab.active {
+  color: hsl(var(--tu-fg));
+  background: hsl(var(--tu-bg));
+  box-shadow: inset 0 -2px 0 hsl(var(--tu-brand));
+}
+.live-toolbar-spacer { flex: 1; }
+.live-view-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 .live-tab {
-  padding: 0.15rem 0.6rem !important;
+  padding: 0.2rem 0.7rem !important;
   font-size: 0.75rem;
   border-radius: 4px;
   color: hsl(var(--tu-fg-muted)) !important;
   transition: background 80ms, color 80ms;
+  cursor: pointer;
 }
 .live-tab:hover {
   background: hsl(var(--tu-surface-elevated)) !important;
@@ -217,32 +223,49 @@ body {
   color: hsl(var(--tu-brand)) !important;
   font-weight: 500;
 }
-.live-pane-header > .status {
+.live-status {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
   font-size: 0.7rem;
+  margin-left: 0.5rem;
+  min-width: 4.5rem;
+  justify-content: flex-end;
 }
-.live-pane-header > .status.ok {
-  color: hsl(var(--tu-success));
+.live-status.ok { color: hsl(var(--tu-success)); }
+.live-status.err { color: hsl(var(--tu-danger)); }
+
+/* Split — editor / preview side-by-side under the toolbar */
+.live-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
-.live-pane-header > .status.err {
-  color: hsl(var(--tu-danger));
+.live-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: hsl(var(--tu-bg));
+  overflow: hidden;
+}
+.live-pane.editor {
+  border-right: 1px solid hsl(var(--tu-border));
 }
 .live-pane-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
-.live-pane-body.editor {
-  overflow: hidden;
-}
+.live-pane-body.editor { overflow: hidden; }
 .live-pane-body.preview {
-  padding: 1rem;
+  padding: 1.5rem;
   background: hsl(var(--tu-bg));
 }
 .live-pane-body.error {
-  padding: 1rem;
+  padding: 1rem 1.5rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   white-space: pre-wrap;

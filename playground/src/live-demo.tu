@@ -50,6 +50,7 @@ let revokeBlobs = external JS (urls: string[]): void {
 }
 
 let stopLivePreview = () => {
+  document.body.classList.remove("mode-live")
   if (liveStop) { liveStop(); liveStop = null }
   if (liveContentSub) { liveContentSub.dispose(); liveContentSub = null }
   if (liveEditorDispose) { liveEditorDispose(); liveEditorDispose = null }
@@ -259,49 +260,26 @@ let setActiveFile = (path: string) => {
   liveCurrentPath = path
   if (liveEditor) { liveEditor.setModel(liveModels.get(path)) }
   if (liveSidebarEl) {
-    let items = liveSidebarEl.querySelectorAll(".live-file")
+    let items = liveSidebarEl.querySelectorAll(".live-file-tab")
     items.forEach((el) => {
       if (el.dataset.path == path) { el.classList.add("active") } else { el.classList.remove("active") }
     })
   }
-  updatePathBar()
   refreshOutputViews()
 }
 
-let renderFileList = (caseDef: any) => {
+let renderFileTabs = (caseDef: any) => {
   if (!liveSidebarEl) { return }
-  let list = liveSidebarEl.querySelector(".live-file-list")
-  if (!list) { return }
-  list.innerHTML = ""
+  let tabs = liveSidebarEl.querySelector(".live-file-tabs")
+  if (!tabs) { return }
+  tabs.innerHTML = ""
   caseDef.files.forEach((file) => {
-    let item = document.createElement("li")
-    item.className = "live-file"
+    let item = document.createElement("div")
+    item.className = "live-file-tab"
     item.dataset.path = file.path
     item.textContent = file.path
     item.addEventListener("click", () => setActiveFile(file.path))
-    list.appendChild(item)
-  })
-}
-
-let updateBlurb = (caseDef: any) => {
-  if (!liveSidebarEl) { return }
-  let blurb = liveSidebarEl.querySelector(".live-blurb")
-  if (blurb) { blurb.textContent = caseDef.blurb }
-}
-
-let renderCaseList = () => {
-  if (!liveSidebarEl) { return }
-  let list = liveSidebarEl.querySelector(".live-case-list")
-  if (!list) { return }
-  list.innerHTML = ""
-  CASES().forEach((c) => {
-    let item = document.createElement("li")
-    item.className = "live-case-item"
-    if (c.id == liveCurrentCaseId) { item.classList.add("active") }
-    item.dataset.case = c.id
-    item.textContent = c.label
-    item.addEventListener("click", () => setActiveCase(c.id))
-    list.appendChild(item)
+    tabs.appendChild(item)
   })
 }
 
@@ -311,9 +289,7 @@ let setActiveCase = (caseId: string) => {
   if (liveModels) { liveModels.forEach((m) => m.dispose()) }
   liveModels = createWorkspaceModels(caseDef)
   liveCurrentCaseId = caseId
-  renderCaseList()
-  renderFileList(caseDef)
-  updateBlurb(caseDef)
+  renderFileTabs(caseDef)
   setActiveFile(caseDef.entry)
   recompileLive()
 }
@@ -342,74 +318,41 @@ let createReadOnlyMonaco = external JS (host: any, language: string): any {
 let attachLiveCompiler = () => {
   let mountEl = document.getElementById("mount")
   if (!mountEl) { return }
-  // Wipe any prior anchor div from Tu's render.
+  // Live demo takes over the whole viewport — playground chrome
+  // (sidebar / stage header) is hidden via body.mode-live.
+  document.body.classList.add("mode-live")
   mountEl.innerHTML = ""
 
   let grid = document.createElement("div")
   grid.className = "live-grid"
-  grid.style.display = "grid"
-  grid.style.gridTemplateColumns = "220px minmax(0, 1.4fr) minmax(0, 1fr)"
-  grid.style.gap = "0"
-  grid.style.border = "1px solid hsl(var(--tu-border))"
-  grid.style.borderRadius = "var(--tu-radius-sm)"
-  grid.style.overflow = "hidden"
-  grid.style.minHeight = "0"
 
-  // Sidebar
-  let sidebar = document.createElement("aside")
-  sidebar.className = "live-sidebar"
-  liveSidebarEl = sidebar
+  // ── Toolbar (40px tall) ──
+  let toolbar = document.createElement("div")
+  toolbar.className = "live-toolbar"
+  liveSidebarEl = toolbar  // re-used as the host of file-tabs queries
 
-  let casesSection = document.createElement("div")
-  casesSection.className = "live-sidebar-section"
-  casesSection.innerHTML = `<div class="live-sidebar-section-title">Cases</div><ul class="live-case-list"></ul>`
+  let brand = document.createElement("div")
+  brand.className = "live-brand"
+  brand.innerHTML = `Tu <span class="live-brand-cn">图</span> <span class="live-brand-tag">Live</span>`
 
-  let filesSection = document.createElement("div")
-  filesSection.className = "live-sidebar-section"
-  filesSection.style.borderTop = "1px solid hsl(var(--tu-border))"
-  filesSection.innerHTML = `<div class="live-sidebar-section-title">Files</div><ul class="live-file-list"></ul>`
+  let caseSelect = document.createElement("select")
+  caseSelect.className = "live-case-picker"
+  CASES().forEach((c) => {
+    let opt = document.createElement("option")
+    opt.value = c.id
+    opt.textContent = c.label
+    caseSelect.appendChild(opt)
+  })
+  caseSelect.addEventListener("change", () => setActiveCase(caseSelect.value))
 
-  let blurbEl = document.createElement("div")
-  blurbEl.className = "live-blurb"
-  blurbEl.textContent = ""
+  let fileTabs = document.createElement("div")
+  fileTabs.className = "live-file-tabs"
 
-  sidebar.appendChild(casesSection)
-  sidebar.appendChild(filesSection)
-  sidebar.appendChild(blurbEl)
-  grid.appendChild(sidebar)
+  let spacer = document.createElement("div")
+  spacer.className = "live-toolbar-spacer"
 
-  // Editor pane
-  let editorPane = document.createElement("div")
-  editorPane.className = "live-pane editor"
-  editorPane.style.borderRight = "1px solid hsl(var(--tu-border))"
-
-  let editorHeader = document.createElement("div")
-  editorHeader.className = "live-pane-header"
-  let pathBar = document.createElement("div")
-  pathBar.className = "breadcrumb"
-  pathBar.textContent = ""
-  livePathBarEl = pathBar
-  editorHeader.appendChild(pathBar)
-
-  let editorBody = document.createElement("div")
-  editorBody.className = "live-pane-body editor"
-  editorBody.id = "live-source"
-
-  editorPane.appendChild(editorHeader)
-  editorPane.appendChild(editorBody)
-  grid.appendChild(editorPane)
-
-  // Preview pane (with tabs)
-  let previewPane = document.createElement("div")
-  previewPane.className = "live-pane preview"
-
-  let previewHeader = document.createElement("div")
-  previewHeader.className = "live-pane-header"
-
-  let tabs = document.createElement("div")
-  tabs.className = "live-tabs"
-  tabs.style.display = "flex"
-  tabs.style.gap = "0.25rem"
+  let viewTabs = document.createElement("div")
+  viewTabs.className = "live-view-tabs live-tabs"
   ;[
     { tab: "preview", label: "Preview" },
     { tab: "js", label: "JS" },
@@ -419,40 +362,55 @@ let attachLiveCompiler = () => {
     btn.className = "live-tab"
     btn.dataset.tab = t.tab
     btn.textContent = t.label
-    btn.style.padding = "0.15rem 0.5rem"
-    btn.style.fontSize = "0.75rem"
-    btn.style.borderRadius = "3px"
-    btn.style.color = "hsl(var(--tu-fg-muted))"
     btn.addEventListener("click", () => setActiveTab(t.tab))
-    tabs.appendChild(btn)
+    viewTabs.appendChild(btn)
   })
-  liveTabsEl = tabs
+  liveTabsEl = viewTabs
 
   let status = document.createElement("span")
-  status.className = "status"
+  status.className = "live-status"
   status.textContent = ""
   liveStatusEl = status
 
-  previewHeader.appendChild(tabs)
-  previewHeader.appendChild(status)
+  toolbar.appendChild(brand)
+  toolbar.appendChild(caseSelect)
+  toolbar.appendChild(fileTabs)
+  toolbar.appendChild(spacer)
+  toolbar.appendChild(viewTabs)
+  toolbar.appendChild(status)
+  grid.appendChild(toolbar)
+
+  // ── Split (editor / preview) ──
+  let split = document.createElement("div")
+  split.className = "live-split"
+
+  let editorPane = document.createElement("div")
+  editorPane.className = "live-pane editor"
+  let editorBody = document.createElement("div")
+  editorBody.className = "live-pane-body editor"
+  editorBody.id = "live-source"
+  editorPane.appendChild(editorBody)
+  split.appendChild(editorPane)
+
+  let previewPane = document.createElement("div")
+  previewPane.className = "live-pane preview"
 
   let previewBody = document.createElement("div")
   previewBody.className = "live-pane-body preview"
-  previewBody.style.position = "relative"
   previewBody.style.padding = "0"
+  previewBody.style.position = "relative"
 
   let previewMount = document.createElement("div")
   previewMount.id = "live-preview-mount"
-  previewMount.style.padding = "1rem"
-  previewMount.style.height = "100%"
-  previewMount.style.overflow = "auto"
+  previewMount.style.padding = "1.5rem"
+  previewMount.style.minHeight = "100%"
   livePreviewMountEl = previewMount
 
   let errorView = document.createElement("pre")
   errorView.className = "live-pane-body error"
   errorView.style.display = "none"
   errorView.style.margin = "0"
-  errorView.style.height = "100%"
+  errorView.style.minHeight = "100%"
   liveErrorEl = errorView
 
   let jsView = document.createElement("div")
@@ -469,22 +427,15 @@ let attachLiveCompiler = () => {
   previewBody.appendChild(errorView)
   previewBody.appendChild(jsView)
   previewBody.appendChild(dtsView)
-
-  previewPane.appendChild(previewHeader)
   previewPane.appendChild(previewBody)
-  grid.appendChild(previewPane)
+  split.appendChild(previewPane)
 
+  grid.appendChild(split)
   mountEl.appendChild(grid)
 
-  // Boot Monaco editors. Main editor lives in the editor pane;
-  // read-only JS / DTS preview editors live in their tab views.
   let pair = createTuEditor(editorBody, "")
   liveEditor = pair.editor
   liveEditorDispose = pair.dispose
-
-  // Stash monaco globally so createReadOnlyMonaco can grab it without
-  // a tu module-level circular dep.
-  stashMonaco(pair.editor)
 
   let jsPair = createReadOnlyMonaco(jsView, "javascript")
   liveJsEditor = jsPair.editor
@@ -503,15 +454,9 @@ let attachLiveCompiler = () => {
   })
 
   let initial = CASES()[0]
+  caseSelect.value = initial.id
   setActiveCase(initial.id)
   setActiveTab("preview")
-}
-
-let stashMonaco = external JS (anyEditor: any): void {
-  // Pull monaco out of any editor's `_modelService.getCodeEditorService`?
-  // Simpler: monaco-tu.tu has it as a module-level binding which Vite
-  // bundles. Re-fetch via a dynamic import is overkill; instead let
-  // monaco-tu set it during `createTuEditor`.
 }
 
 export let liveDemo = () => ({
