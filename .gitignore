@@ -13,7 +13,11 @@ coverage/
 # Playwright MCP scratch — page/console snapshots from in-session browser tests
 .playwright-mcp/
 
-# VitePress site build output (deployed via .github/workflows/deploy-docs.yml)
+# tu-shu site build output (deployed via .github/workflows/deploy-docs.yml)
+**/.tu-shu/
+
+# VitePress site build output (legacy — VitePress was retired in alpha.6;
+# kept here so a stray dist/ wouldn't be tracked if anyone re-runs it)
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 
