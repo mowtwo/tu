@@ -52,6 +52,28 @@ async function getHighlighter(): Promise<Highlighter> {
   return highlighter
 }
 
+/**
+ * Return a sync `(code, lang) → html` function powered by Shiki + Tu's
+ * grammar set. Used both internally (markdown.ts → parseMarkdown) and
+ * exported so `@tu-lang/compiler`'s `markdown { … }` block can be wired
+ * to the same highlighter via `setMarkdownHighlight`.
+ */
+export async function getMarkdownItHighlighter(): Promise<((code: string, lang: string) => string) | null> {
+  try {
+    const hi = await getHighlighter()
+    return (code, lang) => {
+      if (!lang) return ''
+      try {
+        return hi.codeToHtml(code, { lang, theme: 'github-dark' })
+      } catch {
+        return ''
+      }
+    }
+  } catch {
+    return null
+  }
+}
+
 let mdInstance: MarkdownIt | null = null
 async function getMd(): Promise<MarkdownIt> {
   if (!mdInstance) {

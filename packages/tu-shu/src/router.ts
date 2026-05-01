@@ -15,6 +15,9 @@ export interface RoutedFile {
   rel: string
   /** Final URL the page should live at. */
   url: string
+  /** `'md'` for plain markdown, `'tu'` for Tu source files exporting a
+   *  `Page` component (and optional `frontmatter`). */
+  kind: 'md' | 'tu'
 }
 
 export function discoverPages(srcDir: string, exclude: string[] = []): RoutedFile[] {
@@ -33,15 +36,20 @@ function walk(root: string, dir: string, out: RoutedFile[], exclude: string[]): 
       walk(root, abs, out, exclude)
       continue
     }
-    if (!name.endsWith('.md')) continue
+    const kind: 'md' | 'tu' | null = name.endsWith('.md')
+      ? 'md'
+      : name.endsWith('.tu')
+        ? 'tu'
+        : null
+    if (kind === null) continue
     const rel = relative(root, abs).split(sep).join(posix.sep)
     if (exclude.some((pat) => rel.includes(pat))) continue
-    out.push({ abs, rel, url: relToUrl(rel) })
+    out.push({ abs, rel, url: relToUrl(rel), kind })
   }
 }
 
 function relToUrl(rel: string): string {
-  let p = rel.replace(/\.md$/, '')
+  let p = rel.replace(/\.(md|tu)$/, '')
   if (p === 'index') return '/'
   if (p.endsWith('/index')) return '/' + p.slice(0, -'/index'.length) + '/'
   return '/' + p

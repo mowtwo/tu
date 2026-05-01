@@ -25,13 +25,50 @@ import type {
 import { lineColAt } from './diagnostics.js'
 import MarkdownIt from 'markdown-it'
 
-// Singleton markdown-it — same configuration tu-shu uses (CommonMark +
-// linkify + typographer). Code-block highlighting via Shiki happens
-// downstream in tu-shu; the compiler's emit is plain `<pre><code>`.
+// Singleton markdown-it — CommonMark + linkify + typographer. Code-
+// block highlighting is **pluggable**: callers (e.g. @tu-lang/tu-shu)
+// inject a highlighter via `setMarkdownHighlight` before compiling
+// pages, so the same Shiki grammar set drives both the SSG and the
+// site that consumes it. Without an injected highlighter, code
+// blocks fall back to plain `<pre><code class="language-X">`.
 let mdInstance: MarkdownIt | null = null
+let mdHighlighter: ((code: string, lang: string) => string) | null = null
+
+/**
+ * Install a custom code-block highlighter for `markdown { … }` body
+ * rendering. The function receives raw code text + the fence's `lang`
+ * tag (e.g. `'tu'`, `'ts'`), and must return a complete HTML string
+ * (typically `<pre class="shiki…"><code>…</code></pre>`). Throwing or
+ * returning empty string falls back to markdown-it's default.
+ *
+ * Calling this resets the singleton markdown-it instance so the new
+ * highlighter applies on the next compile.
+ */
+export function setMarkdownHighlight(
+  fn: ((code: string, lang: string) => string) | null
+): void {
+  mdHighlighter = fn
+  mdInstance = null
+}
+
 function getMd(): MarkdownIt {
   if (!mdInstance) {
-    mdInstance = new MarkdownIt({ html: true, linkify: true, typographer: true })
+    const opts: ConstructorParameters<typeof MarkdownIt>[0] = {
+      html: true,
+      linkify: true,
+      typographer: true,
+    }
+    if (mdHighlighter) {
+      const hi = mdHighlighter
+      opts.highlight = (code, lang) => {
+        try {
+          return hi(code, lang) ?? ''
+        } catch {
+          return ''
+        }
+      }
+    }
+    mdInstance = new MarkdownIt(opts)
   }
   return mdInstance
 }

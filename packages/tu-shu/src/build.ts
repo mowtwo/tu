@@ -1,11 +1,12 @@
-// Main build pipeline: read markdown → render via theme → write HTML +
-// copy static assets from publicDir.
+// Main build pipeline: read markdown OR .tu page source → render via
+// theme → write HTML + copy static assets from publicDir.
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { renderPageHtml } from '@tu-lang/runtime'
 import { parseMarkdown } from './markdown.js'
 import { discoverPages } from './router.js'
 import { renderTheme } from './theme/default.js'
+import { loadTuPage } from './tu-page.js'
 import type { Page, TuShuConfig } from './types.js'
 
 export async function build(cwd: string, config: TuShuConfig): Promise<void> {
@@ -15,17 +16,32 @@ export async function build(cwd: string, config: TuShuConfig): Promise<void> {
   console.log(`tu-shu: building ${srcDir} → ${outDir}`)
 
   const files = discoverPages(srcDir, config.srcExclude)
-  console.log(`tu-shu: found ${files.length} markdown files`)
+  const mdCount = files.filter((f) => f.kind === 'md').length
+  const tuCount = files.filter((f) => f.kind === 'tu').length
+  console.log(`tu-shu: found ${mdCount} markdown + ${tuCount} .tu page(s)`)
 
   for (const file of files) {
-    const source = readFileSync(file.abs, 'utf-8')
-    const md = await parseMarkdown(source)
+    let pageHtml: string
+    let frontmatter: Record<string, unknown>
+    let title: string
+    if (file.kind === 'tu') {
+      const loaded = await loadTuPage(file.abs)
+      pageHtml = loaded.html
+      frontmatter = loaded.frontmatter
+      title = loaded.title
+    } else {
+      const source = readFileSync(file.abs, 'utf-8')
+      const md = await parseMarkdown(source)
+      pageHtml = md.html
+      frontmatter = md.frontmatter
+      title = md.title
+    }
     const page: Page = {
       src: file.rel,
       url: file.url,
-      html: md.html,
-      frontmatter: md.frontmatter,
-      title: md.title,
+      html: pageHtml,
+      frontmatter,
+      title,
     }
     const themed = renderTheme(page, config)
     const baseHref = config.base ?? '/'

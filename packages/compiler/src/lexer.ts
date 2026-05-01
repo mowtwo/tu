@@ -223,22 +223,34 @@ export class Lexer {
     while (this.pos < this.src.length) {
       const ch = this.src.charAt(this.pos)
       // Triple-backtick fenced code block — skip to the closing fence.
+      // If unclosed, fall through and keep scanning instead of bailing
+      // (otherwise an unbalanced fence in user content would prematurely
+      // end the markdown body and cascade into a parser error).
       if (
         ch === '`' &&
         this.src.charAt(this.pos + 1) === '`' &&
         this.src.charAt(this.pos + 2) === '`'
       ) {
-        this.pos += 3
-        const close = this.src.indexOf('```', this.pos)
-        if (close < 0) break
+        const close = this.src.indexOf('```', this.pos + 3)
+        if (close < 0) {
+          // Unclosed fence — treat the three backticks as regular text.
+          this.pos += 3
+          continue
+        }
         this.pos = close + 3
         continue
       }
-      // Inline `code` — skip to the closing single backtick.
+      // Inline `code` — skip to the closing backtick on the same line
+      // only (CommonMark inline code spans don't cross blank lines).
+      // If no close exists, treat the single ` as a regular character.
       if (ch === '`') {
-        this.pos++
-        const close = this.src.indexOf('`', this.pos)
-        if (close < 0) break
+        const lineEnd = this.src.indexOf('\n', this.pos + 1)
+        const searchEnd = lineEnd < 0 ? this.src.length : lineEnd
+        const close = this.src.indexOf('`', this.pos + 1)
+        if (close < 0 || close > searchEnd) {
+          this.pos++
+          continue
+        }
         this.pos = close + 1
         continue
       }
