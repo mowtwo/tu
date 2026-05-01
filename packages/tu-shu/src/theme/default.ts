@@ -103,7 +103,15 @@ function renderNavBar(title: string, items: NavItem[], base: string): string {
   for (const it of items) {
     html += `<a href="${escAttr(joinUrl(base, it.link))}">${escText(it.text)}</a>`
   }
-  html += `</nav></div></header>`
+  html +=
+    `</nav>` +
+    // Hamburger toggle — visible only on narrow screens, drives a
+    // data-menu attribute on <body> via the inline script in
+    // THEME_INLINE_STYLE so the sidebar slides in.
+    `<button class="tu-shu-hamburger" aria-label="Open menu" type="button" onclick="document.body.dataset.menu = document.body.dataset.menu === 'open' ? '' : 'open'">` +
+    `<span></span><span></span><span></span>` +
+    `</button>` +
+    `</div></header>`
   return html
 }
 
@@ -173,7 +181,10 @@ body { margin: 0; background: hsl(var(--tu-bg)); color: hsl(var(--tu-fg)); -webk
 .tu-shu-nav-links a:hover { color: hsl(var(--tu-fg)); }
 
 .tu-shu-doc { flex: 1; display: grid; grid-template-columns: 240px 1fr; max-width: 1200px; margin: 0 auto; width: 100%; }
-@media (max-width: 768px) { .tu-shu-doc { grid-template-columns: 1fr; } .tu-shu-sidebar { display: none; } }
+
+/* Hamburger button — visible only on mobile. */
+.tu-shu-hamburger { display: none; flex-direction: column; gap: 0.25rem; padding: 0.5rem; background: transparent; border: 1px solid hsl(var(--tu-border)); border-radius: var(--tu-radius-sm); cursor: pointer; margin-left: auto; }
+.tu-shu-hamburger span { display: block; width: 1.125rem; height: 2px; background: hsl(var(--tu-fg)); border-radius: 1px; transition: transform .2s; }
 .tu-shu-sidebar { padding: 2rem 1rem; border-right: 1px solid hsl(var(--tu-border)); }
 .tu-shu-sidebar-group { margin-bottom: 1.5rem; }
 .tu-shu-sidebar-group h3 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: hsl(var(--tu-fg-muted)); margin: 0 0 0.5rem 0.5rem; font-weight: 600; }
@@ -223,4 +234,62 @@ body { margin: 0; background: hsl(var(--tu-bg)); color: hsl(var(--tu-fg)); -webk
 .tu-shu-feature-body code { background: hsl(var(--tu-bg)); padding: 0.1em 0.3em; border-radius: var(--tu-radius-sm); font-family: ui-monospace, monospace; font-size: 0.85em; color: hsl(var(--tu-brand)); }
 .tu-shu-feature-body a { color: hsl(var(--tu-brand)); text-decoration: none; }
 .tu-shu-feature-body a:hover { text-decoration: underline; }
+
+/* ─── Mobile breakpoint (≤ 768px) ─────────────────────────────────── */
+@media (max-width: 768px) {
+  body { font-size: 15px; }
+  /* Nav: tighter padding, hide inline links, show hamburger. */
+  .tu-shu-nav-inner { padding: 0.75rem 1rem; gap: 0.75rem; }
+  .tu-shu-nav-links { display: none; }
+  .tu-shu-hamburger { display: flex; }
+
+  /* Doc layout: sidebar becomes a slide-in drawer triggered by
+     [data-menu="open"] on <body>. Default state is hidden off-screen. */
+  .tu-shu-doc { grid-template-columns: 1fr; position: relative; }
+  .tu-shu-sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: min(280px, 80vw);
+    z-index: 20;
+    background: hsl(var(--tu-surface));
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform .2s;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
+  }
+  body[data-menu="open"] .tu-shu-sidebar { transform: translateX(0); }
+  body[data-menu="open"]::before {
+    content: "";
+    position: fixed;
+    inset: 56px 0 0 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 19;
+  }
+
+  /* Content: tighter side padding, smaller headings. */
+  .tu-shu-content { padding: 1.25rem 1rem 3rem; }
+  .tu-shu-prose h1 { font-size: 1.75rem; }
+  .tu-shu-prose h2 { font-size: 1.25rem; margin-top: 2rem; }
+  .tu-shu-prose h3 { font-size: 1.05rem; }
+  .tu-shu-prose pre { padding: 0.75rem; font-size: 0.8rem; border-radius: var(--tu-radius-sm); }
+  .tu-shu-prose table { font-size: 0.85rem; }
+
+  /* Hero: more compact for one-screen view. */
+  .tu-shu-home { padding: 2rem 1rem 4rem; }
+  .tu-shu-hero { padding: 1.5rem 0 2.5rem; }
+  .tu-shu-hero-title { font-size: clamp(2rem, 9vw, 3rem); }
+  .tu-shu-hero-tagline { font-size: 1rem; }
+  .tu-shu-hero-actions { flex-direction: column; align-items: stretch; }
+  .tu-shu-action { justify-content: center; }
+  .tu-shu-features { grid-template-columns: 1fr; gap: 0.75rem; margin: 2rem 0; }
+  .tu-shu-feature { padding: 1.25rem; }
+}
+
+/* Tablet breakpoint — keep sidebar but tighten gutters. */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .tu-shu-doc { grid-template-columns: 200px 1fr; }
+  .tu-shu-content { padding: 2rem 1.5rem; }
+}
 </style>`

@@ -111,8 +111,10 @@ function resolveAssetHref(base: string, href: string): string {
   ) {
     return href
   }
-  if (href.startsWith('/')) return href
-  // Treat as base-relative.
-  if (base.endsWith('/')) return base + href
-  return base + '/' + href
+  // Strip leading `/` so the path can be joined cleanly under the
+  // site's `base`. On a sub-path deploy (GitHub Pages /tu/ etc.),
+  // `/favicon.svg` from a config becomes `/tu/favicon.svg` in the
+  // emitted HTML — what users expect.
+  const trimmed = href.startsWith('/') ? href.slice(1) : href
+  return base.endsWith('/') ? base + trimmed : base + '/' + trimmed
 }
