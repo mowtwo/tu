@@ -47,14 +47,6 @@ jobs:
           # at publish time and exchange it for short-lived publish creds.
           registry-url: 'https://registry.npmjs.org'
 
-      # Upgrade npm to a version that supports OIDC trusted publishing.
-      # Node 22's bundled npm (10.x) is too old; npm 11.5.1 introduced
-      # automatic OIDC token exchange when running under GitHub Actions
-      # with id-token: write. Without this, publish hits a 404 because
-      # the registry doesn't see the OIDC token at all.
-      - name: Upgrade npm (OIDC requires 11.5.1+)
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -67,10 +59,32 @@ jobs:
       - name: Type-check
         run: pnpm check
 
-      # `pnpm publish` delegates to the bundled `npm publish` per
-      # package. With npm 11.5.1+ on PATH, the OIDC environment
-      # (ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN) is consumed
-      # transparently — no NPM_TOKEN needed.
+      # Pack-then-publish split. Reasons:
+      #
+      # 1. **OIDC needs npm 11.5.1+**, but the runner ships npm 10.x with
+      #    Node 22 and `npm install -g npm@latest` hits a known
+      #    promise-retry self-update bug. Using `npx -y npm@11 ...` per
+      #    package runs npm 11 in a subprocess that inherits the
+      #    ACTIONS_ID_TOKEN_* env vars set by `actions/setup-node` —
+      #    OIDC trusted publishing works, no global install needed.
+      #
+      # 2. **Workspace deps must rewrite** — pnpm pack handles
+      #    `workspace:*` → actual version inside the tarball. We pack
+      #    each workspace, then npm publishes the tarball.
+      #
+      # 3. **--provenance** attaches the build attestation surfacing the
+      #    green "Built and signed on GitHub Actions" badge on each
+      #    package page. Requires id-token: write (declared above).
+      - name: Pack workspaces
+        run: |
+          mkdir -p .release
+          for pkg in '@tu-lang/compiler' '@tu-lang/runtime' '@tu-lang/vite' '@tu-lang/lsp' '@tu-lang/cli' '@tu-lang/format' '@tu-lang/std' 'create-tu'; do
+            echo "::group::Pack $pkg"
+            pnpm --filter "$pkg" pack --pack-destination "$PWD/.release"
+            echo "::endgroup::"
+          done
+          ls -la .release
+
       - name: Publish to npm (Trusted Publishing + provenance)
         run: |
           # Pick the dist-tag based on the version. Anything containing a
@@ -83,17 +97,15 @@ jobs:
             DIST_TAG="latest"
           fi
           echo "Publishing with dist-tag: $DIST_TAG"
-          echo "npm version: $(npm --version)"
-          # `--provenance` attaches a build attestation surfacing the
-          # green "Built and signed on GitHub Actions" badge on each
-          # package page. Requires id-token: write (above).
-          pnpm -r publish \
-            --access public \
-            --tag "$DIST_TAG" \
-            --no-git-checks \
-            --provenance \
-            --filter '@tu-lang/*' \
-            --filter 'create-tu'
+          cd .release
+          for tarball in *.tgz; do
+            echo "::group::Publish $tarball"
+            npx -y npm@11 publish "$tarball" \
+              --access public \
+              --tag "$DIST_TAG" \
+              --provenance
+            echo "::endgroup::"
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
