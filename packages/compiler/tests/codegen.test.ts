@@ -883,4 +883,52 @@ describe('codegen', () => {
     expect(js).toContain('const App = () => h("div", {}, ["hi"])')
     expect(js).not.toContain('=> {')
   })
+
+  it('M6.5: ternary `cond ? a : b` emits as JS conditional expression', () => {
+    expect(compile('let f = (c) => c ? "y" : "n"')).toContain('(c ? "y" : "n")')
+  })
+
+  it('M6.5: ternary right-associates: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`', () => {
+    const js = compile('let f = (n) => n > 10 ? "big" : n > 0 ? "pos" : "non-pos"')
+    expect(js).toContain('((n > 10) ? "big" : ((n > 0) ? "pos" : "non-pos"))')
+  })
+
+  it('M6.5: `new` operator', () => {
+    expect(compile('let err = () => new Error("bad")')).toContain('(new Error("bad"))')
+    expect(compile('let d = () => new Date().getTime()')).toContain('(new Date().getTime())')
+  })
+
+  it('M6.5: prefix and postfix `++`/`--` pass through as JS-native update', () => {
+    expect(compile('let inc = () => ++count')).toContain('(++count)')
+    expect(compile('let dec = () => count--')).toContain('(count--)')
+  })
+
+  it('M6.5: compound assignment `x += y` desugars to `x = x + y` (cell-aware via existing AssignExpr)', () => {
+    expect(compile('export let count = 0\nlet inc = () => count += 1')).toContain('count.set((count.get() + 1))')
+    expect(compile('let label = "x"\nlet init = () => label ||= "default"')).toContain('(label.get() || "default")')
+  })
+
+  it('M6.5: spread `...` in call args, array, and object literals', () => {
+    const js = compile(`
+      let merge = (a, b) => [...a, ...b, 99]
+      let extend = (o) => ({ ...o, key: 1 })
+      let fwd = (fn, args) => fn(...args, "end")
+    `)
+    expect(js).toContain('[...a, ...b, 99]')
+    expect(js).toContain('{ ...o, key: 1 }')
+    expect(js).toContain('fn(...args, "end")')
+  })
+
+  it('M6.5: template literals with interpolation round-trip to JS template strings', () => {
+    expect(compile('let g = (n) => `hi ${n}!`')).toContain('`hi ${n}!`')
+    // Nested templates are independent — outer parser sees inner ` as
+    // start of a fresh template inside the embedded expression.
+    expect(compile('let h = (a, b) => `${a}, ${`inner ${b}`}, end`')).toContain(
+      '`${a}, ${`inner ${b}`}, end`'
+    )
+  })
+
+  it('M6.5: template chunk escape sequences decoded correctly', () => {
+    expect(compile('let g = () => `a\\`b\\\\c$\\${not-an-expr}`')).toContain('`a\\`b\\\\c$\\${not-an-expr}`')
+  })
 })

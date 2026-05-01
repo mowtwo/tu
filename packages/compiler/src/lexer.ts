@@ -1,6 +1,16 @@
 import { formatError } from './diagnostics.js'
 import { KEYWORDS, TokenKind, type Token } from './tokens.js'
 
+/** Tracks which lexing mode the cursor is in, so template literals
+ *  can switch to chunk-collection between backticks and back to
+ *  expression mode inside `${ … }`. The brace depth on each
+ *  `template-expr` frame is used to find the matching `}` that closes
+ *  the embedded expression. */
+type Mode =
+  | { kind: 'normal' }
+  | { kind: 'template' }
+  | { kind: 'template-expr'; braceDepth: number }
+
 export class Lexer {
   private pos = 0
   /** True when the previous non-trivia token was Ident `style` or `markdown`. */
@@ -10,6 +20,7 @@ export class Lexer {
   private cssPending = false
   /** True when `markdown {` was just emitted; next token is MarkdownText body. */
   private markdownPending = false
+  private modes: Mode[] = [{ kind: 'normal' }]
   constructor(private readonly src: string, private readonly filename?: string) {}
 
   tokenize(): Token[] {
@@ -25,6 +36,19 @@ export class Lexer {
         this.markdownSeen = false
         continue
       }
+      // Inside a template literal we DO NOT skip trivia — whitespace
+      // is part of the literal text. Switch to chunk-collection.
+      const top = this.modes[this.modes.length - 1]!
+      if (top.kind === 'template') {
+        const tok = this.lexTemplatePiece()
+        out.push(tok)
+        if (tok.kind === TokenKind.Backtick) {
+          this.modes.pop() // close template; previous mode resumes
+        } else if (tok.kind === TokenKind.DollarLBrace) {
+          this.modes.push({ kind: 'template-expr', braceDepth: 0 })
+        }
+        continue
+      }
       this.skipTrivia()
       if (this.pos >= this.src.length) break
       if (this.cssPending) {
@@ -35,6 +59,21 @@ export class Lexer {
       }
       const tok = this.next()
       out.push(tok)
+      // Mode transitions for template-expr frames: count braces so the
+      // closing `}` of `${ … }` pops back to template-collect mode
+      // even if the embedded expression contained `{ … }` of its own
+      // (object literals, blocks, etc.).
+      if (top.kind === 'template-expr') {
+        if (tok.kind === TokenKind.LBrace) top.braceDepth++
+        else if (tok.kind === TokenKind.RBrace) {
+          if (top.braceDepth === 0) this.modes.pop()
+          else top.braceDepth--
+        }
+      }
+      // Backtick at top-level opens a new template frame.
+      if (tok.kind === TokenKind.Backtick) {
+        this.modes.push({ kind: 'template' })
+      }
       // Track contextual `style { ... }` / `markdown { ... }` openers.
       if (tok.kind === TokenKind.Ident && tok.text === 'style') {
         this.styleSeen = true
@@ -57,11 +96,60 @@ export class Lexer {
     return out
   }
 
+  /** Inside a template literal we emit one of three tokens at a time:
+   *  Backtick (closes the template), DollarLBrace (opens an embedded
+   *  expression), or TemplateChunk (a run of literal text with escape
+   *  sequences decoded). The caller (tokenize) tracks the mode stack. */
+  private lexTemplatePiece(): Token {
+    const start = this.pos
+    if (this.src.charAt(this.pos) === '`') {
+      this.pos++
+      return { kind: TokenKind.Backtick, text: '`', start, end: this.pos }
+    }
+    if (this.src.charAt(this.pos) === '$' && this.src.charAt(this.pos + 1) === '{') {
+      this.pos += 2
+      return { kind: TokenKind.DollarLBrace, text: '${', start, end: this.pos }
+    }
+    let buf = ''
+    while (this.pos < this.src.length) {
+      const ch = this.src.charAt(this.pos)
+      if (ch === '`') break
+      if (ch === '$' && this.src.charAt(this.pos + 1) === '{') break
+      if (ch === '\\') {
+        const nx = this.src.charAt(this.pos + 1)
+        if (nx === 'n') buf += '\n'
+        else if (nx === 't') buf += '\t'
+        else if (nx === 'r') buf += '\r'
+        else if (nx === '`') buf += '`'
+        else if (nx === '\\') buf += '\\'
+        else if (nx === '$') buf += '$'
+        else buf += nx
+        this.pos += 2
+        continue
+      }
+      buf += ch
+      this.pos++
+    }
+    if (this.pos >= this.src.length) {
+      throw new SyntaxError(
+        formatError(this.src, start, 'unterminated template literal', this.filename)
+      )
+    }
+    return {
+      kind: TokenKind.TemplateChunk,
+      text: this.src.slice(start, this.pos),
+      value: buf,
+      start,
+      end: this.pos,
+    }
+  }
+
   private next(): Token {
     const start = this.pos
     const ch = this.src.charAt(this.pos)
 
     if (ch === '"') return this.lexString(start)
+    if (ch === '`') return this.punct(TokenKind.Backtick, start, 1)
     if (ch >= '0' && ch <= '9') return this.lexNumber(start)
     if (isIdentStart(ch)) return this.lexIdent(start)
 
@@ -79,6 +167,9 @@ export class Lexer {
       case ':':
         return this.punct(TokenKind.Colon, start, 1)
       case '.':
+        if (this.src.charAt(this.pos + 1) === '.' && this.src.charAt(this.pos + 2) === '.') {
+          return this.punct(TokenKind.DotDotDot, start, 3)
+        }
         return this.punct(TokenKind.Dot, start, 1)
       case '=':
         if (this.src.charAt(this.pos + 1) === '>') {
@@ -104,22 +195,31 @@ export class Lexer {
         }
         return this.punct(TokenKind.Gt, start, 1)
       case '+':
+        if (this.src.charAt(this.pos + 1) === '+') return this.punct(TokenKind.PlusPlus, start, 2)
+        if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.PlusEq, start, 2)
         return this.punct(TokenKind.Plus, start, 1)
       case '-':
+        if (this.src.charAt(this.pos + 1) === '-') return this.punct(TokenKind.MinusMinus, start, 2)
+        if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.MinusEq, start, 2)
         return this.punct(TokenKind.Minus, start, 1)
       case '*':
+        if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.StarEq, start, 2)
         return this.punct(TokenKind.Star, start, 1)
       case '/':
+        if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.SlashEq, start, 2)
         return this.punct(TokenKind.Slash, start, 1)
       case '%':
+        if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.PercentEq, start, 2)
         return this.punct(TokenKind.Percent, start, 1)
       case '|':
         if (this.src.charAt(this.pos + 1) === '|') {
+          if (this.src.charAt(this.pos + 2) === '=') return this.punct(TokenKind.OrOrEq, start, 3)
           return this.punct(TokenKind.OrOr, start, 2)
         }
         return this.punct(TokenKind.Pipe, start, 1)
       case '&':
         if (this.src.charAt(this.pos + 1) === '&') {
+          if (this.src.charAt(this.pos + 2) === '=') return this.punct(TokenKind.AndAndEq, start, 3)
           return this.punct(TokenKind.AndAnd, start, 2)
         }
         return this.punct(TokenKind.Amp, start, 1)
@@ -127,6 +227,7 @@ export class Lexer {
         return this.punct(TokenKind.Semi, start, 1)
       case '?':
         if (this.src.charAt(this.pos + 1) === '?') {
+          if (this.src.charAt(this.pos + 2) === '=') return this.punct(TokenKind.QuestionQuestionEq, start, 3)
           return this.punct(TokenKind.QuestionQuestion, start, 2)
         }
         if (this.src.charAt(this.pos + 1) === '.') {

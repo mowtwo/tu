@@ -21,6 +21,7 @@ import type {
   Stmt,
   StyleBlock,
   TagCall,
+  TemplateLit,
   TryExpr,
 } from './ast.js'
 import { lineColAt } from './diagnostics.js'
@@ -602,7 +603,72 @@ class Codegen {
       case 'TryExpr':
         this.emitTryExpr(expr)
         return
+      case 'TernaryExpr':
+        this.write('(')
+        this.emitExpr(expr.cond)
+        this.write(' ? ')
+        this.emitExpr(expr.then)
+        this.write(' : ')
+        this.emitExpr(expr.else)
+        this.write(')')
+        return
+      case 'NewExpr':
+        this.write('(new ')
+        this.emitExpr(expr.arg)
+        this.write(')')
+        return
+      case 'UpdateExpr':
+        // Emit the JS-native form so the result value behaves like JS
+        // (prefix returns the new value; postfix returns the old). We
+        // bypass Tu's .get()/.set() injection here by emitting the
+        // operand directly — the operand is gated to ident / member
+        // access by parsePostfix, so JS's update semantics apply.
+        if (expr.prefix) {
+          this.write(`(${expr.op}`)
+          this.emitUpdateOperand(expr.arg)
+          this.write(')')
+        } else {
+          this.write('(')
+          this.emitUpdateOperand(expr.arg)
+          this.write(`${expr.op})`)
+        }
+        return
+      case 'TemplateLit':
+        this.emitTemplateLit(expr)
+        return
+      case 'SpreadElement':
+        this.write('...')
+        this.emitExpr(expr.arg)
+        return
     }
+  }
+
+  /** Inside an `UpdateExpr` we want to bypass cell `.get()` injection
+   *  on the target — `++count` should emit `++count`, not `++count.get()`.
+   *  Recurse manually for ident / member / index access. */
+  private emitUpdateOperand(node: Expr): void {
+    if (node.kind === 'Ident') {
+      this.mark(node.start, node.end, () => this.write(node.name))
+      return
+    }
+    // Member / index access already emits their object via emitExpr —
+    // that path injects .get() on cell idents nested inside, which is
+    // what we want (the *target* of the increment is the leaf
+    // property, not the cell itself).
+    this.emitExpr(node)
+  }
+
+  private emitTemplateLit(node: TemplateLit): void {
+    this.write('`')
+    for (let i = 0; i < node.quasis.length; i++) {
+      this.write(escapeTemplateChunk(node.quasis[i]!))
+      if (i < node.expressions.length) {
+        this.write('${')
+        this.emitExpr(node.expressions[i]!)
+        this.write('}')
+      }
+    }
+    this.write('`')
   }
 
   private emitTryExpr(node: TryExpr): void {
@@ -785,6 +851,11 @@ class Codegen {
     for (let i = 0; i < node.properties.length; i++) {
       if (i > 0) this.write(', ')
       const p = node.properties[i]!
+      if (p.kind === 'ObjectSpread') {
+        this.write('...')
+        this.emitExpr(p.arg)
+        continue
+      }
       // Quote string keys (and ident keys that aren't valid JS identifiers,
       // though the parser only accepts valid Ident tokens for the ident case
       // so we trust those). Mark the key span so cross-language navigation
@@ -1289,7 +1360,10 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       for (const e of expr.elements) collectClassRefs(e, out)
       return
     case 'ObjectLit':
-      for (const p of expr.properties) collectClassRefs(p.value, out)
+      for (const p of expr.properties) {
+        if (p.kind === 'ObjectSpread') collectClassRefs(p.arg, out)
+        else collectClassRefs(p.value, out)
+      }
       return
     case 'MemberExpr':
       collectClassRefs(expr.object, out)
@@ -1316,6 +1390,21 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       collectClassRefs(expr.body, out)
       if (expr.catchClause) collectClassRefs(expr.catchClause.body, out)
       if (expr.finallyClause) collectClassRefs(expr.finallyClause, out)
+      return
+    case 'TernaryExpr':
+      collectClassRefs(expr.cond, out)
+      collectClassRefs(expr.then, out)
+      collectClassRefs(expr.else, out)
+      return
+    case 'NewExpr':
+    case 'SpreadElement':
+      collectClassRefs(expr.arg, out)
+      return
+    case 'UpdateExpr':
+      collectClassRefs(expr.arg, out)
+      return
+    case 'TemplateLit':
+      for (const e of expr.expressions) collectClassRefs(e, out)
       return
     default:
       return
@@ -1365,7 +1454,10 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       for (const e of expr.elements) collectStyleBlockBodies(e, out)
       return
     case 'ObjectLit':
-      for (const p of expr.properties) collectStyleBlockBodies(p.value, out)
+      for (const p of expr.properties) {
+        if (p.kind === 'ObjectSpread') collectStyleBlockBodies(p.arg, out)
+        else collectStyleBlockBodies(p.value, out)
+      }
       return
     case 'MemberExpr':
       collectStyleBlockBodies(expr.object, out)
@@ -1392,6 +1484,19 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       collectStyleBlockBodies(expr.body, out)
       if (expr.catchClause) collectStyleBlockBodies(expr.catchClause.body, out)
       if (expr.finallyClause) collectStyleBlockBodies(expr.finallyClause, out)
+      return
+    case 'TernaryExpr':
+      collectStyleBlockBodies(expr.cond, out)
+      collectStyleBlockBodies(expr.then, out)
+      collectStyleBlockBodies(expr.else, out)
+      return
+    case 'NewExpr':
+    case 'SpreadElement':
+    case 'UpdateExpr':
+      collectStyleBlockBodies(expr.arg, out)
+      return
+    case 'TemplateLit':
+      for (const e of expr.expressions) collectStyleBlockBodies(e, out)
       return
     default:
       return
@@ -1786,7 +1891,17 @@ function containsControlFlow(expr: Expr): boolean {
     case 'ArrayLit':
       return expr.elements.some(containsControlFlow)
     case 'ObjectLit':
-      return expr.properties.some((p) => containsControlFlow(p.value))
+      return expr.properties.some((p) =>
+        p.kind === 'ObjectSpread' ? containsControlFlow(p.arg) : containsControlFlow(p.value)
+      )
+    case 'TernaryExpr':
+      return containsControlFlow(expr.cond) || containsControlFlow(expr.then) || containsControlFlow(expr.else)
+    case 'NewExpr':
+    case 'SpreadElement':
+    case 'UpdateExpr':
+      return containsControlFlow(expr.arg)
+    case 'TemplateLit':
+      return expr.expressions.some(containsControlFlow)
     default:
       return false
   }
@@ -1801,6 +1916,24 @@ function blockHasControlFlow(b: Block): boolean {
     if (containsControlFlow(item as Expr)) return true
   }
   return false
+}
+
+/** Re-escape a decoded template-literal chunk so it round-trips through
+ *  a JS template literal: `\``, `\$`, `\\` and the `${` opener. */
+function escapeTemplateChunk(s: string): string {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charAt(i)
+    if (c === '`') out += '\\`'
+    else if (c === '\\') out += '\\\\'
+    else if (c === '$' && s.charAt(i + 1) === '{') {
+      out += '\\${'
+      i++ // skip the `{` we just emitted
+    } else {
+      out += c
+    }
+  }
+  return out
 }
 
 function escapeStaticText(s: string): string {

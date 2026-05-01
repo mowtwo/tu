@@ -105,6 +105,11 @@ export type Expr =
   | ThrowExpr
   | ReturnExpr
   | TryExpr
+  | TernaryExpr
+  | NewExpr
+  | UpdateExpr
+  | TemplateLit
+  | SpreadElement
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -206,6 +211,11 @@ export type Child =
   | ThrowExpr
   | ReturnExpr
   | TryExpr
+  | TernaryExpr
+  | NewExpr
+  | UpdateExpr
+  | TemplateLit
+  | SpreadElement
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -365,8 +375,10 @@ export interface ArrayLit extends Ranged {
  */
 export interface ObjectLit extends Ranged {
   kind: 'ObjectLit'
-  properties: ObjectProp[]
+  properties: ObjectMember[]
 }
+
+export type ObjectMember = ObjectProp | ObjectSpread
 
 /**
  * One `key: value` pair inside an `ObjectLit`. The key is captured as an
@@ -375,12 +387,22 @@ export interface ObjectLit extends Ranged {
  * IDE features know when a key was a string literal vs identifier.
  */
 export interface ObjectProp {
+  kind?: 'ObjectProp'
   key: string
   keyKind: 'ident' | 'string'
   value: Expr
   /** Source byte range of the key token (used for token-level mapping). */
   keyStart: number
   keyEnd: number
+}
+
+/** `{ ...source }` — spreads the named expression's enumerable own
+ *  properties into the surrounding object literal. */
+export interface ObjectSpread {
+  kind: 'ObjectSpread'
+  arg: Expr
+  start: number
+  end: number
 }
 
 /**
@@ -463,6 +485,53 @@ export interface TryCatchClause {
    *  TS-shadow mode. */
   type?: string
   body: Block
+}
+
+/** Ternary `cond ? then : else` — a conditional expression. Distinct
+ *  from `IfExpr`: the latter is statement-shaped (with Block branches)
+ *  and may emit as a JS `if`-statement; ternary always emits as a JS
+ *  ternary regardless of context. */
+export interface TernaryExpr extends Ranged {
+  kind: 'TernaryExpr'
+  cond: Expr
+  then: Expr
+  else: Expr
+}
+
+/** `new Callee(...args)` — JS constructor call. The arg may be any
+ *  expression; if it's a CallExpr / MethodCallExpr we emit
+ *  `new Callee(args)`, otherwise `new (expr)()` (no-arg constructor). */
+export interface NewExpr extends Ranged {
+  kind: 'NewExpr'
+  arg: Expr
+}
+
+/** `++x` / `--x` (prefix) and `x++` / `x--` (postfix). Tu desugars
+ *  these to `x = x ± 1` semantically, so the underlying state cell's
+ *  `.set` / `.get` plumbing is reused; the difference between prefix
+ *  and postfix only matters when the result is consumed (rare in UI
+ *  code). Postfix returns the *old* value via an IIFE wrap. */
+export interface UpdateExpr extends Ranged {
+  kind: 'UpdateExpr'
+  op: '++' | '--'
+  arg: Expr
+  prefix: boolean
+}
+
+/** `` `text ${expr} more` `` — alternates literal `quasis` chunks with
+ *  embedded `expressions`. Always `quasis.length === expressions.length + 1`. */
+export interface TemplateLit extends Ranged {
+  kind: 'TemplateLit'
+  quasis: string[]
+  expressions: Expr[]
+}
+
+/** `...x` — appears inside call args, array literals, and object
+ *  literals. Encoded as a node so the parent literal/call can recognize
+ *  it during codegen and emit `...` in the right syntactic position. */
+export interface SpreadElement extends Ranged {
+  kind: 'SpreadElement'
+  arg: Expr
 }
 
 /**

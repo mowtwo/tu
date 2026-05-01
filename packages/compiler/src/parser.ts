@@ -21,6 +21,7 @@ import type {
   MemberExpr,
   MethodCallExpr,
   ObjectLit,
+  ObjectMember,
   ObjectProp,
   Param,
   Program,
@@ -30,12 +31,24 @@ import type {
   StringLit,
   StyleBlock,
   TagCall,
+  TemplateLit,
   TryCatchClause,
   TryExpr,
   TypeAlias,
 } from './ast.js'
 import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
+
+const COMPOUND_ASSIGN_OPS: Partial<Record<TokenKind, BinaryOp>> = {
+  [TokenKind.PlusEq]: '+',
+  [TokenKind.MinusEq]: '-',
+  [TokenKind.StarEq]: '*',
+  [TokenKind.SlashEq]: '/',
+  [TokenKind.PercentEq]: '%',
+  [TokenKind.OrOrEq]: '||',
+  [TokenKind.AndAndEq]: '&&',
+  [TokenKind.QuestionQuestionEq]: '??',
+}
 
 const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
   // Nullish + logical OR (lowest). Same precedence as ||; mixing them
@@ -329,8 +342,60 @@ export class Parser {
           targetEnd: targetTok.end,
         } satisfies AssignExpr
       }
+      // Compound assignment — desugar `x += y` → `x = x + y`. The
+      // surrounding AssignExpr handling already maps to `cell.set(…)`
+      // when the target is a state cell, so this just rebuilds the
+      // RHS as a binary expression.
+      const compound = next ? COMPOUND_ASSIGN_OPS[next.kind] : undefined
+      if (compound !== undefined) {
+        const targetTok = this.peek()
+        this.pos += 2 // consume Ident and the compound op
+        const rhs = this.parseExpr()
+        const synth: BinaryExpr = {
+          kind: 'BinaryExpr',
+          op: compound,
+          left: {
+            kind: 'Ident',
+            name: targetTok.text,
+            start: targetTok.start,
+            end: targetTok.end,
+          },
+          right: rhs,
+          start: targetTok.start,
+          end: rhs.end,
+        }
+        return {
+          kind: 'AssignExpr',
+          target: targetTok.text,
+          value: synth,
+          start: targetTok.start,
+          end: rhs.end,
+          targetStart: targetTok.start,
+          targetEnd: targetTok.end,
+        }
+      }
     }
-    return this.parseBinary(0)
+    return this.parseTernary()
+  }
+
+  /** Ternary `cond ? then : else` sits BELOW assignment but ABOVE all
+   *  binary operators. Right-associative — `a ? b : c ? d : e` parses
+   *  as `a ? b : (c ? d : e)`. */
+  private parseTernary(): Expr {
+    const cond = this.parseBinary(0)
+    if (this.peek().kind !== TokenKind.Question) return cond
+    this.pos++ // consume `?`
+    const thenExpr = this.parseExpr()
+    this.expect(TokenKind.Colon)
+    const elseExpr = this.parseExpr()
+    return {
+      kind: 'TernaryExpr',
+      cond,
+      then: thenExpr,
+      else: elseExpr,
+      start: cond.start,
+      end: elseExpr.end,
+    }
   }
 
   private parseBinary(minPrec: number): Expr {
@@ -378,6 +443,20 @@ export class Parser {
    */
   private parsePostfix(expr: Expr): Expr {
     while (true) {
+      // Postfix `++` / `--` — same accessibility gate as `!` so we don't
+      // accidentally attach to a TagCall. Tu desugars these in codegen
+      // to `x = x + 1` / `x = x - 1`; postfix returns the *old* value
+      // via an IIFE wrap.
+      if (
+        (this.peek().kind === TokenKind.PlusPlus || this.peek().kind === TokenKind.MinusMinus) &&
+        isMemberAccessibleExpr(expr)
+      ) {
+        const tok = this.peek()
+        const op = tok.kind === TokenKind.PlusPlus ? '++' : '--'
+        this.pos++
+        expr = { kind: 'UpdateExpr', op, arg: expr, prefix: false, start: expr.start, end: tok.end }
+        continue
+      }
       // TS-style non-null assertion `expr!` — only attach to value-yielding
       // exprs (Ident, MemberExpr, etc.); the helper does the same gating
       // as the dot-chain branch below. Erased in JS-emit, preserved in
@@ -423,7 +502,7 @@ export class Parser {
           this.pos += 2 // consume `?.` and `(`
           const args: Expr[] = []
           while (this.peek().kind !== TokenKind.RParen) {
-            args.push(this.parseExpr())
+            args.push(this.parseSpreadOrExpr())
             if (this.peek().kind === TokenKind.Comma) this.pos++
           }
           const rparen = this.expect(TokenKind.RParen)
@@ -476,7 +555,7 @@ export class Parser {
         this.pos++ // consume the `(`
         const args: Expr[] = []
         while (this.peek().kind !== TokenKind.RParen) {
-          args.push(this.parseExpr())
+          args.push(this.parseSpreadOrExpr())
           if (this.peek().kind === TokenKind.Comma) this.pos++
         }
         const rparen = this.expect(TokenKind.RParen)
@@ -523,6 +602,20 @@ export class Parser {
     if (k === TokenKind.Throw) return this.parseThrowExpr()
     if (k === TokenKind.Return) return this.parseReturnExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
+    if (k === TokenKind.New) {
+      const tok = this.peek()
+      this.pos++ // consume `new`
+      const arg = this.parsePostfix(this.parsePrefix())
+      return { kind: 'NewExpr', arg, start: tok.start, end: arg.end }
+    }
+    if (k === TokenKind.PlusPlus || k === TokenKind.MinusMinus) {
+      const tok = this.peek()
+      const op = k === TokenKind.PlusPlus ? '++' : '--'
+      this.pos++
+      const arg = this.parsePostfix(this.parsePrefix())
+      return { kind: 'UpdateExpr', op, arg, prefix: true, start: tok.start, end: arg.end }
+    }
+    if (k === TokenKind.Backtick) return this.parseTemplateLit()
     if (k === TokenKind.Bang || k === TokenKind.Minus || k === TokenKind.Plus) {
       const tok = this.peek()
       const op = k === TokenKind.Bang ? '!' : k === TokenKind.Minus ? '-' : '+'
@@ -537,6 +630,36 @@ export class Parser {
       }
     }
     return this.parsePrimary()
+  }
+
+  /** `` `text ${expr} more text ${expr2} tail` `` — alternates literal
+   *  chunks and embedded expressions. The lexer already normalized
+   *  escape sequences, so quasis arrive as decoded JS strings. */
+  private parseTemplateLit(): TemplateLit {
+    const start = this.expect(TokenKind.Backtick).start
+    const quasis: string[] = []
+    const expressions: Expr[] = []
+    let lastChunkText = ''
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.TemplateChunk) {
+        lastChunkText = (t.value as string | undefined) ?? t.text
+        this.pos++
+      } else if (t.kind === TokenKind.DollarLBrace) {
+        this.pos++
+        quasis.push(lastChunkText)
+        lastChunkText = ''
+        expressions.push(this.parseExpr())
+        this.expect(TokenKind.RBrace)
+      } else if (t.kind === TokenKind.Backtick) {
+        const end = t.end
+        this.pos++
+        quasis.push(lastChunkText)
+        return { kind: 'TemplateLit', quasis, expressions, start, end }
+      } else {
+        throw this.error('unterminated template literal')
+      }
+    }
   }
 
   /**
@@ -647,6 +770,9 @@ export class Parser {
     const t1 = this.tokens[this.pos + 1]
     if (!t1) return false
     if (t1.kind === TokenKind.RBrace) return true
+    // `{ ...source, … }` is unambiguously an object literal — Block
+    // bodies don't accept a leading spread expression.
+    if (t1.kind === TokenKind.DotDotDot) return true
     const t2 = this.tokens[this.pos + 2]
     if (!t2 || t2.kind !== TokenKind.Colon) return false
     return t1.kind === TokenKind.Ident || t1.kind === TokenKind.String
@@ -654,9 +780,16 @@ export class Parser {
 
   private parseObjectLit(): ObjectLit {
     const lbrace = this.expect(TokenKind.LBrace)
-    const properties: ObjectProp[] = []
+    const properties: ObjectMember[] = []
     while (this.peek().kind !== TokenKind.RBrace) {
-      properties.push(this.parseObjectProp())
+      if (this.peek().kind === TokenKind.DotDotDot) {
+        const tok = this.peek()
+        this.pos++
+        const arg = this.parseExpr()
+        properties.push({ kind: 'ObjectSpread', arg, start: tok.start, end: arg.end })
+      } else {
+        properties.push(this.parseObjectProp())
+      }
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
     const rbrace = this.expect(TokenKind.RBrace)
@@ -697,7 +830,7 @@ export class Parser {
     const lbracket = this.expect(TokenKind.LBracket)
     const elements: Expr[] = []
     while (this.peek().kind !== TokenKind.RBracket) {
-      elements.push(this.parseExpr())
+      elements.push(this.parseSpreadOrExpr())
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
     const rbracket = this.expect(TokenKind.RBracket)
@@ -707,6 +840,18 @@ export class Parser {
       start: lbracket.start,
       end: rbracket.end,
     }
+  }
+
+  /** Parse either `...expr` (a SpreadElement) or a plain expression.
+   *  Used at call-arg / array-element / object-property positions. */
+  private parseSpreadOrExpr(): Expr {
+    if (this.peek().kind === TokenKind.DotDotDot) {
+      const tok = this.peek()
+      this.pos++ // consume `...`
+      const arg = this.parseExpr()
+      return { kind: 'SpreadElement', arg, start: tok.start, end: arg.end }
+    }
+    return this.parseExpr()
   }
 
   /**
@@ -1247,7 +1392,7 @@ export class Parser {
         }
       } else {
         while (this.peek().kind !== TokenKind.RParen) {
-          args.push(this.parseExpr())
+          args.push(this.parseSpreadOrExpr())
           if (this.peek().kind === TokenKind.Comma) this.pos++
         }
       }
@@ -1357,7 +1502,7 @@ export class Parser {
     this.expect(TokenKind.LParen)
     const args: Expr[] = []
     while (this.peek().kind !== TokenKind.RParen) {
-      args.push(this.parseExpr())
+      args.push(this.parseSpreadOrExpr())
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
     const rparen = this.expect(TokenKind.RParen)

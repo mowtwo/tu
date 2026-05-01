@@ -58,6 +58,31 @@ export enum TokenKind {
   /** `!` (standalone) — prefix logical-NOT or postfix TS non-null
    *  assertion. `!=` keeps lexing as a single NotEq token. */
   Bang,
+  // increment / decrement (M6.5)
+  PlusPlus,
+  MinusMinus,
+  // compound assignment (M6.5)
+  PlusEq,
+  MinusEq,
+  StarEq,
+  SlashEq,
+  PercentEq,
+  OrOrEq,
+  AndAndEq,
+  QuestionQuestionEq,
+  /** `...` (M6.5) — spread / rest in call args, array, and object positions. */
+  DotDotDot,
+  // template literal pieces (M6.5)
+  /** `` ` `` — opens or closes a template literal. */
+  Backtick,
+  /** Run of literal text inside `` `…` ``. The lexer collects everything
+   *  between backticks / `${…}` boundaries into one chunk, with escape
+   *  sequences (`\\n`, `\\\``, `\\$`, `\\\\`) decoded into `value`. */
+  TemplateChunk,
+  /** `${` — starts an embedded expression inside a template literal. */
+  DollarLBrace,
+  /** `new` operator — JS constructor call. */
+  New,
   // keywords
   Let,
   Export,
@@ -100,4 +125,5 @@ export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   finally: TokenKind.Finally,
   throw: TokenKind.Throw,
   return: TokenKind.Return,
+  new: TokenKind.New,
 })
