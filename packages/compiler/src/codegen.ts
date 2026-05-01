@@ -374,7 +374,11 @@ class Codegen {
   emitStmt(stmt: Stmt): void {
     if (stmt.kind === 'ImportDecl') {
       const src = this.rewriteSource(stmt.source)
-      this.write(`import { ${stmt.names.join(', ')} } from ${JSON.stringify(src)}`)
+      const parts: string[] = []
+      if (stmt.default !== undefined) parts.push(stmt.default)
+      if (stmt.namespace !== undefined) parts.push(`* as ${stmt.namespace}`)
+      if (stmt.names.length > 0) parts.push(`{ ${stmt.names.join(', ')} }`)
+      this.write(`import ${parts.join(', ')} from ${JSON.stringify(src)}`)
       return
     }
     if (stmt.kind === 'ReExportDecl') {

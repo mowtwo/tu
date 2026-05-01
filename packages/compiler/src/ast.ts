@@ -45,7 +45,14 @@ export interface TypeAlias extends Ranged {
  */
 export interface ImportDecl extends Ranged {
   kind: 'ImportDecl'
+  /** Named imports — `import { a, b } from "M"`. May be combined with
+   *  `default` (mixed `import D, { a, b }`); empty when only the
+   *  namespace / default form is used. */
   names: string[]
+  /** `import D from "M"` — default import binding. */
+  default?: string
+  /** `import * as Mod from "M"` — namespace import binding. */
+  namespace?: string
   source: string
 }
 

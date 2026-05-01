@@ -214,22 +214,60 @@ export class Parser {
 
   private parseImportDecl(start: number): ImportDecl {
     this.expect(TokenKind.Import)
-    this.expect(TokenKind.LBrace)
+    let defaultName: string | undefined
+    let namespaceName: string | undefined
     const names: string[] = []
-    while (this.peek().kind !== TokenKind.RBrace) {
-      names.push(this.expect(TokenKind.Ident).text)
-      if (this.peek().kind === TokenKind.Comma) this.pos++
+    // Three forms (and a couple combinations):
+    //   import * as X from "M"
+    //   import { a, b } from "M"
+    //   import D from "M"
+    //   import D, { a, b } from "M"
+    //   import D, * as X from "M"
+    if (this.peek().kind === TokenKind.Star) {
+      this.pos++
+      const asTok = this.expect(TokenKind.Ident)
+      if (asTok.text !== 'as') throw this.error("expected 'as' after '*' in namespace import")
+      namespaceName = this.expect(TokenKind.Ident).text
+    } else if (this.peek().kind === TokenKind.Ident) {
+      defaultName = this.expect(TokenKind.Ident).text
+      if (this.peek().kind === TokenKind.Comma) {
+        this.pos++
+        if (this.peek().kind === TokenKind.Star) {
+          this.pos++
+          const asTok = this.expect(TokenKind.Ident)
+          if (asTok.text !== 'as') throw this.error("expected 'as' after '*' in namespace import")
+          namespaceName = this.expect(TokenKind.Ident).text
+        } else if (this.peek().kind === TokenKind.LBrace) {
+          this.pos++
+          while (this.peek().kind !== TokenKind.RBrace) {
+            names.push(this.expect(TokenKind.Ident).text)
+            if (this.peek().kind === TokenKind.Comma) this.pos++
+          }
+          this.expect(TokenKind.RBrace)
+        }
+      }
+    } else if (this.peek().kind === TokenKind.LBrace) {
+      this.pos++
+      while (this.peek().kind !== TokenKind.RBrace) {
+        names.push(this.expect(TokenKind.Ident).text)
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      this.expect(TokenKind.RBrace)
+    } else {
+      throw this.error("expected '{', '*', or an identifier after 'import'")
     }
-    this.expect(TokenKind.RBrace)
     this.expect(TokenKind.From)
     const sourceTok = this.expect(TokenKind.String)
-    return {
+    const result: ImportDecl = {
       kind: 'ImportDecl',
       names,
       source: sourceTok.value as string,
       start,
       end: sourceTok.end,
     }
+    if (defaultName !== undefined) result.default = defaultName
+    if (namespaceName !== undefined) result.namespace = namespaceName
+    return result
   }
 
   private parseReExportDecl(start: number): ReExportDecl {
