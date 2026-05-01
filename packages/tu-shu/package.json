@@ -1,12 +1,15 @@
 {
-  "name": "@tu-lang/format",
+  "name": "@tu-lang/tu-shu",
   "version": "0.1.0-alpha.4",
-  "description": "Tu formatter — Prettier plugin in M3, moves to a real dprint plugin in R4.",
+  "description": "tu-shu (图书) — Tu-native static site generator. Markdown-driven docs sites built on @tu-lang/runtime + renderPage.",
   "keywords": [
     "tu",
     "tu-lang",
-    "formatter",
-    "prettier-plugin"
+    "ssg",
+    "static-site-generator",
+    "markdown",
+    "docs",
+    "vitepress-alternative"
   ],
   "author": "mow2",
   "license": "MIT",
@@ -14,7 +17,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mowtwo/tu.git",
-    "directory": "packages/format"
+    "directory": "packages/tu-shu"
   },
   "bugs": {
     "url": "https://github.com/mowtwo/tu/issues"
@@ -22,6 +25,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "tu-shu": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -34,12 +40,18 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "echo 'no tests yet'",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu-lang/compiler": "workspace:*"
+    "@tu-lang/runtime": "workspace:*",
+    "gray-matter": "^4.0.3",
+    "markdown-it": "^14.1.0",
+    "shiki": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2"
   },
   "publishConfig": {
     "access": "public"

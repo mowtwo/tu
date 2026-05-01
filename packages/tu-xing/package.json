@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/tu-xing",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.4",
   "description": "tu-xing (图形) — Tu-native UI component library. shadcn + baseui style: Tailwind-driven primitives with theme tokens.",
   "keywords": [
     "tu",

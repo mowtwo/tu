@@ -53,6 +53,12 @@ const PACKAGE_META = {
   '@tu-lang/std': {
     keywords: ['tu', 'tu-lang', 'stdlib'],
   },
+  '@tu-lang/tu-xing': {
+    keywords: ['tu', 'tu-lang', 'ui', 'components', 'shadcn', 'baseui', 'tailwind', 'design-system'],
+  },
+  '@tu-lang/tu-shu': {
+    keywords: ['tu', 'tu-lang', 'ssg', 'static-site-generator', 'markdown', 'docs', 'vitepress-alternative'],
+  },
   'create-tu': {
     keywords: ['tu', 'tu-lang', 'create', 'scaffold', 'starter'],
   },
@@ -66,6 +72,8 @@ const packageDirs = [
   'packages/cli',
   'packages/format',
   'packages/std',
+  'packages/tu-xing',
+  'packages/tu-shu',
   'packages/create-tu',
 ]
 

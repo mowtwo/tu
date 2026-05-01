@@ -1,0 +1,15 @@
+{
+  "name": "@tu-examples/tu-shu-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Showcases @tu-lang/tu-shu — markdown → static HTML via Tu's renderPage.",
+  "scripts": {
+    "build": "tu-shu build",
+    "test": "echo 'no tests'",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu-lang/tu-shu": "workspace:*"
+  }
+}

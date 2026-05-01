@@ -78,7 +78,7 @@ jobs:
       - name: Pack workspaces
         run: |
           mkdir -p .release
-          for pkg in '@tu-lang/compiler' '@tu-lang/runtime' '@tu-lang/vite' '@tu-lang/lsp' '@tu-lang/cli' '@tu-lang/format' '@tu-lang/std' 'create-tu'; do
+          for pkg in '@tu-lang/compiler' '@tu-lang/runtime' '@tu-lang/vite' '@tu-lang/lsp' '@tu-lang/cli' '@tu-lang/format' '@tu-lang/std' '@tu-lang/tu-xing' '@tu-lang/tu-shu' 'create-tu'; do
             echo "::group::Pack $pkg"
             pnpm --filter "$pkg" pack --pack-destination "$PWD/.release"
             echo "::endgroup::"
