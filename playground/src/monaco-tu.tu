@@ -559,3 +559,38 @@ export let clearCompileErrors = (editor: any) => {
   if (!model) { return }
   monaco.editor.setModelMarkers(model, "tu-compile", [])
 }
+
+// Create one Monaco model per file in a case. Disposes any pre-existing
+// model at the same URI so re-entering a case doesn't trip Monaco's
+// "model already exists" guard. Returns a `Map<path, ITextModel>`.
+export let createWorkspaceModels = (caseDef: any) => {
+  let models = new Map()
+  caseDef.files.forEach((file) => {
+    let uri = monaco.Uri.parse("tu:/" + caseDef.id + "/" + file.path)
+    let existing = monaco.editor.getModel(uri)
+    if (existing) { existing.dispose() }
+    let model = monaco.editor.createModel(file.content, "tu", uri)
+    models.set(file.path, model)
+  })
+  return models
+}
+
+// Set a per-file compile error marker, given a (line, col) tuple
+// instead of just a message. Used by the live demo's multi-file
+// pipeline so an error in `Card.tu` lights up `Card.tu` (not the
+// active file).
+export let setCompileErrorOn = (model: any, message: string, line: number, col: number) => {
+  monaco.editor.setModelMarkers(model, "tu-compile", [{
+    severity: monaco.MarkerSeverity.Error,
+    startLineNumber: line,
+    startColumn: col,
+    endLineNumber: line,
+    endColumn: col + 1,
+    message: message,
+    source: "tu",
+  }])
+}
+
+export let clearCompileErrorsOn = (model: any) => {
+  monaco.editor.setModelMarkers(model, "tu-compile", [])
+}

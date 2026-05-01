@@ -918,6 +918,34 @@ class Codegen {
   }
 
   private emitMethodCallExpr(node: MethodCallExpr): void {
+    // Special-case: `<cell>.get()` / `<cell>.set(x)` written by the
+    // user directly — emit verbatim instead of inject + double-call.
+    // Without this, source `items.get()` becomes `items.get().get()`
+    // because emitExpr(object) auto-injects `.get()` on cell idents.
+    // The user-written `.get()` is the unwrap they meant.
+    // Distinguishing the user-written cell unwrap (`cell.get()`,
+    // `cell.set(x)`) from a method on a cell-held object (`map.get(k)`,
+    // `arr.set(0, x)`) by arity — Tu's cell API has 0-arg get / 1-arg
+    // set, every other shape is a method that wants the implicit
+    // cell unwrap.
+    const isCellUnwrap =
+      node.object.kind === 'Ident' &&
+      !node.optional &&
+      this.isStateOrComputedCell(node.object.name) &&
+      ((node.property === 'get' && node.args.length === 0) ||
+        (node.property === 'set' && node.args.length === 1))
+    if (isCellUnwrap) {
+      this.mark(node.object.start, node.object.end, () => this.write((node.object as { name: string }).name))
+      this.write('.')
+      this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
+      this.write('(')
+      for (let i = 0; i < node.args.length; i++) {
+        if (i > 0) this.write(', ')
+        this.emitExpr(node.args[i]!)
+      }
+      this.write(')')
+      return
+    }
     this.emitExpr(node.object)
     // Empty property + optional flag = optional direct call (`fn?.()`).
     // The parser uses MethodCallExpr-with-empty-property for this shape
@@ -935,6 +963,17 @@ class Codegen {
       this.emitExpr(node.args[i]!)
     }
     this.write(')')
+  }
+
+  /** Lookup helper for the explicit-`.get()` / `.set()` short-circuit
+   *  in emitMethodCallExpr. Honors shadowing — a lambda param named
+   *  the same as a top-level cell shouldn't trigger the bypass. */
+  private isStateOrComputedCell(name: string): boolean {
+    for (let i = this.shadowed.length - 1; i >= 0; i--) {
+      if (this.shadowed[i]?.has(name)) return false
+    }
+    const kind = this.cells.get(name)
+    return kind === 'state' || kind === 'computed'
   }
 
   private emitArrayLit(node: ArrayLit): void {
