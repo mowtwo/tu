@@ -30,6 +30,8 @@ import type {
   StringLit,
   StyleBlock,
   TagCall,
+  TryCatchClause,
+  TryExpr,
   TypeAlias,
 } from './ast.js'
 import { formatError } from './diagnostics.js'
@@ -517,6 +519,9 @@ export class Parser {
     if (k === TokenKind.LBracket) return this.parseArrayLit()
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
+    if (k === TokenKind.Try) return this.parseTryExpr()
+    if (k === TokenKind.Throw) return this.parseThrowExpr()
+    if (k === TokenKind.Return) return this.parseReturnExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
     if (k === TokenKind.Bang || k === TokenKind.Minus || k === TokenKind.Plus) {
       const tok = this.peek()
@@ -532,6 +537,99 @@ export class Parser {
       }
     }
     return this.parsePrimary()
+  }
+
+  /**
+   * `throw expr` — parsed as an expression so it can sit in any value
+   * position (if branches, &&, etc.). Codegen emits a clean `throw …;`
+   * statement when the surrounding context is a Block; otherwise it
+   * wraps the whole thing in an IIFE for side-effect correctness.
+   */
+  private parseThrowExpr(): Expr {
+    const start = this.expect(TokenKind.Throw).start
+    const arg = this.parseExpr()
+    return { kind: 'ThrowExpr', arg, start, end: arg.end }
+  }
+
+  /**
+   * `return [expr]` — early return from a lambda body. Same Block-vs-
+   * IIFE codegen treatment as throw. The trailing expression is
+   * optional; bare `return` returns undefined.
+   */
+  private parseReturnExpr(): Expr {
+    const tok = this.expect(TokenKind.Return)
+    // Detect bare `return` by peeking for tokens that clearly cannot
+    // start a value expression. Anything else is treated as the
+    // returned value — keeps the syntax forgiving.
+    const next = this.peek().kind
+    const bareEnders = new Set<TokenKind>([
+      TokenKind.RBrace, TokenKind.RParen, TokenKind.RBracket,
+      TokenKind.Comma, TokenKind.Semi, TokenKind.Eof,
+      TokenKind.Let, TokenKind.Export, TokenKind.Import, TokenKind.From,
+      TokenKind.If, TokenKind.Else, TokenKind.For, TokenKind.In,
+      TokenKind.Try, TokenKind.Catch, TokenKind.Finally,
+      TokenKind.Throw, TokenKind.Return,
+    ])
+    if (bareEnders.has(next)) {
+      return { kind: 'ReturnExpr', start: tok.start, end: tok.end }
+    }
+    const value = this.parseExpr()
+    return { kind: 'ReturnExpr', value, start: tok.start, end: value.end }
+  }
+
+  /**
+   * `try { … } catch (e[: T]) { … } finally { … }` — both catch and
+   * finally are optional but at least one must be present (matches JS
+   * grammar; lets the diagnostic catch a `try { … }` with no handler).
+   */
+  private parseTryExpr(): TryExpr {
+    const start = this.expect(TokenKind.Try).start
+    const body = this.parseBlock()
+    let catchClause: TryCatchClause | undefined
+    let finallyClause: Block | undefined
+    let endOffset = body.end
+    if (this.peek().kind === TokenKind.Catch) {
+      this.pos++
+      let param = ''
+      let paramStart = this.peek().start
+      let paramEnd = paramStart
+      let type: string | undefined
+      if (this.peek().kind === TokenKind.LParen) {
+        this.pos++
+        if (this.peek().kind === TokenKind.RParen) {
+          // `catch ()` — semantically same as bare `catch { … }`; just
+          // accept it as if no binding.
+          this.pos++
+        } else {
+          const nameTok = this.expect(TokenKind.Ident)
+          param = nameTok.text
+          paramStart = nameTok.start
+          paramEnd = nameTok.end
+          if (this.peek().kind === TokenKind.Colon) {
+            this.pos++
+            const span = this.parseRawTypeUntilParamBoundary()
+            type = span.text
+          }
+          this.expect(TokenKind.RParen)
+        }
+      }
+      const catchBody = this.parseBlock()
+      catchClause = { param, paramStart, paramEnd, body: catchBody }
+      if (type !== undefined) catchClause.type = type
+      endOffset = catchBody.end
+    }
+    if (this.peek().kind === TokenKind.Finally) {
+      this.pos++
+      finallyClause = this.parseBlock()
+      endOffset = finallyClause.end
+    }
+    if (!catchClause && !finallyClause) {
+      throw this.error('try expression requires a `catch` or `finally` clause')
+    }
+    const result: TryExpr = { kind: 'TryExpr', body, start, end: endOffset }
+    if (catchClause) result.catchClause = catchClause
+    if (finallyClause) result.finallyClause = finallyClause
+    return result
   }
 
   /**

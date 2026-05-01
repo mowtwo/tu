@@ -833,4 +833,54 @@ describe('codegen', () => {
     expect(js).not.toContain('export const helper')
     expect(js).toContain('export const App = () => h("p", {}, [helper(2)])')
   })
+
+  it('M6.4: try/catch as expression returns the matching branch value', () => {
+    const js = compile('let parse = (s) => try { JSON.parse(s) } catch (e) { null }')
+    expect(js).toContain('try {')
+    expect(js).toContain('return JSON.parse(s)')
+    expect(js).toContain('catch (e)')
+    expect(js).toContain('return null')
+  })
+
+  it('M6.4: try/catch with TS-typed catch param preserves type in TS-emit, drops in JS', () => {
+    const tu = 'let f = (fn) => { try { fn() } catch (e: unknown) { console.error(e) } }'
+    expect(compile(tu)).toContain('catch (e)')
+    expect(compileToTS(tu)).toContain('catch (e: unknown)')
+  })
+
+  it('M6.4: try requires at least catch or finally', () => {
+    expect(() => compile('let f = () => try { foo() }')).toThrow(/catch.*finally/)
+  })
+
+  it('M6.4: throw inside if-stmt position emits clean `if (...) { throw ... }`', () => {
+    const js = compile('let f = (x) => { if (x < 0) { throw "neg" }; x * 2 }')
+    expect(js).toContain('if ((x < 0)) {')
+    expect(js).toContain('throw "neg"')
+    // No IIFE wrap around the throw — it's at statement position.
+    expect(js).not.toContain('throw "neg"; })()')
+  })
+
+  it('M6.4: return inside if-stmt position escapes the outer lambda', () => {
+    const js = compile('let f = (x) => { if (x < 0) { return 0 }; x * 2 }')
+    // Lambda must be statement-bodied (not expression-bodied) so the
+    // inner `return 0;` lands inside the lambda's `{ … }`, not inside
+    // an IIFE that just returns from itself.
+    expect(js).toMatch(/\(x\)\s*=>\s*\{/)
+    expect(js).toContain('if ((x < 0)) {')
+    expect(js).toContain('return 0;')
+    expect(js).toContain('return (x * 2);')
+  })
+
+  it('M6.4: bare `return` is allowed and emits `return;`', () => {
+    const js = compile('let f = () => { return }')
+    expect(js).toMatch(/\(\)\s*=>\s*\{[\s\S]*return;[\s\S]*\}/)
+  })
+
+  it('M6.4: lambdas without control flow keep the cleaner expression-bodied form', () => {
+    // Don't regress the common path: simple lambdas should still emit
+    // `() => h(...)` rather than `() => { return h(...); }`.
+    const js = compile('let App = () => div { "hi" }')
+    expect(js).toContain('const App = () => h("div", {}, ["hi"])')
+    expect(js).not.toContain('=> {')
+  })
 })

@@ -21,6 +21,7 @@ import type {
   Stmt,
   StyleBlock,
   TagCall,
+  TryExpr,
 } from './ast.js'
 import { lineColAt } from './diagnostics.js'
 import MarkdownIt from 'markdown-it'
@@ -579,7 +580,161 @@ class Codegen {
           this.emitExpr(expr.arg)
         }
         return
+      case 'ThrowExpr':
+        // Expression position: wrap in IIFE so the throw can sit
+        // anywhere a value is expected. Block context emits a clean
+        // `throw …;` directly via `emitBlockStmt`.
+        this.write('((() => { throw ')
+        this.emitExpr(expr.arg)
+        this.write('; })())')
+        return
+      case 'ReturnExpr':
+        // Same IIFE trick as ThrowExpr — `return` inside an IIFE just
+        // exits that IIFE (the value still escapes via the outer eval).
+        // Block context (the common case) bypasses this branch.
+        this.write('((() => { return')
+        if (expr.value !== undefined) {
+          this.write(' ')
+          this.emitExpr(expr.value)
+        }
+        this.write('; })())')
+        return
+      case 'TryExpr':
+        this.emitTryExpr(expr)
+        return
     }
+  }
+
+  private emitTryExpr(node: TryExpr): void {
+    // Wrap in an IIFE so the entire try yields a value. Each branch's
+    // last expression becomes a `return` so the IIFE produces it.
+    this.write('(() => {\n')
+    this.write('  try ')
+    this.emitBlockStatementBody(node.body, /*allowReturn*/ true)
+    if (node.catchClause) {
+      const c = node.catchClause
+      if (c.param) {
+        this.write(' catch (')
+        this.mark(c.paramStart, c.paramEnd, () => this.write(c.param))
+        if (this.tsMode && c.type) this.write(`: ${c.type}`)
+        this.write(') ')
+      } else {
+        this.write(' catch ')
+      }
+      this.emitBlockStatementBody(c.body, /*allowReturn*/ true)
+    }
+    if (node.finallyClause) {
+      this.write(' finally ')
+      // Finally body's value is discarded — emit as plain block, no return.
+      this.emitBlockStatementBody(node.finallyClause, /*allowReturn*/ false)
+    }
+    this.write('\n})()')
+  }
+
+  /** Emit a Tu Block as a JS `{ … }` body. When `allowReturn` is true
+   *  the last expression becomes `return …;` so the value escapes the
+   *  enclosing IIFE; otherwise it's emitted as a plain expression
+   *  statement. Used by emitTryExpr. */
+  private emitBlockStatementBody(node: Block, allowReturn: boolean): void {
+    this.write('{\n')
+    let lastExprIdx = -1
+    if (allowReturn) {
+      for (let i = node.body.length - 1; i >= 0; i--) {
+        if (node.body[i]!.kind !== 'LocalLet') {
+          lastExprIdx = i
+          break
+        }
+      }
+    }
+    for (let i = 0; i < node.body.length; i++) {
+      const item = node.body[i]!
+      this.write('  ')
+      if (item.kind === 'LocalLet') {
+        this.emitLocalLet(item as LocalLet)
+        this.write(';\n')
+      } else if (i === lastExprIdx) {
+        this.emitBlockTrailingExpr(item as Expr)
+      } else {
+        this.emitBlockStmt(item as Expr)
+      }
+    }
+    this.write('}')
+  }
+
+  /** Emit an item that appears in the trailing (return-position) slot
+   *  of a Block. Recognizes the four Tu nodes that *are* JS statements
+   *  (Throw / Return / Try) and emits them cleanly without an IIFE
+   *  wrap; everything else gets the usual `return …;` prefix. */
+  private emitBlockTrailingExpr(item: Expr): void {
+    if (item.kind === 'ThrowExpr') {
+      this.write('throw ')
+      this.emitExpr(item.arg)
+      this.write(';\n')
+      return
+    }
+    if (item.kind === 'ReturnExpr') {
+      this.write('return')
+      if (item.value !== undefined) {
+        this.write(' ')
+        this.emitExpr(item.value)
+      }
+      this.write(';\n')
+      return
+    }
+    this.write('return ')
+    this.emitExpr(item)
+    this.write(';\n')
+  }
+
+  /** Emit a Block item that's NOT in trailing position — its value is
+   *  discarded, but Throw / Return / Try / If are still recognized as
+   *  statements so they don't pay the IIFE-wrap cost. The `if` case is
+   *  load-bearing for early-return patterns: `if (x < 0) { return 0 }`
+   *  in source must lower to `if (...) { return 0; }` so the return
+   *  exits the *outer* lambda, not just the if's IIFE. */
+  private emitBlockStmt(item: Expr): void {
+    if (item.kind === 'ThrowExpr') {
+      this.write('throw ')
+      this.emitExpr(item.arg)
+      this.write(';\n')
+      return
+    }
+    if (item.kind === 'ReturnExpr') {
+      this.write('return')
+      if (item.value !== undefined) {
+        this.write(' ')
+        this.emitExpr(item.value)
+      }
+      this.write(';\n')
+      return
+    }
+    if (item.kind === 'IfExpr') {
+      this.emitIfStatement(item)
+      return
+    }
+    this.emitExpr(item)
+    this.write(';\n')
+  }
+
+  /** Emit an IfExpr as a JS `if (…) { … } else { … }` statement so
+   *  inner `throw` / `return` reach the surrounding scope. The block
+   *  bodies recurse through `emitBlockStatementBody` with
+   *  `allowReturn: false` since the parent context already discards
+   *  the value. */
+  private emitIfStatement(node: IfExpr): void {
+    this.write('if (')
+    this.emitExpr(node.cond)
+    this.write(') ')
+    this.emitBlockStatementBody(node.then, /*allowReturn*/ false)
+    if (node.else !== undefined) {
+      this.write(' else ')
+      if (node.else.kind === 'IfExpr') {
+        this.emitIfStatement(node.else)
+        return
+      }
+      this.emitBlockStatementBody(node.else, /*allowReturn*/ false)
+    }
+    this.write('\n')
   }
 
   private emitMemberExpr(node: MemberExpr): void {
@@ -672,11 +827,45 @@ class Codegen {
         this.write('(')
         this.emitExpr(node.body)
         this.write(')')
+      } else if (node.body.kind === 'Block' && this.lambdaBodyNeedsStmtForm(node.body)) {
+        // Block contains return/throw — emit as statement-bodied lambda
+        // so those control-flow operators escape the *outer* lambda
+        // rather than just the IIFE wrapper of an expression-bodied
+        // block. Trailing expression auto-becomes `return …;` so the
+        // return value is preserved.
+        this.emitLambdaStmtBody(node.body)
       } else {
         this.emitExpr(node.body)
       }
     } finally {
       this.shadowed.pop()
+    }
+  }
+
+  /** Block contains a control-flow operator that must reach the outer
+   *  lambda (return / throw, possibly nested in an if's branch). When
+   *  this is true, emitLambda picks the statement-bodied form; when
+   *  false the cleaner expression-bodied form is fine. */
+  private lambdaBodyNeedsStmtForm(node: Block): boolean {
+    for (const item of node.body) {
+      if (item.kind === 'LocalLet') continue
+      if (containsControlFlow(item as Expr)) return true
+    }
+    return false
+  }
+
+  private emitLambdaStmtBody(node: Block): void {
+    // Reuse emitBlockStatementBody — same shape, allowReturn so the
+    // trailing expression escapes via `return`.
+    const localNames = new Set<string>()
+    for (const item of node.body) {
+      if (item.kind === 'LocalLet') localNames.add(item.name)
+    }
+    if (localNames.size > 0) this.shadowed.push(localNames)
+    try {
+      this.emitBlockStatementBody(node, /*allowReturn*/ true)
+    } finally {
+      if (localNames.size > 0) this.shadowed.pop()
     }
   }
 
@@ -769,12 +958,13 @@ class Codegen {
           this.write('];\n')
           break // we just emitted everything past the local-lets
         }
-        this.write('return ')
-        this.emitExpr(item as Expr)
-        this.write(';\n')
+        // Trailing-position emit recognizes `throw …` / `return …` so
+        // they emit as clean statements without the redundant IIFE
+        // wrap that the expression-position code path uses.
+        this.emitBlockTrailingExpr(item as Expr)
       } else {
-        this.emitExpr(item as Expr)
-        this.write(';\n')
+        // Same statement-aware path for non-trailing items.
+        this.emitBlockStmt(item as Expr)
       }
     }
     if (lastExprIdx === -1) this.write('  return undefined;\n')
@@ -1116,6 +1306,17 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       collectClassRefs(expr.object, out)
       collectClassRefs(expr.index, out)
       return
+    case 'ThrowExpr':
+      collectClassRefs(expr.arg, out)
+      return
+    case 'ReturnExpr':
+      if (expr.value) collectClassRefs(expr.value, out)
+      return
+    case 'TryExpr':
+      collectClassRefs(expr.body, out)
+      if (expr.catchClause) collectClassRefs(expr.catchClause.body, out)
+      if (expr.finallyClause) collectClassRefs(expr.finallyClause, out)
+      return
     default:
       return
   }
@@ -1180,6 +1381,17 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
     case 'IndexExpr':
       collectStyleBlockBodies(expr.object, out)
       collectStyleBlockBodies(expr.index, out)
+      return
+    case 'ThrowExpr':
+      collectStyleBlockBodies(expr.arg, out)
+      return
+    case 'ReturnExpr':
+      if (expr.value) collectStyleBlockBodies(expr.value, out)
+      return
+    case 'TryExpr':
+      collectStyleBlockBodies(expr.body, out)
+      if (expr.catchClause) collectStyleBlockBodies(expr.catchClause.body, out)
+      if (expr.finallyClause) collectStyleBlockBodies(expr.finallyClause, out)
       return
     default:
       return
@@ -1528,6 +1740,67 @@ function renderStaticPropValue(v: Expr, scope: ScopeCtx | undefined): string | n
     return `${v.name} ${v.name}-tu-${scope.hash}`
   }
   return null
+}
+
+/** Recursive check: does `expr` contain a `throw` or `return` that
+ *  would need to escape the surrounding lambda? Used by emitLambda to
+ *  decide between expression-bodied and statement-bodied forms.
+ *  Crosses into if-branches and try-catch arms (which may sit at
+ *  statement positions inside the lambda); does **NOT** cross into
+ *  nested Lambdas — those have their own return semantics. */
+function containsControlFlow(expr: Expr): boolean {
+  switch (expr.kind) {
+    case 'ThrowExpr':
+    case 'ReturnExpr':
+      return true
+    case 'IfExpr':
+      if (containsControlFlow(expr.cond)) return true
+      if (blockHasControlFlow(expr.then)) return true
+      if (expr.else !== undefined) {
+        if (expr.else.kind === 'IfExpr') return containsControlFlow(expr.else)
+        if (blockHasControlFlow(expr.else)) return true
+      }
+      return false
+    case 'TryExpr':
+      if (blockHasControlFlow(expr.body)) return true
+      if (expr.catchClause && blockHasControlFlow(expr.catchClause.body)) return true
+      if (expr.finallyClause && blockHasControlFlow(expr.finallyClause)) return true
+      return false
+    case 'Block':
+      return blockHasControlFlow(expr)
+    case 'BinaryExpr':
+      return containsControlFlow(expr.left) || containsControlFlow(expr.right)
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+      return containsControlFlow(expr.arg)
+    case 'AssignExpr':
+      return containsControlFlow(expr.value)
+    case 'CallExpr':
+      return expr.args.some(containsControlFlow)
+    case 'MethodCallExpr':
+      return containsControlFlow(expr.object) || expr.args.some(containsControlFlow)
+    case 'MemberExpr':
+      return containsControlFlow(expr.object)
+    case 'IndexExpr':
+      return containsControlFlow(expr.object) || containsControlFlow(expr.index)
+    case 'ArrayLit':
+      return expr.elements.some(containsControlFlow)
+    case 'ObjectLit':
+      return expr.properties.some((p) => containsControlFlow(p.value))
+    default:
+      return false
+  }
+}
+
+function blockHasControlFlow(b: Block): boolean {
+  for (const item of b.body) {
+    if (item.kind === 'LocalLet') {
+      if (containsControlFlow(item.value)) return true
+      continue
+    }
+    if (containsControlFlow(item as Expr)) return true
+  }
+  return false
 }
 
 function escapeStaticText(s: string): string {

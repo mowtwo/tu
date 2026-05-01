@@ -67,6 +67,11 @@ export enum TokenKind {
   Else,
   For,
   In,
+  Try,
+  Catch,
+  Finally,
+  Throw,
+  Return,
   // misc
   Eof,
 }
@@ -90,4 +95,9 @@ export const KEYWORDS: Readonly<Record<string, TokenKind>> = Object.freeze({
   else: TokenKind.Else,
   for: TokenKind.For,
   in: TokenKind.In,
+  try: TokenKind.Try,
+  catch: TokenKind.Catch,
+  finally: TokenKind.Finally,
+  throw: TokenKind.Throw,
+  return: TokenKind.Return,
 })

@@ -102,6 +102,9 @@ export type Expr =
   | UnaryExpr
   | NonNullAssertExpr
   | IndexExpr
+  | ThrowExpr
+  | ReturnExpr
+  | TryExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -200,6 +203,9 @@ export type Child =
   | UnaryExpr
   | NonNullAssertExpr
   | IndexExpr
+  | ThrowExpr
+  | ReturnExpr
+  | TryExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -416,6 +422,47 @@ export interface IndexExpr extends Ranged {
   object: Expr
   index: Expr
   optional?: boolean
+}
+
+/** `throw expr` — JS-spec is statement-only, but Tu treats it as an
+ *  expression so it can sit in if-branches / value positions. Codegen
+ *  emits a clean `throw …;` statement when the parent context is a
+ *  Block (the common case); otherwise it auto-wraps in an IIFE. */
+export interface ThrowExpr extends Ranged {
+  kind: 'ThrowExpr'
+  arg: Expr
+}
+
+/** Early `return` from inside a lambda body. Same expression-vs-stmt
+ *  treatment as `ThrowExpr` — clean `return …;` inside Block, IIFE-
+ *  wrapped elsewhere. The optional `value` lets users write bare
+ *  `return` (returning undefined). */
+export interface ReturnExpr extends Ranged {
+  kind: 'ReturnExpr'
+  value?: Expr
+}
+
+/** `try { … } catch (e: T) { … } finally { … }` as an expression. The
+ *  `try` body is required; either or both of catch/finally may be
+ *  present. Codegen wraps in an IIFE so the resulting value can flow
+ *  into `let x = try { … } catch (e) { … }`. */
+export interface TryExpr extends Ranged {
+  kind: 'TryExpr'
+  body: Block
+  catchClause?: TryCatchClause
+  finallyClause?: Block
+}
+
+export interface TryCatchClause {
+  /** Bound name for the caught error. Empty string when the user
+   *  wrote bare `catch { … }` (an ECMAScript feature since 2019). */
+  param: string
+  paramStart: number
+  paramEnd: number
+  /** Optional TS type annotation for the param — emitted only in
+   *  TS-shadow mode. */
+  type?: string
+  body: Block
 }
 
 /**

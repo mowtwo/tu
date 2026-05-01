@@ -100,4 +100,19 @@ describe('checkTuSource — diagnostic round-trip', () => {
     // Length covers `"not a number"` — 12 chars + 2 quotes = 14.
     expect(first.length).toBe(14)
   })
+
+  it('M6.8: DOM / global types are visible in .tu files (target ES2022 lib)', () => {
+    // Lock in that tsserver sees `document`, `Math`, `JSON`, and Promise
+    // without any explicit lib import on the .tu side. If a future change
+    // to compilerOptions drops dom from the default lib, this test
+    // catches it before users do.
+    const diags = checkTuSource(
+      `let host = document.getElementById("foo")
+       let pi = Math.PI
+       let parsed = JSON.parse("{}")
+       let now = Date.now()`,
+      'globals.tu'
+    )
+    expect(diags).toEqual([])
+  })
 })
