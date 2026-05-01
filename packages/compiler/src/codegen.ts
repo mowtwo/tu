@@ -13,6 +13,7 @@ import type {
   Lambda,
   LocalLet,
   MemberExpr,
+  MethodCallExpr,
   ObjectLit,
   Program,
   Prop,
@@ -478,6 +479,9 @@ class Codegen {
       case 'MemberExpr':
         this.emitMemberExpr(expr)
         return
+      case 'MethodCallExpr':
+        this.emitMethodCallExpr(expr)
+        return
     }
   }
 
@@ -489,6 +493,18 @@ class Codegen {
     this.emitExpr(node.object)
     this.write('.')
     this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
+  }
+
+  private emitMethodCallExpr(node: MethodCallExpr): void {
+    this.emitExpr(node.object)
+    this.write('.')
+    this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
+    this.write('(')
+    for (let i = 0; i < node.args.length; i++) {
+      if (i > 0) this.write(', ')
+      this.emitExpr(node.args[i]!)
+    }
+    this.write(')')
   }
 
   private emitArrayLit(node: ArrayLit): void {
@@ -963,6 +979,10 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'MemberExpr':
       collectClassRefs(expr.object, out)
       return
+    case 'MethodCallExpr':
+      collectClassRefs(expr.object, out)
+      for (const a of expr.args) collectClassRefs(a, out)
+      return
     default:
       return
   }
@@ -1015,6 +1035,10 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'MemberExpr':
       collectStyleBlockBodies(expr.object, out)
+      return
+    case 'MethodCallExpr':
+      collectStyleBlockBodies(expr.object, out)
+      for (const a of expr.args) collectStyleBlockBodies(a, out)
       return
     default:
       return

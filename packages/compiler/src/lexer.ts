@@ -237,7 +237,12 @@ export class Lexer {
       this.pos++
     }
     const text = this.src.slice(start, this.pos)
-    const kw = KEYWORDS[text]
+    // Use `hasOwn` so identifiers that happen to be Object.prototype
+    // method names (`toString`, `hasOwnProperty`, `valueOf`, …) don't
+    // get the inherited function as their token kind. Without this
+    // guard, M5.9 method calls on those names produced tokens with a
+    // function-valued `.kind` and parser errors blamed the wrong span.
+    const kw = Object.hasOwn(KEYWORDS, text) ? KEYWORDS[text] : undefined
     return {
       kind: kw ?? TokenKind.Ident,
       text,

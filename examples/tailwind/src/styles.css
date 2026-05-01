@@ -1,0 +1,9 @@
+/* Tailwind v4 — single line, no config needed.
+ *
+ * The `@source` directive tells Tailwind to scan Tu source files for
+ * class usage. Without it, Tailwind v4 only scans .html / .js / .ts /
+ * .jsx / .tsx by default, missing `class: "px-4 py-2"` strings inside
+ * .tu files. */
+@import "tailwindcss";
+@source "./**/*.tu";
+@source "../**/*.tu";

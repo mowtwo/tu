@@ -180,6 +180,10 @@ function walkTagCalls(
     case 'MemberExpr':
       walkTagCalls(e.object as { kind: string }, hit)
       return
+    case 'MethodCallExpr':
+      walkTagCalls(e.object as { kind: string }, hit)
+      for (const a of e.args as { kind: string }[]) walkTagCalls(a, hit)
+      return
     default:
       return
   }

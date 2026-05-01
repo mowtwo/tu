@@ -97,6 +97,7 @@ export type Expr =
   | ArrayLit
   | ObjectLit
   | MemberExpr
+  | MethodCallExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -184,6 +185,7 @@ export type Child =
   | ArrayLit
   | ObjectLit
   | MemberExpr
+  | MethodCallExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -343,6 +345,28 @@ export interface MemberExpr extends Ranged {
   object: Expr
   property: string
   /** Source byte range of the property name. */
+  propertyStart: number
+  propertyEnd: number
+}
+
+/**
+ * **M5.9 method call** — `obj.method(arg1, arg2)` parsed as a postfix
+ * `(...)` immediately after a member-access dot. Common forms:
+ *   `e.preventDefault()`, `props.onChange(v)`, `arr.map(fn)`,
+ *   `console.log(x)`. The parser disambiguates from plain member access
+ *   in the postfix loop: `.Ident` followed by `(` collapses into one
+ *   MethodCallExpr; without `(` the result stays a MemberExpr.
+ *
+ * Codegen: emit `<object>.method(args)`. The leaf cell ident inside
+ * `object` still receives `.get()` injection per usual rules — the
+ * property name is plain JS.
+ */
+export interface MethodCallExpr extends Ranged {
+  kind: 'MethodCallExpr'
+  object: Expr
+  property: string
+  args: Expr[]
+  /** Source byte range of the method name. */
   propertyStart: number
   propertyEnd: number
 }

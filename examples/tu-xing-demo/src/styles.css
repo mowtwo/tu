@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "@tu-lang/tu-xing/theme.css";
+@source "./**/*.tu";
+@source "../../../packages/tu-xing/src/**/*.tu";

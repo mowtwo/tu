@@ -405,6 +405,27 @@ describe('codegen', () => {
     expect(js).toContain('make(7).x')
   })
 
+  it('M5.9: method call on a lambda param compiles to a plain JS method call', () => {
+    const js = compile('let App = () => button(onClick: (e) => e.preventDefault()) { "x" }')
+    expect(js).toContain('e.preventDefault()')
+  })
+
+  it('M5.9: method call on a state cell injects .get() on the leaf', () => {
+    const js = compile(`
+      let xs = [1, 2]
+      let App = () => p { xs.map((x) => x) }
+    `)
+    expect(js).toContain('xs.get().map(')
+  })
+
+  it('M5.9: chained .method().prop works', () => {
+    const js = compile(`
+      let obj = {}
+      let App = () => p { obj.toString().length }
+    `)
+    expect(js).toContain('obj.get().toString().length')
+  })
+
   it('M5.8: lambda-param object access emits the param ident plain', () => {
     const js = compile('let read = (p) => p.x')
     expect(js).toContain('const read = (p) => p.x')

@@ -18,6 +18,7 @@ import type {
   LocalLet,
   NumberLit,
   MemberExpr,
+  MethodCallExpr,
   ObjectLit,
   ObjectProp,
   Param,
@@ -372,6 +373,30 @@ export class Parser {
       if (next?.kind !== TokenKind.Ident) return expr
       this.pos++ // consume the dot
       const propTok = this.expect(TokenKind.Ident)
+      // M5.9: `.Ident` immediately followed by `(args)` is a method
+      // call (`obj.method(arg1, arg2)`). Collapse into MethodCallExpr.
+      // Anything else stays plain MemberExpr (the loop continues for
+      // chained access like `a.b.c`).
+      if (this.peek().kind === TokenKind.LParen) {
+        this.pos++ // consume the `(`
+        const args: Expr[] = []
+        while (this.peek().kind !== TokenKind.RParen) {
+          args.push(this.parseExpr())
+          if (this.peek().kind === TokenKind.Comma) this.pos++
+        }
+        const rparen = this.expect(TokenKind.RParen)
+        expr = {
+          kind: 'MethodCallExpr',
+          object: expr,
+          property: propTok.text,
+          args,
+          start: expr.start,
+          end: rparen.end,
+          propertyStart: propTok.start,
+          propertyEnd: propTok.end,
+        } satisfies MethodCallExpr
+        continue
+      }
       expr = {
         kind: 'MemberExpr',
         object: expr,
@@ -1091,6 +1116,7 @@ export function parse(tokens: Token[], source: string = '', filename?: string): 
 function isMemberAccessibleExpr(expr: Expr): boolean {
   if (expr.kind === 'Ident') return true
   if (expr.kind === 'MemberExpr') return true
+  if (expr.kind === 'MethodCallExpr') return true
   if (expr.kind === 'ObjectLit') return true
   if (expr.kind === 'ArrayLit') return true
   if (expr.kind === 'CallExpr') {

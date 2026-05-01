@@ -173,6 +173,10 @@ function visitStyleBlocks(
     case 'MemberExpr':
       visitStyleBlocks(e.object as { kind: string }, hit)
       return
+    case 'MethodCallExpr':
+      visitStyleBlocks(e.object as { kind: string }, hit)
+      for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
+      return
     case 'CallExpr':
       for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
       if (Array.isArray(e.children)) {

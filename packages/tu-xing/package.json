@@ -1,0 +1,55 @@
+{
+  "name": "@tu-lang/tu-xing",
+  "version": "0.1.0-alpha.0",
+  "description": "tu-xing (图形) — Tu-native UI component library. shadcn + baseui style: Tailwind-driven primitives with theme tokens.",
+  "keywords": [
+    "tu",
+    "tu-lang",
+    "ui",
+    "components",
+    "shadcn",
+    "baseui",
+    "tailwind",
+    "design-system"
+  ],
+  "author": "mow2",
+  "license": "MIT",
+  "homepage": "https://mowtwo.github.io/tu/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mowtwo/tu.git",
+    "directory": "packages/tu-xing"
+  },
+  "bugs": {
+    "url": "https://github.com/mowtwo/tu/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./Button.tu": "./src/components/Button.tu",
+    "./Input.tu": "./src/components/Input.tu",
+    "./Card.tu": "./src/components/Card.tu",
+    "./Badge.tu": "./src/components/Badge.tu",
+    "./Switch.tu": "./src/components/Switch.tu",
+    "./Dialog.tu": "./src/components/Dialog.tu",
+    "./Tabs.tu": "./src/components/Tabs.tu",
+    "./theme.css": "./src/theme.css"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "echo 'tu-xing: source-only package; consumers compile via @tu-lang/vite'",
+    "test": "echo 'no tests yet'",
+    "check": "echo 'no checks'",
+    "clean": "echo 'nothing to clean'"
+  },
+  "peerDependencies": {
+    "@tu-lang/runtime": "workspace:*",
+    "tailwindcss": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
