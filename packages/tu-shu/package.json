@@ -45,6 +45,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@tu-lang/compiler": "workspace:*",
     "@tu-lang/runtime": "workspace:*",
     "gray-matter": "^4.0.3",
     "markdown-it": "^14.1.0",
