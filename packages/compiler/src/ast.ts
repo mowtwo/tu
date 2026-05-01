@@ -110,6 +110,8 @@ export type Expr =
   | UpdateExpr
   | TemplateLit
   | SpreadElement
+  | AwaitExpr
+  | ImportExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -124,6 +126,9 @@ export interface Lambda extends Ranged {
   returnType?: string
   returnTypeStart?: number
   returnTypeEnd?: number
+  /** True for `async (args) => …`. Codegen emits `async (…) => …`; the
+   *  body may contain `await` expressions. */
+  async?: boolean
 }
 
 export interface Param extends Ranged {
@@ -216,6 +221,8 @@ export type Child =
   | UpdateExpr
   | TemplateLit
   | SpreadElement
+  | AwaitExpr
+  | ImportExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -531,6 +538,21 @@ export interface TemplateLit extends Ranged {
  *  it during codegen and emit `...` in the right syntactic position. */
 export interface SpreadElement extends Ranged {
   kind: 'SpreadElement'
+  arg: Expr
+}
+
+/** `await expr` — only valid inside an `async` lambda. We don't enforce
+ *  that statically; tsserver flags misuse via the TS shadow. */
+export interface AwaitExpr extends Ranged {
+  kind: 'AwaitExpr'
+  arg: Expr
+}
+
+/** `import('./mod.js')` — dynamic import expression. Returns a
+ *  `Promise<Module>`. Distinct from the static `import { … } from "…"`
+ *  statement; the latter is parsed at the top level only. */
+export interface ImportExpr extends Ranged {
+  kind: 'ImportExpr'
   arg: Expr
 }
 

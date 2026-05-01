@@ -608,6 +608,31 @@ export class Parser {
       const arg = this.parsePostfix(this.parsePrefix())
       return { kind: 'NewExpr', arg, start: tok.start, end: arg.end }
     }
+    if (k === TokenKind.Async) {
+      const tok = this.peek()
+      this.pos++ // consume `async`
+      const lambda = this.parseLambda()
+      lambda.async = true
+      lambda.start = tok.start
+      return lambda
+    }
+    if (k === TokenKind.Await) {
+      const tok = this.peek()
+      this.pos++
+      const arg = this.parsePostfix(this.parsePrefix())
+      return { kind: 'AwaitExpr', arg, start: tok.start, end: arg.end }
+    }
+    if (k === TokenKind.Import) {
+      // Dynamic import — `import('mod')`. Static `import { … } from "…"`
+      // statements are handled at the program-body level by parseStmt
+      // before we ever get here.
+      const tok = this.peek()
+      this.pos++ // consume `import`
+      this.expect(TokenKind.LParen)
+      const arg = this.parseExpr()
+      const rparen = this.expect(TokenKind.RParen)
+      return { kind: 'ImportExpr', arg, start: tok.start, end: rparen.end }
+    }
     if (k === TokenKind.PlusPlus || k === TokenKind.MinusMinus) {
       const tok = this.peek()
       const op = k === TokenKind.PlusPlus ? '++' : '--'
@@ -1593,6 +1618,13 @@ function isMemberAccessibleExpr(expr: Expr): boolean {
   if (expr.kind === 'IndexExpr') return true
   if (expr.kind === 'ObjectLit') return true
   if (expr.kind === 'ArrayLit') return true
+  // `(await fetch(url)).json()` — await yields a value and the parens
+  // around it dropped the syntactic boundary; same logic for `import()`
+  // and `new T()` results which are also values worth member-accessing.
+  if (expr.kind === 'AwaitExpr') return true
+  if (expr.kind === 'ImportExpr') return true
+  if (expr.kind === 'NewExpr') return true
+  if (expr.kind === 'TemplateLit') return true
   // `x!.foo` / `x!()` — the non-null assertion preserves the underlying
   // expression's accessibility for chaining.
   if (expr.kind === 'NonNullAssertExpr') return true

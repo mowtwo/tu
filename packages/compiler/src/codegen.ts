@@ -640,6 +640,16 @@ class Codegen {
         this.write('...')
         this.emitExpr(expr.arg)
         return
+      case 'AwaitExpr':
+        this.write('(await ')
+        this.emitExpr(expr.arg)
+        this.write(')')
+        return
+      case 'ImportExpr':
+        this.write('import(')
+        this.emitExpr(expr.arg)
+        this.write(')')
+        return
     }
   }
 
@@ -675,8 +685,20 @@ class Codegen {
     // Wrap in an IIFE so the entire try yields a value. Each branch's
     // last expression becomes a `return` so the IIFE produces it.
     this.write('(() => {\n')
-    this.write('  try ')
-    this.emitBlockStatementBody(node.body, /*allowReturn*/ true)
+    this.emitTryStmt(node, /*allowReturn*/ true)
+    this.write('\n})()')
+  }
+
+  /** Emit just the `try { … } catch { … } finally { … }` shape, without
+   *  the IIFE wrap. Used by emitTryExpr (with wrap) and by
+   *  emitBlockTrailingExpr / emitBlockStmt (no wrap — direct
+   *  statement). The latter avoids the redundant IIFE on the common
+   *  case where try is at a trailing or stmt position inside a block,
+   *  AND it sidesteps the async-IIFE problem (an embedded `await`
+   *  inside the try body would be a syntax error in a sync IIFE). */
+  private emitTryStmt(node: TryExpr, allowReturn: boolean): void {
+    this.write('try ')
+    this.emitBlockStatementBody(node.body, allowReturn)
     if (node.catchClause) {
       const c = node.catchClause
       if (c.param) {
@@ -687,14 +709,13 @@ class Codegen {
       } else {
         this.write(' catch ')
       }
-      this.emitBlockStatementBody(c.body, /*allowReturn*/ true)
+      this.emitBlockStatementBody(c.body, allowReturn)
     }
     if (node.finallyClause) {
       this.write(' finally ')
       // Finally body's value is discarded — emit as plain block, no return.
       this.emitBlockStatementBody(node.finallyClause, /*allowReturn*/ false)
     }
-    this.write('\n})()')
   }
 
   /** Emit a Tu Block as a JS `{ … }` body. When `allowReturn` is true
@@ -747,6 +768,17 @@ class Codegen {
       this.write(';\n')
       return
     }
+    if (item.kind === 'TryExpr') {
+      // Direct try-statement form. Each arm's trailing expr becomes
+      // `return …;` so the value escapes via the enclosing block's
+      // own return. Avoids the IIFE that emitTryExpr would otherwise
+      // emit, which has two benefits: smaller output AND lets `await`
+      // inside the body work in async contexts (a sync IIFE would
+      // wrap the await and turn it into a syntax error).
+      this.emitTryStmt(item, /*allowReturn*/ true)
+      this.write('\n')
+      return
+    }
     this.write('return ')
     this.emitExpr(item)
     this.write(';\n')
@@ -776,6 +808,13 @@ class Codegen {
     }
     if (item.kind === 'IfExpr') {
       this.emitIfStatement(item)
+      return
+    }
+    if (item.kind === 'TryExpr') {
+      // Statement-position try doesn't need a return value; emit each
+      // arm with allowReturn=false so the value is just discarded.
+      this.emitTryStmt(item, /*allowReturn*/ false)
+      this.write('\n')
       return
     }
     this.emitExpr(item)
@@ -872,6 +911,7 @@ class Codegen {
     const paramNames = node.params.map((p) => p.name)
     this.shadowed.push(new Set(paramNames))
     try {
+      if (node.async) this.write('async ')
       this.write('(')
       for (let i = 0; i < node.params.length; i++) {
         if (i > 0) this.write(', ')
@@ -898,13 +938,33 @@ class Codegen {
         this.write('(')
         this.emitExpr(node.body)
         this.write(')')
-      } else if (node.body.kind === 'Block' && this.lambdaBodyNeedsStmtForm(node.body)) {
+      } else if (
+        node.body.kind === 'Block' &&
+        (node.async || this.lambdaBodyNeedsStmtForm(node.body))
+      ) {
         // Block contains return/throw — emit as statement-bodied lambda
         // so those control-flow operators escape the *outer* lambda
         // rather than just the IIFE wrapper of an expression-bodied
         // block. Trailing expression auto-becomes `return …;` so the
         // return value is preserved.
+        //
+        // async lambdas with a Block body ALWAYS need statement form —
+        // otherwise the IIFE wrapper around the block isn't async, and
+        // a top-level `await` inside the block becomes a syntax error.
         this.emitLambdaStmtBody(node.body)
+      } else if (node.async) {
+        // async lambda with a non-Block body — wrap into a synthetic
+        // single-item block and emit as statement-bodied. emitBlock-
+        // TrailingExpr will recognize TryExpr / ThrowExpr / ReturnExpr
+        // and emit them as clean JS statements (no inner IIFE), so an
+        // embedded `await` doesn't end up inside a sync wrapper.
+        const synth: Block = {
+          kind: 'Block',
+          body: [node.body],
+          start: node.body.start,
+          end: node.body.end,
+        }
+        this.emitLambdaStmtBody(synth)
       } else {
         this.emitExpr(node.body)
       }
@@ -1398,6 +1458,8 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       return
     case 'NewExpr':
     case 'SpreadElement':
+    case 'AwaitExpr':
+    case 'ImportExpr':
       collectClassRefs(expr.arg, out)
       return
     case 'UpdateExpr':
@@ -1493,6 +1555,8 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
     case 'NewExpr':
     case 'SpreadElement':
     case 'UpdateExpr':
+    case 'AwaitExpr':
+    case 'ImportExpr':
       collectStyleBlockBodies(expr.arg, out)
       return
     case 'TemplateLit':
@@ -1899,6 +1963,8 @@ function containsControlFlow(expr: Expr): boolean {
     case 'NewExpr':
     case 'SpreadElement':
     case 'UpdateExpr':
+    case 'AwaitExpr':
+    case 'ImportExpr':
       return containsControlFlow(expr.arg)
     case 'TemplateLit':
       return expr.expressions.some(containsControlFlow)

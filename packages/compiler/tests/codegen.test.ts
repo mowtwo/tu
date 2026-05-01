@@ -931,4 +931,42 @@ describe('codegen', () => {
   it('M6.5: template chunk escape sequences decoded correctly', () => {
     expect(compile('let g = () => `a\\`b\\\\c$\\${not-an-expr}`')).toContain('`a\\`b\\\\c$\\${not-an-expr}`')
   })
+
+  it('M6.6: async lambda emits `async (…) =>` and statement-bodied form', () => {
+    const js = compile('let f = async (id) => { let r = await fetch(`/api/${id}`); r.json() }')
+    expect(js).toContain('async (id) => {')
+    expect(js).toContain('(await fetch(')
+    expect(js).toContain('return r.json()')
+  })
+
+  it('M6.6: async lambda with try-catch body emits clean async stmt-form (no inner IIFE)', () => {
+    // The previous expression-body path wrapped the try in a sync
+    // IIFE, which made any embedded `await` a syntax error. Statement
+    // form keeps the await inside the async scope.
+    const js = compile('let f = async (url) => try { await fetch(url) } catch (e) { null }')
+    expect(js).toContain('async (url) => {')
+    expect(js).toContain('try {')
+    expect(js).toContain('return (await fetch(url))')
+    expect(js).toContain('} catch (e) {')
+    // Crucially no inner sync IIFE — only the outer async lambda itself.
+    expect(js).not.toContain('(() => {')
+  })
+
+  it('M6.6: dynamic `import("mod")` round-trips to JS dynamic import', () => {
+    const js = compile('let live = async () => { let m = await import("./live-demo.js"); m.start() }')
+    expect(js).toContain('await import("./live-demo.js")')
+  })
+
+  it('M6.6: `(await x).foo()` parses correctly via paren-expr postfix', () => {
+    const js = compile('let load = async (url) => (await fetch(url)).json()')
+    expect(js).toContain('(await fetch(url)).json()')
+  })
+
+  it('M6.6: synchronous lambdas keep expression-bodied form (no async wrap)', () => {
+    // Don't regress: a sync lambda without control flow still emits the
+    // tighter `() => h(...)` form, not the async / statement-bodied path.
+    const js = compile('let App = () => div { "hi" }')
+    expect(js).toContain('const App = () => h("div", {}, ["hi"])')
+    expect(js).not.toContain('async')
+  })
 })
