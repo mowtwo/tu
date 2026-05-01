@@ -123,11 +123,14 @@ export interface TokenMapping {
  */
 export type CellKind = 'state' | 'computed' | 'function'
 
-/** Tu `==` / `!=` map to JS strict equality to avoid coercion surprises. */
+/** Tu `==` / `!=` map to JS strict equality to avoid coercion surprises.
+ *  Other operators (logical, nullish, arithmetic, relational) pass
+ *  through verbatim — they have identical semantics in JS. */
 const BINARY_OP_JS: Record<BinaryOp, string> = {
   '+': '+', '-': '-', '*': '*', '/': '/', '%': '%',
   '==': '===', '!=': '!==',
   '<': '<', '<=': '<=', '>': '>', '>=': '>=',
+  '||': '||', '&&': '&&', '??': '??',
 }
 
 /** Per-component scoping state. Populated for any top-level `let X = (…) => { … }`
@@ -549,6 +552,33 @@ class Codegen {
       case 'MethodCallExpr':
         this.emitMethodCallExpr(expr)
         return
+      case 'IndexExpr':
+        this.emitExpr(expr.object)
+        this.write(expr.optional ? '?.[' : '[')
+        this.emitExpr(expr.index)
+        this.write(']')
+        return
+      case 'UnaryExpr':
+        // Wrap in parens so the result composes safely inside larger
+        // expressions (e.g. `a + !b` or `a - -b` read correctly without
+        // relying on consumer precedence).
+        this.write(`(${expr.op}`)
+        this.emitExpr(expr.arg)
+        this.write(')')
+        return
+      case 'NonNullAssertExpr':
+        // TS-only: emit `expr!` so tsserver sees the narrowing. In JS-emit
+        // mode (default for build / runtime) the assertion is erased —
+        // it has no JS semantics. We DON'T just pass through to emitExpr
+        // because at runtime `(x)!` would parse as `x!=undefined` lookup
+        // ambiguity in some contexts; keep it strictly TS.
+        if (this.tsMode) {
+          this.emitExpr(expr.arg)
+          this.write('!')
+        } else {
+          this.emitExpr(expr.arg)
+        }
+        return
     }
   }
 
@@ -558,15 +588,23 @@ class Codegen {
     // plain JS dot-access. The property is always a static identifier
     // (parser guarantees `Ident` after the postfix dot).
     this.emitExpr(node.object)
-    this.write('.')
+    this.write(node.optional ? '?.' : '.')
     this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
   }
 
   private emitMethodCallExpr(node: MethodCallExpr): void {
     this.emitExpr(node.object)
-    this.write('.')
-    this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
-    this.write('(')
+    // Empty property + optional flag = optional direct call (`fn?.()`).
+    // The parser uses MethodCallExpr-with-empty-property for this shape
+    // since its layout (object + args + propertyStart anchor) already
+    // covers what we need to emit.
+    if (node.optional && node.property === '') {
+      this.write('?.(')
+    } else {
+      this.write(node.optional ? '?.' : '.')
+      this.mark(node.propertyStart, node.propertyEnd, () => this.write(node.property))
+      this.write('(')
+    }
     for (let i = 0; i < node.args.length; i++) {
       if (i > 0) this.write(', ')
       this.emitExpr(node.args[i]!)
@@ -1070,6 +1108,14 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       collectClassRefs(expr.object, out)
       for (const a of expr.args) collectClassRefs(a, out)
       return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+      collectClassRefs(expr.arg, out)
+      return
+    case 'IndexExpr':
+      collectClassRefs(expr.object, out)
+      collectClassRefs(expr.index, out)
+      return
     default:
       return
   }
@@ -1126,6 +1172,14 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
     case 'MethodCallExpr':
       collectStyleBlockBodies(expr.object, out)
       for (const a of expr.args) collectStyleBlockBodies(a, out)
+      return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+      collectStyleBlockBodies(expr.arg, out)
+      return
+    case 'IndexExpr':
+      collectStyleBlockBodies(expr.object, out)
+      collectStyleBlockBodies(expr.index, out)
       return
     default:
       return

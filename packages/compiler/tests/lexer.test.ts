@@ -123,8 +123,27 @@ describe('lexer', () => {
     expect(tokens[1]?.text).toBe('_x')
   })
 
-  it('throws on bare !', () => {
-    expect(() => tokenize('!')).toThrow(/unexpected character/)
+  it('lexes bare `!` as Bang (prefix logical-NOT / postfix non-null)', () => {
+    const tokens = tokenize('!x')
+    expect(tokens.map((t) => t.kind)).toEqual([TokenKind.Bang, TokenKind.Ident, TokenKind.Eof])
+  })
+
+  it('lexes `!=` as a single NotEq token (not Bang + Equals)', () => {
+    const tokens = tokenize('a != b')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Ident, TokenKind.NotEq, TokenKind.Ident, TokenKind.Eof,
+    ])
+  })
+
+  it('lexes `||`, `&&`, `??`, `?.` as compound tokens', () => {
+    const tokens = tokenize('a || b && c ?? d?.e')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Ident, TokenKind.OrOr,
+      TokenKind.Ident, TokenKind.AndAnd,
+      TokenKind.Ident, TokenKind.QuestionQuestion,
+      TokenKind.Ident, TokenKind.QuestionDot, TokenKind.Ident,
+      TokenKind.Eof,
+    ])
   })
 
   it('lexes a `.` as Dot (used by class refs)', () => {

@@ -99,6 +99,9 @@ export type Expr =
   | ObjectLit
   | MemberExpr
   | MethodCallExpr
+  | UnaryExpr
+  | NonNullAssertExpr
+  | IndexExpr
 
 export interface Lambda extends Ranged {
   kind: 'Lambda'
@@ -194,6 +197,9 @@ export type Child =
   | ObjectLit
   | MemberExpr
   | MethodCallExpr
+  | UnaryExpr
+  | NonNullAssertExpr
+  | IndexExpr
 
 export interface CallExpr extends Ranged {
   kind: 'CallExpr'
@@ -223,12 +229,30 @@ export interface CallExpr extends Ranged {
 export type BinaryOp =
   | '+' | '-' | '*' | '/' | '%'
   | '==' | '!=' | '<' | '<=' | '>' | '>='
+  | '||' | '&&' | '??'
 
 export interface BinaryExpr extends Ranged {
   kind: 'BinaryExpr'
   op: BinaryOp
   left: Expr
   right: Expr
+}
+
+/** Prefix unary — `!` (logical NOT), `-` (numeric negation), `+`
+ *  (numeric coercion). Each emits as the matching JS operator, with the
+ *  arg wrapped in parens so larger expressions compose correctly. */
+export interface UnaryExpr extends Ranged {
+  kind: 'UnaryExpr'
+  op: '!' | '-' | '+'
+  arg: Expr
+}
+
+/** Postfix `!` — TypeScript's non-null assertion. Erased in JS-emit
+ *  mode; preserved verbatim in TS-emit mode so tsserver's flow analysis
+ *  picks it up. Has no runtime effect. */
+export interface NonNullAssertExpr extends Ranged {
+  kind: 'NonNullAssertExpr'
+  arg: Expr
 }
 
 export interface StringLit extends Ranged {
@@ -379,6 +403,19 @@ export interface MemberExpr extends Ranged {
   /** Source byte range of the property name. */
   propertyStart: number
   propertyEnd: number
+  /** True when this access used `?.` instead of `.`. Codegen emits the
+   *  optional-chaining operator; if absent the access is non-optional. */
+  optional?: boolean
+}
+
+/** Computed-key access — `obj[expr]` or `obj?.[expr]`. Distinct from
+ *  `MemberExpr` because the key is an arbitrary expression rather than
+ *  a static identifier. */
+export interface IndexExpr extends Ranged {
+  kind: 'IndexExpr'
+  object: Expr
+  index: Expr
+  optional?: boolean
 }
 
 /**
@@ -401,4 +438,6 @@ export interface MethodCallExpr extends Ranged {
   /** Source byte range of the method name. */
   propertyStart: number
   propertyEnd: number
+  /** True when the call used `?.method(args)` instead of `.method(args)`. */
+  optional?: boolean
 }

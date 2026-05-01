@@ -47,6 +47,17 @@ export enum TokenKind {
   LtEq,
   EqEq,
   NotEq,
+  // logical / nullish
+  OrOr,
+  AndAnd,
+  QuestionQuestion,
+  /** `?.` — JS optional chaining (member access / call). The lexer
+   *  emits this only when `?` is immediately followed by `.`; bare `?`
+   *  (used in type spans for optional fields) keeps lexing as Question. */
+  QuestionDot,
+  /** `!` (standalone) — prefix logical-NOT or postfix TS non-null
+   *  assertion. `!=` keeps lexing as a single NotEq token. */
+  Bang,
   // keywords
   Let,
   Export,

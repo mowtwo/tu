@@ -92,7 +92,7 @@ export class Lexer {
         if (this.src.charAt(this.pos + 1) === '=') {
           return this.punct(TokenKind.NotEq, start, 2)
         }
-        break
+        return this.punct(TokenKind.Bang, start, 1)
       case '<':
         if (this.src.charAt(this.pos + 1) === '=') {
           return this.punct(TokenKind.LtEq, start, 2)
@@ -114,12 +114,24 @@ export class Lexer {
       case '%':
         return this.punct(TokenKind.Percent, start, 1)
       case '|':
+        if (this.src.charAt(this.pos + 1) === '|') {
+          return this.punct(TokenKind.OrOr, start, 2)
+        }
         return this.punct(TokenKind.Pipe, start, 1)
       case '&':
+        if (this.src.charAt(this.pos + 1) === '&') {
+          return this.punct(TokenKind.AndAnd, start, 2)
+        }
         return this.punct(TokenKind.Amp, start, 1)
       case ';':
         return this.punct(TokenKind.Semi, start, 1)
       case '?':
+        if (this.src.charAt(this.pos + 1) === '?') {
+          return this.punct(TokenKind.QuestionQuestion, start, 2)
+        }
+        if (this.src.charAt(this.pos + 1) === '.') {
+          return this.punct(TokenKind.QuestionDot, start, 2)
+        }
         return this.punct(TokenKind.Question, start, 1)
       case '[':
         return this.punct(TokenKind.LBracket, start, 1)

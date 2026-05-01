@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compile } from '../src/index.js'
+import { compile, compileToTS } from '../src/index.js'
 
 describe('codegen', () => {
   it('emits a runtime import header bringing in h and Signal', () => {
@@ -65,6 +65,50 @@ describe('codegen', () => {
     `)
     // Pratt parser respects precedence: 2 * 3 binds tighter than a + ...
     expect(js).toContain(`(a.get() + (2 * 3))`)
+  })
+
+  it('emits ||, &&, ?? logical/nullish operators verbatim', () => {
+    const js = compile('let App = (p) => div { p.show && (p.label || p.fallback) ?? "x" }')
+    expect(js).toContain('((p.show && (p.label || p.fallback)) ?? "x")')
+  })
+
+  it('emits prefix ! / - / + as parenthesized unary', () => {
+    const js = compile('let App = (p) => div { !p.hidden + -p.n + +p.m }')
+    expect(js).toContain('(!p.hidden)')
+    expect(js).toContain('(-p.n)')
+    expect(js).toContain('(+p.m)')
+  })
+
+  it('erases postfix ! (TS non-null) in JS-emit, preserves in TS-emit', () => {
+    expect(compile('let App = (p) => div { p.value! }')).toContain('[p.value]')
+    expect(compileToTS('let App = (p) => div { p.value! }')).toContain('[p.value!]')
+  })
+
+  it('emits ?.member, ?.(), ?.[] optional-chaining operators', () => {
+    const js = compile(`
+      let App = (p) => div(onClick: () => p.onClose?.()) {
+        p.list?.length
+        p.list?.[0]
+      }
+    `)
+    expect(js).toContain('p.onClose?.()')
+    expect(js).toContain('p.list?.length')
+    expect(js).toContain('p.list?.[0]')
+  })
+
+  it('emits computed member access obj[expr]', () => {
+    const js = compile('let App = (p) => div { p["key"] }')
+    expect(js).toContain('p["key"]')
+  })
+
+  it('parenthesized expression overrides operator precedence', () => {
+    const js = compile('let App = (p) => div { (p.a || p.b) && p.c }')
+    expect(js).toContain('((p.a || p.b) && p.c)')
+  })
+
+  it('TS-style optional param `name?: T` lowers to `(T) | undefined` in TS-emit', () => {
+    const ts = compileToTS('export let f = (x: string, y?: boolean) => true')
+    expect(ts).toContain('y: (boolean) | undefined')
   })
 
   it('flattens block-bodied lambdas to expression form when single child', () => {

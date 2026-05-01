@@ -36,21 +36,29 @@ import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
 
 const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
-  // Equality (lowest)
-  [TokenKind.EqEq]: { op: '==', prec: 1 },
-  [TokenKind.NotEq]: { op: '!=', prec: 1 },
+  // Nullish + logical OR (lowest). Same precedence as ||; mixing them
+  // would be ambiguous so users will need parens — JS itself disallows
+  // `a || b ?? c` without parens at the syntax level. We stay lax and
+  // delegate the diagnostic to tsserver in TS-emit mode.
+  [TokenKind.QuestionQuestion]: { op: '??', prec: 1 },
+  [TokenKind.OrOr]: { op: '||', prec: 1 },
+  // Logical AND
+  [TokenKind.AndAnd]: { op: '&&', prec: 2 },
+  // Equality
+  [TokenKind.EqEq]: { op: '==', prec: 3 },
+  [TokenKind.NotEq]: { op: '!=', prec: 3 },
   // Relational
-  [TokenKind.Lt]: { op: '<', prec: 2 },
-  [TokenKind.LtEq]: { op: '<=', prec: 2 },
-  [TokenKind.Gt]: { op: '>', prec: 2 },
-  [TokenKind.GtEq]: { op: '>=', prec: 2 },
+  [TokenKind.Lt]: { op: '<', prec: 4 },
+  [TokenKind.LtEq]: { op: '<=', prec: 4 },
+  [TokenKind.Gt]: { op: '>', prec: 4 },
+  [TokenKind.GtEq]: { op: '>=', prec: 4 },
   // Additive
-  [TokenKind.Plus]: { op: '+', prec: 3 },
-  [TokenKind.Minus]: { op: '-', prec: 3 },
+  [TokenKind.Plus]: { op: '+', prec: 5 },
+  [TokenKind.Minus]: { op: '-', prec: 5 },
   // Multiplicative (highest)
-  [TokenKind.Star]: { op: '*', prec: 4 },
-  [TokenKind.Slash]: { op: '/', prec: 4 },
-  [TokenKind.Percent]: { op: '%', prec: 4 },
+  [TokenKind.Star]: { op: '*', prec: 6 },
+  [TokenKind.Slash]: { op: '/', prec: 6 },
+  [TokenKind.Percent]: { op: '%', prec: 6 },
 }
 
 export class Parser {
@@ -368,11 +376,95 @@ export class Parser {
    */
   private parsePostfix(expr: Expr): Expr {
     while (true) {
-      if (this.peek().kind !== TokenKind.Dot) return expr
+      // TS-style non-null assertion `expr!` — only attach to value-yielding
+      // exprs (Ident, MemberExpr, etc.); the helper does the same gating
+      // as the dot-chain branch below. Erased in JS-emit, preserved in
+      // TS-emit so tsserver picks up the narrowing.
+      if (this.peek().kind === TokenKind.Bang && isMemberAccessibleExpr(expr)) {
+        const bang = this.peek()
+        this.pos++ // consume `!`
+        expr = {
+          kind: 'NonNullAssertExpr',
+          arg: expr,
+          start: expr.start,
+          end: bang.end,
+        }
+        continue
+      }
+      // Computed-key access — `obj[expr]`. Only valid after a value-
+      // yielding expr; otherwise an `[…]` after some other construct
+      // (e.g. `for x in xs { … }`) would greedily eat a sibling array
+      // literal in tag-call children. Same gate as dot-access below.
+      if (this.peek().kind === TokenKind.LBracket && isMemberAccessibleExpr(expr)) {
+        this.pos++ // consume `[`
+        const index = this.parseExpr()
+        const rbracket = this.expect(TokenKind.RBracket)
+        expr = {
+          kind: 'IndexExpr',
+          object: expr,
+          index,
+          start: expr.start,
+          end: rbracket.end,
+        }
+        continue
+      }
+      const head = this.peek().kind
+      const isOptional = head === TokenKind.QuestionDot
+      if (head !== TokenKind.Dot && !isOptional) return expr
       if (!isMemberAccessibleExpr(expr)) return expr
       const next = this.tokens[this.pos + 1]
+      // After `?.` we accept three follow-ups: an Ident (member /
+      // method), `(` (optional call: `fn?.()`), or `[` (optional
+      // computed: `arr?.[i]`). After plain `.` only Ident is valid.
+      if (isOptional) {
+        if (next?.kind === TokenKind.LParen) {
+          this.pos += 2 // consume `?.` and `(`
+          const args: Expr[] = []
+          while (this.peek().kind !== TokenKind.RParen) {
+            args.push(this.parseExpr())
+            if (this.peek().kind === TokenKind.Comma) this.pos++
+          }
+          const rparen = this.expect(TokenKind.RParen)
+          // No member name — represent as MethodCallExpr with `property
+          // === ''` is awkward; instead emit a plain CallExpr-like
+          // shape via MethodCallExpr-on-an-empty-string would mislead
+          // codegen's `.method()` write. Use IndexExpr-like trick: emit
+          // a MethodCallExpr whose property is `''` and special-case in
+          // codegen — but that's brittle. Cleanest path: introduce a
+          // dedicated optional-call node. To keep this PR small, model
+          // optional call as a CallExpr-like via the existing
+          // MethodCallExpr where empty property + optional flag means
+          // direct call. Codegen emits `<obj>?.( … )`.
+          expr = {
+            kind: 'MethodCallExpr',
+            object: expr,
+            property: '',
+            args,
+            start: expr.start,
+            end: rparen.end,
+            propertyStart: rparen.start,
+            propertyEnd: rparen.start,
+            optional: true,
+          }
+          continue
+        }
+        if (next?.kind === TokenKind.LBracket) {
+          this.pos += 2 // consume `?.` and `[`
+          const index = this.parseExpr()
+          const rbracket = this.expect(TokenKind.RBracket)
+          expr = {
+            kind: 'IndexExpr',
+            object: expr,
+            index,
+            start: expr.start,
+            end: rbracket.end,
+            optional: true,
+          }
+          continue
+        }
+      }
       if (next?.kind !== TokenKind.Ident) return expr
-      this.pos++ // consume the dot
+      this.pos++ // consume the `.` or `?.`
       const propTok = this.expect(TokenKind.Ident)
       // M5.9: `.Ident` immediately followed by `(args)` is a method
       // call (`obj.method(arg1, arg2)`). Collapse into MethodCallExpr.
@@ -386,7 +478,7 @@ export class Parser {
           if (this.peek().kind === TokenKind.Comma) this.pos++
         }
         const rparen = this.expect(TokenKind.RParen)
-        expr = {
+        const callNode: MethodCallExpr = {
           kind: 'MethodCallExpr',
           object: expr,
           property: propTok.text,
@@ -395,10 +487,12 @@ export class Parser {
           end: rparen.end,
           propertyStart: propTok.start,
           propertyEnd: propTok.end,
-        } satisfies MethodCallExpr
+        }
+        if (isOptional) callNode.optional = true
+        expr = callNode
         continue
       }
-      expr = {
+      const memberNode: MemberExpr = {
         kind: 'MemberExpr',
         object: expr,
         property: propTok.text,
@@ -406,13 +500,17 @@ export class Parser {
         end: propTok.end,
         propertyStart: propTok.start,
         propertyEnd: propTok.end,
-      } satisfies MemberExpr
+      }
+      if (isOptional) memberNode.optional = true
+      expr = memberNode
     }
   }
 
   private parsePrefix(): Expr {
     const k = this.peek().kind
-    if (k === TokenKind.LParen) return this.parseLambda()
+    if (k === TokenKind.LParen) {
+      return this.peekArrowFollowsParen() ? this.parseLambda() : this.parseParenExpr()
+    }
     if (k === TokenKind.LBrace && !this.noBraceBlock) {
       return this.peekObjectLitShape() ? this.parseObjectLit() : this.parseBlock()
     }
@@ -420,6 +518,19 @@ export class Parser {
     if (k === TokenKind.If) return this.parseIfExpr()
     if (k === TokenKind.For) return this.parseForExpr()
     if (k === TokenKind.Dot) return this.parseClassRefOrPugShorthand()
+    if (k === TokenKind.Bang || k === TokenKind.Minus || k === TokenKind.Plus) {
+      const tok = this.peek()
+      const op = k === TokenKind.Bang ? '!' : k === TokenKind.Minus ? '-' : '+'
+      this.pos++ // consume the prefix operator
+      const arg = this.parsePostfix(this.parsePrefix())
+      return {
+        kind: 'UnaryExpr',
+        op,
+        arg,
+        start: tok.start,
+        end: arg.end,
+      }
+    }
     return this.parsePrimary()
   }
 
@@ -590,6 +701,84 @@ export class Parser {
     }
   }
 
+  /**
+   * Disambiguate `(…)` between a Lambda and a parenthesized expression.
+   * Scans forward across balanced parens / brackets / braces to find the
+   * matching `)`, then peeks past the optional `: returnType` span. If
+   * the next token is `=>`, this is a lambda; otherwise it's a
+   * parenthesized expression. Lambdas with explicit return-type
+   * annotations still parse correctly because the return-type span
+   * never contains a `=>` (the lexer treats `=>` as a single token, and
+   * type spans use Pipe/Amp/Question for unions/optionals).
+   */
+  private peekArrowFollowsParen(): boolean {
+    let depth = 0
+    let i = this.pos
+    for (; i < this.tokens.length; i++) {
+      const t = this.tokens[i]!
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket
+      ) {
+        depth--
+        if (depth === 0 && t.kind === TokenKind.RParen) {
+          // Walk past an optional `: returnType` span to find the `=>`.
+          let j = i + 1
+          if (this.tokens[j]?.kind === TokenKind.Colon) {
+            j++
+            // Skip a balanced type-span until we hit `=>` or a stmt boundary.
+            while (j < this.tokens.length) {
+              const tj = this.tokens[j]!
+              if (tj.kind === TokenKind.FatArrow && depth === 0) return true
+              if (
+                tj.kind === TokenKind.LBrace ||
+                tj.kind === TokenKind.LParen ||
+                tj.kind === TokenKind.LBracket
+              ) {
+                depth++
+              } else if (
+                tj.kind === TokenKind.RBrace ||
+                tj.kind === TokenKind.RParen ||
+                tj.kind === TokenKind.RBracket
+              ) {
+                if (depth === 0) return false
+                depth--
+              } else if (tj.kind === TokenKind.Eof) {
+                return false
+              }
+              j++
+            }
+            return false
+          }
+          return this.tokens[j]?.kind === TokenKind.FatArrow
+        }
+      } else if (t.kind === TokenKind.Eof) {
+        return false
+      }
+    }
+    return false
+  }
+
+  /**
+   * Parenthesized expression — `(expr)`. Only reached when
+   * `peekArrowFollowsParen` returned false, so we know there's no `=>`
+   * after the close paren. The wrapping parens are erased; precedence is
+   * preserved by the recursive `parseExpr` already inside the parens.
+   */
+  private parseParenExpr(): Expr {
+    this.expect(TokenKind.LParen)
+    const inner = this.parseExpr()
+    this.expect(TokenKind.RParen)
+    return inner
+  }
+
   private parseLambda(): Lambda {
     const lparen = this.expect(TokenKind.LParen)
     const params: Param[] = []
@@ -665,11 +854,26 @@ export class Parser {
     const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
     let endOffset = nameTok.end
+    // TS-style optional param: `(name?: T)`. Tu mirrors the syntax — the
+    // `?` is folded into the emitted TS type span so tsserver sees a
+    // proper optional. We append ` | undefined` rather than rewriting
+    // the param name to `name?` since codegen emits the param name in
+    // a JS context where `?` would be a syntax error.
+    let optional = false
+    if (this.peek().kind === TokenKind.Question) {
+      optional = true
+      this.pos++
+      endOffset = this.tokens[this.pos - 1]!.end
+    }
     if (this.peek().kind === TokenKind.Colon) {
       this.pos++
       const span = this.parseRawTypeUntilParamBoundary()
-      type = span.text
+      type = optional ? `(${span.text}) | undefined` : span.text
       endOffset = span.end
+    } else if (optional) {
+      // `name?` with no colon = implicit `unknown | undefined`. Pass the
+      // narrower `undefined` through; tsserver will widen as needed.
+      type = 'undefined'
     }
     return type === undefined
       ? {
@@ -1143,8 +1347,12 @@ function isMemberAccessibleExpr(expr: Expr): boolean {
   if (expr.kind === 'Ident') return true
   if (expr.kind === 'MemberExpr') return true
   if (expr.kind === 'MethodCallExpr') return true
+  if (expr.kind === 'IndexExpr') return true
   if (expr.kind === 'ObjectLit') return true
   if (expr.kind === 'ArrayLit') return true
+  // `x!.foo` / `x!()` — the non-null assertion preserves the underlying
+  // expression's accessibility for chaining.
+  if (expr.kind === 'NonNullAssertExpr') return true
   if (expr.kind === 'CallExpr') {
     // A component invocation with a trailing children block yields a
     // vnode, not a plain value — exclude it. Plain function/component
