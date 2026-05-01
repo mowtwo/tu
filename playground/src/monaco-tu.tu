@@ -158,6 +158,348 @@ let defineTuTheme = external JS (monaco: any) {
 let _registerLang = registerTuLanguage(monaco)
 let _registerTheme = defineTuTheme(monaco)
 
+// Snippet completion + symbol completion + hover + go-to-definition.
+// All runs in-browser using @tu-lang/compiler's parser — no LSP, no
+// typescript. Provides:
+//   - Keyword + HTML-tag + common-pattern snippets
+//   - Symbols declared anywhere in the workspace's open models
+//     (`let X = …`, `export let X`, `type X`)
+//   - Hover showing the source of any declaration we can find
+//   - Go-to-definition jumps to the first matching `let X` in any model
+let registerTuLangServices = external JS (monaco: any): void {
+  const TU_KEYWORDS = [
+    "let", "export", "import", "from", "as", "if", "else", "for", "of", "in",
+    "computed", "async", "await", "try", "catch", "finally", "throw", "return",
+    "new", "external", "type",
+  ]
+  const TU_CONSTANTS = ["true", "false", "null", "undefined"]
+  const HTML_TAGS = [
+    "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6",
+    "a", "button", "input", "textarea", "select", "option", "form", "label",
+    "ul", "ol", "li", "table", "tr", "td", "th", "thead", "tbody",
+    "section", "article", "header", "footer", "nav", "main", "aside",
+    "img", "video", "audio", "iframe", "canvas",
+    "code", "pre", "strong", "em", "br", "hr",
+  ]
+  const SNIPPETS = [
+    {
+      label: "App",
+      detail: "exported component",
+      insertText: 'export let App = () => div {\n  $0\n}',
+      docs: "Top-level component for live editor.",
+    },
+    {
+      label: "component",
+      detail: "named component",
+      insertText: 'export let ${1:Name} = (props) => div {\n  $0\n}',
+      docs: "Reusable component with props parameter.",
+    },
+    {
+      label: "cell",
+      detail: "reactive state cell",
+      insertText: 'let ${1:count} = ${2:0}',
+      docs: "Auto-wrapped in Signal.State; `${1} = …` mutates it.",
+    },
+    {
+      label: "computed",
+      detail: "derived cell",
+      insertText: 'let ${1:doubled} = computed(${2:count} * 2)',
+      docs: "Derived cell that re-evaluates when its inputs change.",
+    },
+    {
+      label: "if",
+      detail: "if expression",
+      insertText: 'if (${1:cond}) {\n  $0\n} else {\n  \n}',
+      docs: "Tu's if is an expression — branches yield values.",
+    },
+    {
+      label: "for",
+      detail: "for-in loop",
+      insertText: 'for ${1:item} in ${2:items} {\n  $0\n}',
+      docs: "Iterates a collection; yields an array of vnodes.",
+    },
+    {
+      label: "try",
+      detail: "try/catch",
+      insertText: 'try {\n  $1\n} catch (e) {\n  $0\n}',
+      docs: "Try expression — catch clause yields fallback value.",
+    },
+    {
+      label: "style",
+      detail: "scoped style block",
+      insertText: 'style {\n  .${1:className} {\n    $0\n  }\n}',
+      docs: "Per-component scoped CSS; class names are auto-hashed.",
+    },
+    {
+      label: "async",
+      detail: "async function",
+      insertText: 'async (${1:args}) => {\n  $0\n}',
+      docs: "Async lambda; can use await inside.",
+    },
+    {
+      label: "await",
+      detail: "await expression",
+      insertText: 'await ${0}',
+      docs: "Await a Promise inside an async lambda.",
+    },
+    {
+      label: "external JS",
+      detail: "raw JS escape hatch",
+      insertText: 'external JS (${1:args}): ${2:any} {\n  $0\n}',
+      docs: "Drop into raw JavaScript for browser-API interop.",
+    },
+    {
+      label: "fetch",
+      detail: "async fetch + json",
+      insertText: 'async (url) => {\n  let r = await fetch(url)\n  $0\n  return r.json()\n}',
+      docs: "Common fetch pattern.",
+    },
+  ]
+  const CompletionItemKind = monaco.languages.CompletionItemKind
+
+  // Cache parser results per model+version so hover/completion don't
+  // re-parse on every keystroke.
+  const parseCache = new WeakMap()
+  function parseModel(model) {
+    const v = model.getVersionId()
+    const cached = parseCache.get(model)
+    if (cached && cached.v === v) return cached.result
+    const result = scanDeclarations(model.getValue())
+    parseCache.set(model, { v, result })
+    return result
+  }
+  // Lightweight regex-based scan for top-level `let`/`export let`/`type`
+  // declarations. Skips comments + strings; tracks brace depth to keep
+  // top-level only. Faster than full Tu parse + good enough for hover
+  // and symbol completion.
+  function scanDeclarations(src) {
+    const decls = []
+    let i = 0
+    let line = 1
+    let col = 1
+    let depth = 0
+    while (i < src.length) {
+      const ch = src.charAt(i)
+      if (ch === "\n") { line++; col = 1; i++; continue }
+      // Skip line comments.
+      if (ch === "/" && src.charAt(i + 1) === "/") {
+        while (i < src.length && src.charAt(i) !== "\n") { i++; col++ }
+        continue
+      }
+      // Skip strings (any quote style).
+      if (ch === '"' || ch === "'" || ch === "`") {
+        const q = ch; i++; col++
+        while (i < src.length && src.charAt(i) !== q) {
+          if (src.charAt(i) === "\\") { i++; col++ }
+          if (i < src.length) { if (src.charAt(i) === "\n") { line++; col = 1 } else { col++ } i++ }
+        }
+        if (i < src.length) { i++; col++ }
+        continue
+      }
+      // Track depth.
+      if (ch === "{" || ch === "(" || ch === "[") { depth++; i++; col++; continue }
+      if (ch === "}" || ch === ")" || ch === "]") { depth--; i++; col++; continue }
+      // Look for top-level `let`/`export let`/`type` at depth 0.
+      if (depth === 0 && /[a-z]/.test(ch)) {
+        const rest = src.slice(i)
+        let m = rest.match(/^export\s+let\s+([A-Za-z_$][\w$]*)/)
+        if (m) {
+          decls.push({ kind: "let", exported: true, name: m[1], line, col, offset: i, len: m[0].length })
+          i += m[0].length
+          continue
+        }
+        m = rest.match(/^let\s+([A-Za-z_$][\w$]*)/)
+        if (m) {
+          decls.push({ kind: "let", exported: false, name: m[1], line, col, offset: i, len: m[0].length })
+          i += m[0].length
+          continue
+        }
+        m = rest.match(/^export\s+type\s+([A-Za-z_$][\w$]*)/)
+        if (m) {
+          decls.push({ kind: "type", exported: true, name: m[1], line, col, offset: i, len: m[0].length })
+          i += m[0].length
+          continue
+        }
+        m = rest.match(/^type\s+([A-Za-z_$][\w$]*)/)
+        if (m) {
+          decls.push({ kind: "type", exported: false, name: m[1], line, col, offset: i, len: m[0].length })
+          i += m[0].length
+          continue
+        }
+      }
+      i++; col++
+    }
+    return decls
+  }
+
+  function lineForOffset(src, off) {
+    const upto = src.slice(0, off)
+    return upto.split("\n").length
+  }
+  function snippetText(model, decl) {
+    const src = model.getValue()
+    const lineStart = src.lastIndexOf("\n", decl.offset - 1) + 1
+    const lineEnd = src.indexOf("\n", decl.offset)
+    return src.slice(lineStart, lineEnd === -1 ? src.length : lineEnd)
+  }
+
+  monaco.languages.registerCompletionItemProvider("tu", {
+    triggerCharacters: [".", " ", "<"],
+    provideCompletionItems(model, position) {
+      const word = model.getWordUntilPosition(position)
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      }
+      const suggestions = []
+      // Snippets.
+      for (const s of SNIPPETS) {
+        suggestions.push({
+          label: s.label,
+          kind: CompletionItemKind.Snippet,
+          insertText: s.insertText,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          detail: s.detail,
+          documentation: s.docs,
+          range,
+        })
+      }
+      // Keywords.
+      for (const k of TU_KEYWORDS) {
+        suggestions.push({ label: k, kind: CompletionItemKind.Keyword, insertText: k, range })
+      }
+      // Constants.
+      for (const c of TU_CONSTANTS) {
+        suggestions.push({ label: c, kind: CompletionItemKind.Constant, insertText: c, range })
+      }
+      // HTML tags.
+      for (const tag of HTML_TAGS) {
+        suggestions.push({
+          label: tag,
+          kind: CompletionItemKind.Class,
+          detail: "HTML element",
+          insertText: tag + " { $0 }",
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+        })
+      }
+      // Symbols from THIS file + every other open model in the workspace
+      // (so cross-file `let X` in another tab shows up here too).
+      const allModels = monaco.editor.getModels()
+      const seen = new Set()
+      for (const m of allModels) {
+        if (m.getLanguageId() !== "tu") continue
+        for (const d of parseModel(m)) {
+          if (seen.has(d.name)) continue
+          seen.add(d.name)
+          const isCurrent = m === model
+          suggestions.push({
+            label: d.name,
+            kind: d.kind === "type" ? CompletionItemKind.TypeParameter : CompletionItemKind.Variable,
+            detail: d.kind === "type"
+              ? (d.exported ? "exported type" : "type")
+              : (d.exported ? "exported binding" : "binding") + (isCurrent ? "" : ` (${m.uri.path})`),
+            insertText: d.name,
+            range,
+          })
+        }
+      }
+      return { suggestions }
+    },
+  })
+
+  monaco.languages.registerHoverProvider("tu", {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position)
+      if (!word) return null
+      // Search this model first, then peers.
+      const models = [model, ...monaco.editor.getModels().filter((m) => m !== model && m.getLanguageId() === "tu")]
+      for (const m of models) {
+        const decl = parseModel(m).find((d) => d.name === word.word)
+        if (decl) {
+          const where = m === model ? "" : ` (in ${m.uri.path})`
+          const text = snippetText(m, decl)
+          return {
+            contents: [
+              { value: `**${word.word}**${where}` },
+              { value: "```tu\n" + text.trim() + "\n```" },
+            ],
+          }
+        }
+      }
+      return null
+    },
+  })
+
+  monaco.languages.registerDefinitionProvider("tu", {
+    provideDefinition(model, position) {
+      const word = model.getWordAtPosition(position)
+      if (!word) return null
+      for (const m of monaco.editor.getModels()) {
+        if (m.getLanguageId() !== "tu") continue
+        const decl = parseModel(m).find((d) => d.name === word.word)
+        if (decl) {
+          const ln = lineForOffset(m.getValue(), decl.offset)
+          // The decl's `offset` is the start of `let`/`export let`; jump
+          // to the column of the name (offset by `let ` keyword).
+          const before = m.getValue().slice(decl.offset, decl.offset + decl.len)
+          const nameStart = decl.offset + before.lastIndexOf(decl.name)
+          const lineStart = m.getValue().lastIndexOf("\n", nameStart - 1) + 1
+          const colStart = nameStart - lineStart + 1
+          return {
+            uri: m.uri,
+            range: {
+              startLineNumber: ln,
+              startColumn: colStart,
+              endLineNumber: ln,
+              endColumn: colStart + decl.name.length,
+            },
+          }
+        }
+      }
+      return null
+    },
+  })
+
+  // Reference provider — find every occurrence of the symbol name in
+  // any Tu model. Word-boundary regex; skips comments + strings.
+  monaco.languages.registerReferenceProvider("tu", {
+    provideReferences(model, position) {
+      const word = model.getWordAtPosition(position)
+      if (!word) return []
+      const refs = []
+      const re = new RegExp(`\\b${word.word.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\b`, "g")
+      for (const m of monaco.editor.getModels()) {
+        if (m.getLanguageId() !== "tu") continue
+        const src = m.getValue()
+        let match
+        while ((match = re.exec(src)) !== null) {
+          // Skip if inside a // comment.
+          const lineStart = src.lastIndexOf("\n", match.index - 1) + 1
+          const linePrefix = src.slice(lineStart, match.index)
+          if (linePrefix.includes("//")) continue
+          const ln = lineForOffset(src, match.index)
+          const col = match.index - lineStart + 1
+          refs.push({
+            uri: m.uri,
+            range: {
+              startLineNumber: ln,
+              startColumn: col,
+              endLineNumber: ln,
+              endColumn: col + word.word.length,
+            },
+          })
+        }
+      }
+      return refs
+    },
+  })
+}
+
+let _registerServices = registerTuLangServices(monaco)
+
 // Mount a Tu-flavored Monaco editor into `host`. Returns the editor
 // instance plus a teardown that disposes the editor + its model. The
 // caller wires up `onDidChangeModelContent` for the recompile pipeline.

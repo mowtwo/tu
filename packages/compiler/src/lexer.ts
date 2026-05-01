@@ -181,7 +181,7 @@ export class Lexer {
     const start = this.pos
     const ch = this.src.charAt(this.pos)
 
-    if (ch === '"') return this.lexString(start)
+    if (ch === '"' || ch === "'") return this.lexString(start, ch)
     if (ch === '`') return this.punct(TokenKind.Backtick, start, 1)
     if (ch >= '0' && ch <= '9') return this.lexNumber(start)
     if (isIdentStart(ch)) return this.lexIdent(start)
@@ -470,10 +470,14 @@ export class Lexer {
     }
   }
 
-  private lexString(start: number): Token {
+  /** Both `"…"` and `'…'` are accepted — match JS, since requiring a
+   *  single quote style was just a Tu V1 convenience. The same escape
+   *  table covers either: `\n`, `\t`, `\r`, `\\` plus the matching
+   *  quote char. */
+  private lexString(start: number, quote: string): Token {
     this.pos++ // consume opening quote
     let value = ''
-    while (this.pos < this.src.length && this.src.charAt(this.pos) !== '"') {
+    while (this.pos < this.src.length && this.src.charAt(this.pos) !== quote) {
       const ch = this.src.charAt(this.pos)
       if (ch === '\\') {
         this.pos++
@@ -481,7 +485,7 @@ export class Lexer {
         if (esc === 'n') value += '\n'
         else if (esc === 't') value += '\t'
         else if (esc === 'r') value += '\r'
-        else if (esc === '"') value += '"'
+        else if (esc === '"' || esc === "'") value += esc
         else if (esc === '\\') value += '\\'
         else value += esc
         this.pos++
