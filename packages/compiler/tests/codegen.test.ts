@@ -703,14 +703,14 @@ describe('codegen', () => {
     expect(js).toContain('Card("Hello", [h("p", {}, ["body"])])')
   })
 
-  it('M5.2: local `let` inside a block compiles to a const inside an IIFE', () => {
+  it('M5.2: local `let` inside a block compiles to a JS `let` inside an IIFE', () => {
     const js = compile(`
       let App = () => {
         let greeting = "hi"
         p { greeting }
       }
     `)
-    expect(js).toContain('const greeting = "hi"')
+    expect(js).toContain('let greeting = "hi"')
     expect(js).toContain('return h("p", {}, [greeting])')
   })
 
@@ -722,12 +722,12 @@ describe('codegen', () => {
         p { b }
       }
     `)
-    expect(js).toContain('const a = 1')
-    expect(js).toContain('const b = (a + 2)')
+    expect(js).toContain('let a = 1')
+    expect(js).toContain('let b = (a + 2)')
     expect(js).toContain('return h("p", {}, [b])')
   })
 
-  it('M5.2: local `let` is plain const, NOT wrapped in Signal.State', () => {
+  it('M5.2: local `let` is a plain block-scoped binding, NOT wrapped in Signal.State', () => {
     const js = compile(`
       let App = () => {
         let count = 0
@@ -736,7 +736,7 @@ describe('codegen', () => {
     `)
     // Module-level lets wrap; local lets do not.
     expect(js).not.toContain('new Signal.State')
-    expect(js).toContain('const count = 0')
+    expect(js).toContain('let count = 0')
     // And reads stay as bare idents (no .get() injection inside the block).
     expect(js).toContain('return h("p", {}, [count])')
   })

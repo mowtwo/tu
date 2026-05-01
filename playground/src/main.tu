@@ -223,7 +223,7 @@ let activate = (demo, sidebarEl: Element, headerEl: Element, mountEl: Element) =
     stop()
     stop = null
   }
-  if (activeDemo != null && activeDemo.teardown != null) { activeDemo.teardown() }
+  if (activeDemo) { activeDemo.teardown?.() }
   activeDemo = demo
 
   let label = labelFor(demo.id)
@@ -234,7 +234,7 @@ let activate = (demo, sidebarEl: Element, headerEl: Element, mountEl: Element) =
   let parent = headerEl.parentElement
   let oldControls = parent.querySelector(":scope > .controls")
   if (oldControls) { oldControls.remove() }
-  if (demo.controls != null) {
+  if (demo.controls) {
     let controlsEl = document.createElement("div")
     controlsEl.className = "controls"
     renderControls(controlsEl, demo.controls())
@@ -243,7 +243,7 @@ let activate = (demo, sidebarEl: Element, headerEl: Element, mountEl: Element) =
 
   demo.setup()
   stop = mount(demo.thunk, mountEl)
-  if (demo.afterMount != null) { demo.afterMount() }
+  demo.afterMount?.()
 }
 
 let activateFromHash = async () => {

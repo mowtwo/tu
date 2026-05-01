@@ -553,7 +553,18 @@ class Codegen {
         this.write(')')
         return
       case 'InvokeExpr':
-        this.emitExpr(expr.callee)
+        // `(lambda)(args)` IIFE — JS doesn't allow `() => {…}(args)`
+        // directly, the arrow has to be paren-wrapped before the
+        // call-args list. Wrap defensively for all Lambda callees so
+        // both the IIFE shape and edge cases like `((x) => x)(1)`
+        // emit valid JS.
+        if (expr.callee.kind === 'Lambda') {
+          this.write('(')
+          this.emitExpr(expr.callee)
+          this.write(')')
+        } else {
+          this.emitExpr(expr.callee)
+        }
         this.write('(')
         for (let i = 0; i < expr.args.length; i++) {
           if (i > 0) this.write(', ')
@@ -992,20 +1003,37 @@ class Codegen {
         this.write('(')
         this.emitExpr(node.body)
         this.write(')')
-      } else if (
-        node.body.kind === 'Block' &&
-        (node.async || this.lambdaBodyNeedsStmtForm(node.body))
-      ) {
-        // Block contains return/throw — emit as statement-bodied lambda
-        // so those control-flow operators escape the *outer* lambda
-        // rather than just the IIFE wrapper of an expression-bodied
-        // block. Trailing expression auto-becomes `return …;` so the
-        // return value is preserved.
-        //
-        // async lambdas with a Block body ALWAYS need statement form —
-        // otherwise the IIFE wrapper around the block isn't async, and
-        // a top-level `await` inside the block becomes a syntax error.
-        this.emitLambdaStmtBody(node.body)
+      } else if (node.body.kind === 'Block') {
+        // Lambda body is a Block. Three sub-cases:
+        //   1. Empty / single-expression block with no LocalLet and no
+        //      control flow — keep the tight expression-bodied form
+        //      `(args) => (expr)` for byte-budget reasons (this is
+        //      the common `() => div { "hi" }` pattern after the
+        //      block-flatten parser pass).
+        //   2. Multi-statement block (or single-stmt with LocalLet) —
+        //      statement-bodied `(args) => { stmts; return last; }`.
+        //      The expression-bodied form here would emit `() => IIFE`,
+        //      which is redundant AND breaks `(() => {...})()` IIFE
+        //      patterns: the outer call invokes the lambda whose body
+        //      is itself the IIFE; the IIFE never runs because nothing
+        //      inside the body uses its result.
+        //   3. async or contains throw/return — always statement
+        //      form so control flow / await reach the right scope.
+        const blk = node.body
+        const onlyOne =
+          blk.body.length === 1 &&
+          blk.body[0]!.kind !== 'LocalLet' &&
+          !containsControlFlow(blk.body[0] as Expr)
+        // A block that contains at least one `style { … }` rendering
+        // sibling to the main vnode wants the fragment-array form
+        // (`[mainVnode, styleVnode]`) — emitBlock handles that. Stay
+        // on the expression-bodied path so the array shape survives.
+        const hasStyleSibling = blk.body.some((e) => e.kind === 'StyleBlock')
+        if (!node.async && (onlyOne || hasStyleSibling)) {
+          this.emitExpr(blk)
+        } else {
+          this.emitLambdaStmtBody(blk)
+        }
       } else if (node.async) {
         // async lambda with a non-Block body — wrap into a synthetic
         // single-item block and emit as statement-bodied. emitBlock-
@@ -1025,18 +1053,6 @@ class Codegen {
     } finally {
       this.shadowed.pop()
     }
-  }
-
-  /** Block contains a control-flow operator that must reach the outer
-   *  lambda (return / throw, possibly nested in an if's branch). When
-   *  this is true, emitLambda picks the statement-bodied form; when
-   *  false the cleaner expression-bodied form is fine. */
-  private lambdaBodyNeedsStmtForm(node: Block): boolean {
-    for (const item of node.body) {
-      if (item.kind === 'LocalLet') continue
-      if (containsControlFlow(item as Expr)) return true
-    }
-    return false
   }
 
   private emitLambdaStmtBody(node: Block): void {
@@ -1157,7 +1173,11 @@ class Codegen {
   }
 
   private emitLocalLet(node: LocalLet): void {
-    this.write('const ')
+    // `let` (not `const`) so users can reassign locals inside a block
+    // — `let next = null; if (x) { next = …; }` is the natural pattern
+    // for early-init / late-bind variables and Tu shouldn't make it a
+    // const-only language at the local scope.
+    this.write('let ')
     this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
     if (this.tsMode && node.type !== undefined) {
       this.write(`: ${node.type}`)
@@ -1295,8 +1315,12 @@ class Codegen {
   }
 
   private emitCallExpr(node: CallExpr): void {
-    // Mark the callee so an error on the function lands on its source ident.
-    this.mark(node.calleeStart, node.calleeEnd, () => this.write(node.callee))
+    // Use emitIdentRead so a state/computed cell holding a function
+    // value (e.g. `let stop = null` later assigned a teardown thunk)
+    // is unwrapped to `<name>.get()` before the call parens —
+    // otherwise we'd emit `stop()` and try to invoke the cell object
+    // itself. `function`-classified idents pass through bare.
+    this.emitIdentRead(node.callee, node.calleeStart, node.calleeEnd)
     this.write('(')
     // M6.1 named-arg call: `Card(title: "hi", footer: …) { children }`
     // emits a single props object `Card({ title: "hi", footer: …,
