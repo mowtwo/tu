@@ -47,6 +47,14 @@ jobs:
           # at publish time and exchange it for short-lived publish creds.
           registry-url: 'https://registry.npmjs.org'
 
+      # Upgrade npm to a version that supports OIDC trusted publishing.
+      # Node 22's bundled npm (10.x) is too old; npm 11.5.1 introduced
+      # automatic OIDC token exchange when running under GitHub Actions
+      # with id-token: write. Without this, publish hits a 404 because
+      # the registry doesn't see the OIDC token at all.
+      - name: Upgrade npm (OIDC requires 11.5.1+)
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -59,6 +67,10 @@ jobs:
       - name: Type-check
         run: pnpm check
 
+      # `pnpm publish` delegates to the bundled `npm publish` per
+      # package. With npm 11.5.1+ on PATH, the OIDC environment
+      # (ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN) is consumed
+      # transparently — no NPM_TOKEN needed.
       - name: Publish to npm (Trusted Publishing + provenance)
         run: |
           # Pick the dist-tag based on the version. Anything containing a
@@ -71,9 +83,10 @@ jobs:
             DIST_TAG="latest"
           fi
           echo "Publishing with dist-tag: $DIST_TAG"
-          # `--provenance` attaches a build attestation that npmjs.com
-          # surfaces as the green "Built and signed on GitHub Actions"
-          # badge on each package page. Requires id-token: write (above).
+          echo "npm version: $(npm --version)"
+          # `--provenance` attaches a build attestation surfacing the
+          # green "Built and signed on GitHub Actions" badge on each
+          # package page. Requires id-token: write (above).
           pnpm -r publish \
             --access public \
             --tag "$DIST_TAG" \
