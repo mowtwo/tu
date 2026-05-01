@@ -97,10 +97,46 @@ function recompileLive(text) {
   })
 }
 
+/**
+ * Build the live demo's full UI:
+ *   #mount
+ *     ├─ <div class="grid"> (plain DOM — owned by us)
+ *     │    ├─ <div id="live-source"> ← Monaco host (never touched by Tu)
+ *     │    └─ <div id="live-right">  ← Tu mount target (LiveEditor component)
+ *
+ * Tu's component already mounted into #mount before us (via the demo
+ * lifecycle). We move its rendered output into the right column and
+ * inject the editor column as a sibling. From here Monaco lives in
+ * plain DOM and the Tu side only re-renders the right column when
+ * `error` flips, so the editor is never wiped.
+ */
 function attachLiveCompiler() {
-  const host = document.getElementById('live-source')
-  if (!host) return
-  const { editor, dispose } = createTuEditor(host, LIVE_DEMO_SOURCE)
+  const mountEl = document.getElementById('mount')
+  if (!mountEl) return
+  // Tu's first render put the right-pane component as #mount's only
+  // child. Wrap it in a 2-col grid + an editor host on the left.
+  const tuRight = mountEl.firstElementChild
+  if (!tuRight) return
+  const grid = document.createElement('div')
+  grid.className = 'h-full grid grid-cols-1 md:grid-cols-2 gap-4'
+  const left = document.createElement('div')
+  left.className = 'flex flex-col gap-2 min-h-0'
+  const leftHeader = document.createElement('div')
+  leftHeader.className = 'flex items-center justify-between'
+  leftHeader.innerHTML =
+    '<h3 class="text-sm font-semibold m-0 text-[hsl(var(--tu-fg))]">Source</h3>' +
+    '<span class="text-xs text-[hsl(var(--tu-fg-muted))]">(auto-recompile on edit)</span>'
+  const editorHost = document.createElement('div')
+  editorHost.id = 'live-source'
+  editorHost.className =
+    'flex-1 min-h-[400px] border border-[hsl(var(--tu-border))] rounded-[var(--tu-radius-sm)] overflow-hidden'
+  left.appendChild(leftHeader)
+  left.appendChild(editorHost)
+  grid.appendChild(left)
+  // Move Tu's right-pane component into the grid's second column.
+  grid.appendChild(tuRight)
+  mountEl.appendChild(grid)
+  const { editor, dispose } = createTuEditor(editorHost, LIVE_DEMO_SOURCE)
   liveEditor = editor
   liveEditorDispose = dispose
   recompileLive(LIVE_DEMO_SOURCE)
