@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/cli",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Tu command-line interface — tu build / dev / check / fmt.",
   "keywords": [
     "tu",

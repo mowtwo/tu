@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Showcases @tu-lang/tu-shu — markdown → static HTML via Tu's renderPage.",
   "scripts": {
-    "build": "tu-shu build",
+    "demo": "tu-shu build",
+    "build": "echo 'tu-shu-demo: run pnpm demo to build the static site'",
     "test": "echo 'no tests'",
     "check": "echo 'no checks'"
   },

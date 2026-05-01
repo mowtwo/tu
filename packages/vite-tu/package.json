@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/vite",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Vite plugin for Tu — compiles .tu source modules on import.",
   "keywords": [
     "tu",

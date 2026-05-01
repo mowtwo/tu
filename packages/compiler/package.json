@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/compiler",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Tu compiler — lexer, parser, type-mapper, codegen.",
   "keywords": [
     "tu",
