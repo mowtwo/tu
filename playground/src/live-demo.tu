@@ -147,6 +147,55 @@ let parseLineCol = external JS (message: string): any {
   return { line: Number(m[1]), col: Number(m[2]) }
 }
 
+// Pull a `.d.ts`-style declaration view out of the TS-shadow output:
+// strip imports, drop `const X = …` initializers, keep only the
+// shape of `export const X` / `export interface XProps` / `export
+// type X = …` lines. Source-map footer + private (non-export) decls
+// drop. This is a heuristic — full DTS emission would need tsc, which
+// is too heavy for the browser bundle.
+let extractDts = external JS (tsSource: string): string {
+  const lines = []
+  // Strip the source-map footer.
+  const src = tsSource.replace(/\/\/#\s*sourceMappingURL=[^\n]*\n?/g, "").trim()
+  const stmts = src.split(/\n(?=(?:export\s+|import\s+|interface\s+|type\s+|const\s+|let\s+|class\s+|enum\s+|function\s+|async\s+))/)
+  for (const stmt of stmts) {
+    const trimmed = stmt.trim()
+    if (!trimmed) continue
+    // Skip the runtime import — irrelevant to consumers of the .d.ts.
+    if (/^import\s+.*?@tu-lang\/runtime/.test(trimmed)) continue
+    // Type aliases / interfaces — pass through as-is.
+    if (/^export\s+(type|interface)\s+/.test(trimmed)) {
+      lines.push(trimmed)
+      continue
+    }
+    // Exported const / let — emit a `declare`-style stub. We try to
+    // grab the type annotation (`: T`) if Tu wrote one; otherwise
+    // we use the RHS shape to guess (`= () => …` ⇒ function, etc.)
+    const m = /^export\s+(const|let)\s+([A-Za-z_$][\w$]*)\s*(?::\s*([^=]+?))?\s*=\s*([\s\S]+)$/.exec(trimmed)
+    if (m) {
+      const name = m[2]
+      const annotated = m[3]?.trim()
+      const rhs = m[4].trim().replace(/[;]\s*$/, "")
+      let ty = annotated
+      if (!ty) {
+        if (/^async\s*\(/.test(rhs) || /^\([^)]*\)\s*=>/.test(rhs) || /^[A-Za-z_$][\w$]*\s*=>/.test(rhs)) {
+          ty = "(...args: any[]) => any"
+        } else if (/^new\s+Signal\.State/.test(rhs)) {
+          ty = "Signal.State<unknown>"
+        } else if (/^new\s+Signal\.Computed/.test(rhs)) {
+          ty = "Signal.Computed<unknown>"
+        } else {
+          ty = "unknown"
+        }
+      }
+      lines.push(`export declare const ${name}: ${ty}`)
+      continue
+    }
+    // Anything else (private const, etc.) — drop.
+  }
+  return lines.length > 0 ? lines.join("\n") : "// (no exports)"
+}
+
 // Update JS / DTS read-only views with the active file's compile output.
 let refreshOutputViews = () => {
   if (!liveEditor || !liveModels) { return }
@@ -158,7 +207,15 @@ let refreshOutputViews = () => {
   let jsOut = ""
   let dtsOut = ""
   try { jsOut = compile(src, { filename: path }) } catch (e: unknown) { jsOut = "// " + (e?.message ?? String(e)) }
-  try { dtsOut = compileToTS(src, { filename: path }) } catch (e: unknown) { dtsOut = "// " + (e?.message ?? String(e)) }
+  // Strip Tu's source-map footer from the JS too — the read-only
+  // editor doesn't benefit from it and it dwarfs the actual code.
+  jsOut = jsOut.replace(/\/\/#\s*sourceMappingURL=[^\n]*\n?/g, "").trim()
+  try {
+    let tsOut = compileToTS(src, { filename: path })
+    dtsOut = extractDts(tsOut)
+  } catch (e: unknown) {
+    dtsOut = "// " + (e?.message ?? String(e))
+  }
   if (liveJsEditor) { liveJsEditor.getModel()?.setValue(jsOut) }
   if (liveDtsEditor) { liveDtsEditor.getModel()?.setValue(dtsOut) }
 }
@@ -331,6 +388,18 @@ let attachLiveCompiler = () => {
   toolbar.className = "live-toolbar"
   liveSidebarEl = toolbar  // re-used as the host of file-tabs queries
 
+  // Back button — exits live mode and returns to the playground demo
+  // grid. We just navigate to the default hash (#hello) so the main
+  // hash router takes over; stopLivePreview tears down everything via
+  // the demo lifecycle's teardown.
+  let backBtn = document.createElement("button")
+  backBtn.className = "live-back"
+  backBtn.title = "Back to playground"
+  backBtn.innerHTML = "← Back"
+  backBtn.addEventListener("click", () => {
+    window.location.hash = "#hello"
+  })
+
   let brand = document.createElement("div")
   brand.className = "live-brand"
   brand.innerHTML = `Tu <span class="live-brand-cn">图</span> <span class="live-brand-tag">Live</span>`
@@ -372,6 +441,7 @@ let attachLiveCompiler = () => {
   status.textContent = ""
   liveStatusEl = status
 
+  toolbar.appendChild(backBtn)
   toolbar.appendChild(brand)
   toolbar.appendChild(caseSelect)
   toolbar.appendChild(fileTabs)

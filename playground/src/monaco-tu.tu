@@ -20,6 +20,18 @@
 
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api"
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker"
+// Basic-languages contributions register JS / TS / CSS / HTML token
+// providers (for syntax highlighting only — no type checking, no LSP).
+// We need them so the read-only JS / .d.ts views in the live editor
+// have proper highlighting; the editor.api entry alone ships no
+// language tokenizers besides what we register manually.
+// Tu doesn't yet support bare `import "…"` side-effect imports, so we
+// pull these as namespace bindings the bundler will tree-shake into
+// the same side-effect form. (Vite + the contribution modules: each
+// registers a language with monaco at module-load time.)
+import * as _basicJs from "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution"
+import * as _basicTs from "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution"
+import * as _basicCss from "monaco-editor/esm/vs/basic-languages/css/css.contribution"
 
 let installWorker = external JS (EditorWorker: any) {
   self.MonacoEnvironment = { getWorker: () => new EditorWorker() }
@@ -54,6 +66,12 @@ let registerTuLanguage = external JS (monaco: any) {
     tokenizer: {
       root: [
         [/\/\/.*$/, "comment"],
+        // `external <Lang> [(params)] [: returnType] { raw body }` —
+        // the body is verbatim source in the tagged language, so we
+        // delegate tokenization to the embedded language. JS / TS get
+        // their basic-language tokenizers automatically.
+        [/\bexternal\s+JS\b/, { token: "keyword.control", next: "@externalHead" }],
+        [/\bexternal\s+TS\b/, { token: "keyword.control", next: "@externalHeadTs" }],
         [/\bstyle\b(?=\s*\{)/, { token: "keyword.control", next: "@styleEnter" }],
         [/\bmarkdown\b(?=\s*\{)/, { token: "keyword.control", next: "@markdownEnter" }],
         [/"([^"\\]|\\.)*$/, "string.invalid"],
@@ -107,6 +125,47 @@ let registerTuLanguage = external JS (monaco: any) {
         [/\*[^*\n]+\*/, "emphasis.markdown"],
         [/[^}`*#]+/, "text.markdown"],
         [/./, "text.markdown"],
+      ],
+      // `external JS (params) [: T] { raw JS }` — head accepts an
+      // optional param list, optional return type, then `{` which
+      // pushes us into the embedded JS tokenizer.
+      externalHead: [
+        [/\(/, { token: "delimiter.parenthesis", next: "@externalParams" }],
+        [/:/, { token: "delimiter", next: "@externalReturnType" }],
+        [/\{/, {
+          token: "delimiter.curly",
+          next: "@externalBody",
+          nextEmbedded: "javascript",
+        }],
+        [/\s+/, "white"],
+      ],
+      externalHeadTs: [
+        [/\(/, { token: "delimiter.parenthesis", next: "@externalParams" }],
+        [/:/, { token: "delimiter", next: "@externalReturnType" }],
+        [/\{/, {
+          token: "delimiter.curly",
+          next: "@externalBody",
+          nextEmbedded: "typescript",
+        }],
+        [/\s+/, "white"],
+      ],
+      externalParams: [
+        [/\)/, { token: "delimiter.parenthesis", next: "@pop" }],
+        [/[a-zA-Z_]\w*/, "identifier"],
+        [/:/, "delimiter"],
+        [/[\w<>,\[\]\s]+/, "type"],
+        [/,/, "delimiter"],
+      ],
+      externalReturnType: [
+        [/\{/, { token: "@rematch", next: "@pop" }],
+        [/[\w<>,\[\]\s]+/, "type"],
+      ],
+      externalBody: [
+        [/\}/, {
+          token: "delimiter.curly",
+          next: "@pop",
+          nextEmbedded: "@pop",
+        }],
       ],
     },
   })

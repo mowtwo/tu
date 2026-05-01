@@ -129,6 +129,23 @@ body.mode-live #mount > .live-grid {
   color: hsl(var(--tu-fg-muted));
   flex-shrink: 0;
 }
+.live-back {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem !important;
+  font-size: 0.78rem !important;
+  border: 1px solid hsl(var(--tu-border)) !important;
+  border-radius: 4px;
+  color: hsl(var(--tu-fg-muted)) !important;
+  background: hsl(var(--tu-surface-elevated)) !important;
+  cursor: pointer;
+  transition: color 80ms, background 80ms;
+  margin-right: 0.25rem;
+}
+.live-back:hover {
+  color: hsl(var(--tu-fg)) !important;
+  background: hsl(var(--tu-surface)) !important;
+}
 .live-brand {
   display: inline-flex;
   align-items: center;
