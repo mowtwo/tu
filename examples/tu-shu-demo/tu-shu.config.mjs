@@ -8,9 +8,11 @@ export default {
   // at https://mowtwo.github.io/tu/tu-shu-preview/. Local `pnpm demo`
   // keeps the default `/`.
   base: process.env.TU_BASE ?? '/',
+  favicon: 'https://mowtwo.github.io/tu/favicon.svg',
   nav: [
     { text: 'Home', link: '/' },
     { text: 'Guide', link: '/guide/' },
+    { text: '↑ Tu docs', link: 'https://mowtwo.github.io/tu/' },
     { text: 'GitHub', link: 'https://github.com/mowtwo/tu' },
   ],
   sidebar: [

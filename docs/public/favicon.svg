@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Dark slate background -->
+  <rect width="128" height="128" rx="24" fill="#0F172A"/>
+
+  <!-- {T} monogram: amber trailing-closure braces wrapping a cyan T.
+       Reads as Tu's surface syntax: an identifier bound to a closure block. -->
+  <text x="64" y="88"
+        font-family="ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace"
+        font-size="64" font-weight="800" text-anchor="middle" letter-spacing="-3">
+    <tspan fill="#FCD34D">{</tspan><tspan fill="#38BDF8">T</tspan><tspan fill="#FCD34D">}</tspan>
+  </text>
+</svg>

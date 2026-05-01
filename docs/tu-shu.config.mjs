@@ -16,6 +16,8 @@ export default {
   // tu-docs build:tu-shu` keeps the default `/`.
   base: process.env.TU_BASE ?? '/',
   lang: 'en',
+  favicon: '/favicon.svg',
+  publicDir: 'public',
   nav: [
     { text: 'Language', link: '/LANGUAGE' },
     { text: 'tu-xing', link: '/tu-xing' },

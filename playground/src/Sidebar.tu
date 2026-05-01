@@ -42,11 +42,15 @@ export let Sidebar = () => aside(
   class: "p-6 border-r border-[hsl(var(--tu-border))] bg-[hsl(var(--tu-surface))] flex flex-col gap-4 min-h-screen",
 ) {
   div {
-    h1(class: "text-2xl font-semibold tracking-tight m-0 text-[hsl(var(--tu-fg))]") {
+    a(
+      href: "/tu/",
+      class: "inline-flex items-center gap-1 text-xs text-[hsl(var(--tu-fg-muted))] hover:text-[hsl(var(--tu-brand))] no-underline",
+    ) { "← back to docs" }
+    h1(class: "mt-3 text-2xl font-semibold tracking-tight m-0 text-[hsl(var(--tu-fg))]") {
       "Tu " span(class: "text-[hsl(var(--tu-fg-muted))] font-normal") { "图" }
     }
     p(class: "mt-1 text-xs uppercase tracking-wider text-[hsl(var(--tu-fg-muted))]") {
-      "Pre-alpha · 0.1.0-alpha.6"
+      "Playground · 0.1.0-alpha.6"
     }
   }
   nav(class: "flex flex-col gap-1") {
@@ -54,12 +58,17 @@ export let Sidebar = () => aside(
       DemoLink(id: d.id, label: d.label, mil: d.mil)
     }
   }
-  footer(class: "mt-auto pt-4 border-t border-[hsl(var(--tu-border))] text-xs text-[hsl(var(--tu-fg-muted))]") {
-    p {
+  footer(class: "mt-auto pt-4 border-t border-[hsl(var(--tu-border))] text-xs text-[hsl(var(--tu-fg-muted))] flex flex-col gap-2") {
+    p(class: "m-0") {
       "Edit " code(class: "font-mono text-[hsl(var(--tu-fg))]") { ".tu" }
       " files in " code(class: "font-mono text-[hsl(var(--tu-fg))]") { "examples/" }
-      " — page reloads via " code(class: "font-mono text-[hsl(var(--tu-fg))]") { "@tu-lang/vite" }
+      " — reloads via " code(class: "font-mono text-[hsl(var(--tu-fg))]") { "@tu-lang/vite" }
       "."
+    }
+    div(class: "flex gap-3 flex-wrap") {
+      a(href: "/tu/LANGUAGE", class: "text-[hsl(var(--tu-brand))] hover:underline no-underline") { "Language" }
+      a(href: "/tu/tu-xing", class: "text-[hsl(var(--tu-brand))] hover:underline no-underline") { "tu-xing" }
+      a(href: "https://github.com/mowtwo/tu", class: "text-[hsl(var(--tu-brand))] hover:underline no-underline") { "GitHub" }
     }
   }
 }

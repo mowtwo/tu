@@ -51,23 +51,22 @@ jobs:
           npx --yes @vscode/vsce package --no-dependencies --skip-license -o vscode-tu-latest.vsix
         working-directory: packages/vscode
 
-      # Build the **main docs site** with tu-shu (Tu's own SSG).
+      # Refresh static assets in docs/public/ so tu-shu's publicDir copy
+      # picks up the latest vsix + grammar JSON. The favicon.svg and
+      # llms.txt are committed; vsix and grammar are CI-fresh.
+      - name: Refresh assets in docs/public
+        run: |
+          mkdir -p docs/public/install docs/public/grammar
+          cp packages/vscode/vscode-tu-latest.vsix docs/public/install/
+          cp packages/vscode/syntaxes/tu.tmLanguage.json docs/public/grammar/
+          # Keep llms.txt in sync with skill.md.
+          cp docs/skill.md docs/public/llms.txt
+
+      # Build the **main docs site** with tu-shu (Tu's own SSG). The
+      # build automatically copies docs/public/* into the output dir.
       - name: Build docs (tu-shu)
         run: TU_BASE='/tu/' node ../packages/tu-shu/dist/cli.js build
         working-directory: docs
-
-      # Stage downloadable artifacts and live demos into the tu-shu output
-      # directory, in parallel with the rendered HTML pages.
-      - name: Stage install artifacts
-        run: |
-          mkdir -p docs/.tu-shu/dist/install
-          cp packages/vscode/vscode-tu-latest.vsix docs/.tu-shu/dist/install/
-          mkdir -p docs/.tu-shu/dist/grammar
-          cp packages/vscode/syntaxes/tu.tmLanguage.json docs/.tu-shu/dist/grammar/
-
-      - name: Stage llms.txt for AI agents
-        run: |
-          cp docs/skill.md docs/.tu-shu/dist/llms.txt
 
       # Dogfood: build the tu-shu demo (a separate small site) and embed
       # under /tu-shu-preview/ so the live deploy showcases tu-shu twice

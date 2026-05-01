@@ -15,6 +15,12 @@ export interface TuShuConfig {
    * always skipped.
    */
   srcExclude?: string[]
+  /**
+   * Static-asset directory whose contents are copied verbatim into the
+   * root of `outDir`. Use this for favicons, downloads, llms.txt, etc.
+   * Path is relative to the directory containing the config file.
+   */
+  publicDir?: string
   /** Where to write the static build. Defaults to `'./.tu-shu/dist'`. */
   outDir?: string
   /** Base path for the deployed site (e.g. `/myrepo/`). Defaults to `/`. */
@@ -25,6 +31,13 @@ export interface TuShuConfig {
   sidebar?: SidebarSection[]
   /** Lang attribute for `<html>`. Defaults to `'en'`. */
   lang?: string
+  /**
+   * Path or URL to a favicon. The build emits `<link rel="icon">` in
+   * every page's head. Path-resolution is the same as `stylesheets`:
+   * absolute URLs pass through, root-relative paths stay as-is,
+   * everything else gets joined with `config.base`.
+   */
+  favicon?: string
   /**
    * Stylesheets to `<link>` into every page's head. Use this to load
    * Tailwind output, `@tu-lang/tu-xing/theme.css`, or any custom theme

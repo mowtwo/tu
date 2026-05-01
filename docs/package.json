@@ -5,17 +5,13 @@
   "type": "module",
   "description": "Tu (图) documentation site — built with @tu-lang/tu-shu (Tu's own SSG, dogfood).",
   "scripts": {
-    "dev:vitepress": "vitepress dev .",
     "build": "node ../packages/tu-shu/dist/cli.js build",
-    "build:vitepress": "vitepress build .",
-    "preview": "vitepress preview .",
+    "dev": "echo 'tu-shu dev server is not yet implemented; rebuild with: pnpm build'",
+    "preview": "echo 'serve docs/.tu-shu/dist via any static file server'",
     "test": "echo 'no tests — static site'",
     "check": "echo 'no checks'"
   },
   "dependencies": {
     "@tu-lang/tu-shu": "workspace:*"
-  },
-  "devDependencies": {
-    "vitepress": "^1.5.0"
   }
 }
