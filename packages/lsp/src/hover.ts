@@ -2,7 +2,7 @@ import { lineColAt } from '@tu-lang/compiler'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { cssService, findCssContextAt } from './css-lsp.js'
-import { findTagCallAt, renderHtmlTagDocs } from './html-lsp.js'
+import { findAttrAt, findTagCallAt, renderHtmlAttrDocs, renderHtmlTagDocs } from './html-lsp.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
@@ -39,6 +39,12 @@ export function hoverAtTuPosition(
   // delegate to vscode-html-languageservice's tag-data tables instead.
   const htmlHover = maybeHtmlTagHover(source, line, col)
   if (htmlHover !== null) return htmlHover
+
+  // HTML attribute name (`class`, `onClick`, `href`, …) inside a
+  // tag-call's prop list. Same data source as tag hover; surfaces the
+  // MDN attribute description.
+  const attrHover = maybeHtmlAttrHover(source, line, col)
+  if (attrHover !== null) return attrHover
 
   const session = getOrCreateSession(source, filename)
   if (!session) return null
@@ -89,6 +95,32 @@ function maybeHtmlTagHover(
   const docs = renderHtmlTagDocs(hit.tag)
   if (!docs) return null
   // line/col returned by lineColAt are 1-based; LSP wants 0-based.
+  const startLC = lineColAt(source, hit.start)
+  return {
+    contents: docs,
+    line: startLC.line - 1,
+    col: startLC.col - 1,
+    length: hit.end - hit.start,
+  }
+}
+
+/**
+ * Hover for an HTML attribute name (`class`, `onClick`, `href`, …) at
+ * a tag-call's prop. Returns null if the cursor isn't on an attribute
+ * name, or the tag/attr pair isn't in vscode-html-languageservice's
+ * data tables.
+ */
+function maybeHtmlAttrHover(
+  source: string,
+  line: number,
+  col: number
+): TuHover | null {
+  const offset = lineColToOffset(source, line, col)
+  if (offset === null) return null
+  const hit = findAttrAt(source, offset)
+  if (!hit) return null
+  const docs = renderHtmlAttrDocs(hit.tag, hit.attr)
+  if (!docs) return null
   const startLC = lineColAt(source, hit.start)
   return {
     contents: docs,

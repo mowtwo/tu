@@ -30,6 +30,10 @@ export enum TokenKind {
   Amp,
   /** `;` — V1 used only inside raw type spans (object type field separator). */
   Semi,
+  /** `?` — V1 used only inside raw type spans (optional fields like
+   *  `title?: string`). Treated by the parser as opaque type-span text;
+   *  the TS shadow gets it verbatim. */
+  Question,
   // arithmetic
   Plus,
   Minus,

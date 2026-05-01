@@ -170,6 +170,12 @@ export interface TagCall extends Ranged {
 export interface Prop {
   name: string
   value: Expr
+  /** Source byte range of the prop name identifier. Optional for back-
+   *  compat with code paths that synthesize Prop without a token (e.g.
+   *  pug-shorthand class injection). LSP hover uses this to decide
+   *  whether the cursor is on a tag-call attribute. */
+  nameStart?: number
+  nameEnd?: number
 }
 
 export type Child =

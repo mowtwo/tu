@@ -1071,13 +1071,18 @@ export class Parser {
   }
 
   private parseProp(): Prop {
-    const name = this.expect(TokenKind.Ident).text
+    const nameTok = this.expect(TokenKind.Ident)
     this.expect(TokenKind.Colon)
     // Use parseExpr (not parsePrimary) so prop values can be lambdas,
     // arithmetic, conditional expressions, etc. — e.g.
     // `onClick: () => count = count + 1`.
     const value = this.parseExpr()
-    return { name, value }
+    return {
+      name: nameTok.text,
+      value,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+    }
   }
 
   private parseChild(): Child {

@@ -130,6 +130,32 @@ export function completionsAtTuPosition(
 
   if (ctx.kind === 'expression-head') {
     const seen = new Set(out.map((c) => c.label))
+
+    // Tu special-form blocks — `style { ... }` (M1.4) and `markdown
+    // { ... }` (M6.3). These aren't HTML tags; surface them at the top
+    // of expression-head completion so users discover them.
+    const specialForms: Array<{ name: string; doc: string }> = [
+      {
+        name: 'style',
+        doc: '**`style { … }`**\n\nSpecial-form CSS block scoped to the enclosing component. Class refs inside the body are hashed at compile time so rules never leak across components.\n\nSee [Style block](https://mowtwo.github.io/tu/LANGUAGE#style-block).',
+      },
+      {
+        name: 'markdown',
+        doc: '**`markdown { … }`**\n\nM6.3 special-form: embeds CommonMark prose alongside Tu components. The body is rendered to HTML at compile time and mounted as a single static vnode.\n\nSee [Markdown block](https://mowtwo.github.io/tu/LANGUAGE#markdown-block-m6-3).',
+      },
+    ]
+    for (const form of specialForms) {
+      if (seen.has(form.name)) continue
+      out.push({
+        label: form.name,
+        kind: 'keyword',
+        sortText: '0_' + form.name, // outranks user idents
+        detail: `Tu special form: ${form.name} { … }`,
+        documentation: form.doc,
+      })
+      seen.add(form.name)
+    }
+
     // Source the HTML tag list from vscode-html-languageservice's data
     // provider — covers the full standard set (~115 tags) plus the
     // descriptions / MDN refs surfaced as completion `documentation`.

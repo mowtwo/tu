@@ -119,6 +119,8 @@ export class Lexer {
         return this.punct(TokenKind.Amp, start, 1)
       case ';':
         return this.punct(TokenKind.Semi, start, 1)
+      case '?':
+        return this.punct(TokenKind.Question, start, 1)
       case '[':
         return this.punct(TokenKind.LBracket, start, 1)
       case ']':

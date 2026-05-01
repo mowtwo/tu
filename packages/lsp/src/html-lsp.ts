@@ -71,11 +71,25 @@ export function renderHtmlTagDocs(tag: string): string | null {
   return lines.join('\n')
 }
 
-/** Render an attribute's metadata as Markdown (for completion popup). */
+/**
+ * Render an attribute's metadata as Markdown (for completion popup or
+ * hover). `provideAttributes(tag)` from vscode-html-languageservice
+ * returns the FULL attribute set valid for `tag` — both tag-specific
+ * and global (`class`, `id`, `style`, `data-*`, ARIA, `on*` events).
+ * Falling back to a generic `'div'` lookup catches the case when `tag`
+ * is unknown (a Web Component or custom element) so global attributes
+ * still render docs.
+ */
 export function renderHtmlAttrDocs(tag: string, attr: string): string | null {
-  const info = htmlTagInfo(tag)
-  if (!info) return null
-  const a = info.attributes.find((x) => x.name === attr.toLowerCase())
+  const lc = attr.toLowerCase()
+  const provider = getProvider()
+  const tagAttrs = provider.provideAttributes(tag.toLowerCase())
+  let a = tagAttrs.find((x) => x.name === lc)
+  if (!a) {
+    // Fall back to div's table (which carries global attrs) when tag
+    // is unknown.
+    a = provider.provideAttributes('div').find((x) => x.name === lc)
+  }
   if (!a) return null
   return renderAttr(a)
 }
@@ -127,6 +141,53 @@ export function findTagCallAt(
   if (!hit) return null
   const tagCall = hit as TagCall
   return { tag: tagCall.tag, start: tagCall.tagStart, end: tagCall.tagEnd }
+}
+
+/**
+ * Find an HTML-attribute hit: the TagCall + attr name whose source
+ * range covers `offset`. Returns null when the cursor isn't on a prop
+ * name (or the surrounding TagCall couldn't be resolved).
+ *
+ * Used by hover to surface MDN attribute docs when the cursor sits on
+ * `class`, `onClick`, `href`, etc. inside a tag-call's prop list.
+ */
+export function findAttrAt(
+  source: string,
+  offset: number
+): { tag: string; attr: string; start: number; end: number } | null {
+  let program: Program
+  try {
+    program = parse(tokenize(source), source)
+  } catch {
+    return null
+  }
+  let hitTag: TagCall | null = null
+  let hitAttrStart = -1
+  let hitAttrEnd = -1
+  let hitAttrName = ''
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    walkTagCalls(stmt.value, (t) => {
+      for (const p of t.props) {
+        if (p.nameStart === undefined || p.nameEnd === undefined) continue
+        if (offset >= p.nameStart && offset < p.nameEnd) {
+          hitTag = t
+          hitAttrStart = p.nameStart
+          hitAttrEnd = p.nameEnd
+          hitAttrName = p.name
+        }
+      }
+    })
+    if (hitTag) break
+  }
+  if (!hitTag) return null
+  const tagCall = hitTag as TagCall
+  return {
+    tag: tagCall.tag,
+    attr: hitAttrName,
+    start: hitAttrStart,
+    end: hitAttrEnd,
+  }
 }
 
 function walkTagCalls(

@@ -90,6 +90,17 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.line).toBe(3)
   })
 
+  it('LSP: hovering an HTML attribute name returns MDN-style docs', () => {
+    // line 0: export let App = () => button(class: "go") { "click" }
+    //                                       ^^^^^ col 30 — the `class` attr
+    const src = 'export let App = () => button(class: "go") { "click" }'
+    const info = hoverAtTuPosition(src, join(tmp, 'attr-hover.tu'), 0, 31)
+    expect(info).not.toBeNull()
+    // vscode-html-languageservice attribute docs include the attr name.
+    expect(info!.contents).toContain('`class`')
+    expect(info!.length).toBe(5)
+  })
+
   it('M6.0+: hovering an HTML tag identifier returns MDN-style docs', () => {
     // line 0: export let App = () => button(class: "go") { "click" }
     //                                ^^^^^^ col 23 — the `button` tag
