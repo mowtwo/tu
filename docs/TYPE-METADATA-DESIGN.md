@@ -198,6 +198,7 @@ Done in the same commit as the parser change so nothing's left in `type X = …`
 
 ## 7. Open questions (resolve during implementation)
 
+- **Union types — coexistence with `type X = …`** (CRITICAL — surfaced by Phase 2 audit). The repo has many string-literal unions (`type ButtonVariant = "primary" | "secondary" | …`) and nullable shapes (`email: string | null`). Pure `interface` doesn't cover these — interfaces are object shapes. **Recommended resolution**: keep the existing `type X = …` keyword EXCLUSIVELY for unions/aliases (non-object compound types); add `interface X { … }` as the new keyword for object shapes (with runtime descriptor). They coexist — pick based on what you're declaring. Phase 2 then stops being blocked on the union design (which lives in M9 / Phase 6 with the `union(A, B)` runtime constructor).
 - Excess-property handling: tolerate (TS-style) or strict-reject (Tu-strict)? Default: tolerate, with a future `type.strict(I)` wrapper for strict mode.
 - Interface name collision with primitives: `interface Number { … }` should error.
 - Reflection on functions: `type.of(() => 42)` returns `type.Function`. Do we capture parameter / return types? Not in v1 — too expensive.
@@ -213,9 +214,10 @@ Done in the same commit as the parser change so nothing's left in `type X = …`
 ## 9. Open compatibility migrations (for the implementation commit)
 
 When Phase 2 lands, every `.tu` file in `packages/`, `examples/`, `playground/`, `docs/` must be migrated:
-- `type Foo = { … }` → `interface Foo { … }`
-- `type X = SomePrimitive | OtherShape` → flag for manual review (no `type` keyword + no unions yet means this case needs design or breaking).
+- `type Foo = { … }` (object shape) → `interface Foo { … }`. Affects `examples/typed/Typed.tu`, `examples/js-compat/JsCompat.tu`, `examples/suspense/Page.tu`, `playground/src/Sidebar.tu`, `playground/src/live-cases.tu` (Todo, User, ShuffleResult, CaseFile, CaseDefinition), `packages/tu-xing/src/components/*.tu` (every Props type).
+- `type X = "a" | "b" | …` (union) → STAYS as `type X = …` per §7 resolution. Affects `packages/tu-xing/src/components/Button.tu` (ButtonVariant, ButtonSize), `Badge.tu` (BadgeVariant), `Input.tu` (InputSize). These are union-aliases, not interfaces.
+- `email: string | null` (inline union in interface field) — STAYS. The interface declaration uses TS union syntax verbatim; the runtime descriptor's `Optional(String)` covers the nullable case.
 - `typeof x` → `type.of(x)` (in user code; compiler-emitted `typeof` for type guards stays in TS shadow).
 - `x instanceof Y` → `type.is(x, Y)`.
 
-The audit at Phase 2 time will pick up everything; this doc just lists the categories.
+The audit at Phase 2 time picks up specifics; this doc lists the categories.
