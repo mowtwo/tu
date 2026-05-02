@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/runtime",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Universal Tu runtime — Signal cells, vnode construction, SSR. Browser DOM half lives in @tu-lang/dom.",
   "keywords": [
     "tu",

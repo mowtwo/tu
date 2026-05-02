@@ -1,6 +1,6 @@
 {
   "name": "@tu-lang/dom",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Browser-only Tu runtime — mount/hydrate/defineCustomElement plus typed re-exports of DOM globals (`document`, `Event`, `HTMLElement`, …). Importing from this package is the explicit opt-in to the DOM platform.",
   "keywords": [
     "tu",
