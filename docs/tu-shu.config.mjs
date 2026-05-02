@@ -41,6 +41,7 @@ export default {
       items: [
         { text: 'Language', link: '/LANGUAGE' },
         { text: 'SSR async + Suspense (design)', link: '/SSR-ASYNC-DESIGN' },
+        { text: 'M8 type metadata (design)', link: '/TYPE-METADATA-DESIGN' },
         { text: 'Deferred backlog', link: '/DEFERRED' },
       ],
     },
