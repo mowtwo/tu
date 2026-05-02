@@ -1,7 +1,12 @@
 export const VERSION = '0.0.0'
 
 /**
- * Placeholder for Tu's standard library. The shape (Result/Option, Range,
- * iterator helpers, formatters) is to be designed alongside the language proper.
+ * `@tu-lang/std` — Tu's standard library. M8 Phase 1 ships the type
+ * metadata system (interface descriptors + `type.of` / `type.is`); more
+ * modules (Result/Option, iterators, formatters) follow as the language
+ * needs them.
  */
 export const STD_NAME = '@tu-lang/std'
+
+export { type, of, is, tag, struct, native, Array_, Optional } from './type.js'
+export type { TypeDescriptor, TypeKind, StructField } from './type.js'
