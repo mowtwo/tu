@@ -1,0 +1,16 @@
+{
+  "name": "@tu-examples/static-html",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M6.0 verification: deeply-nested static subtrees compile to a single h(\"$static\", …, html) call instead of N nested h() calls. Run `node verify.mjs` to see the codegen + runtime hand-off.",
+  "scripts": {
+    "build": "node verify.mjs",
+    "test": "node verify.mjs",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/runtime": "workspace:*"
+  }
+}

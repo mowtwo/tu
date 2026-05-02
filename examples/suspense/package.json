@@ -1,0 +1,16 @@
+{
+  "name": "@tu-examples/suspense",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M6.11 demo: async Tu component + Suspense fallback. Uses renderToStringAsync for the resolve-everything-then-emit case and renderToStream for the per-boundary flush case. Run `node run.mjs` to see both pipelines.",
+  "scripts": {
+    "build": "node run.mjs",
+    "test": "node run.mjs",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/runtime": "workspace:*"
+  }
+}

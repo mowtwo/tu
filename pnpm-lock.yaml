@@ -123,7 +123,25 @@ importers:
         specifier: ^26.0.0
         version: 26.1.0
 
+  examples/static-html:
+    dependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
   examples/styled:
+    dependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
+  examples/suspense:
     dependencies:
       '@tu-lang/compiler':
         specifier: workspace:*
