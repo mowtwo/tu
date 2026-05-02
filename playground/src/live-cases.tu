@@ -382,6 +382,202 @@ export let App = () => div(class: "form") {
   ],
 })
 
+let jsCompatCase = () => ({
+  id: "js-compat",
+  label: "JS/TS surface (compat)",
+  blurb: "How far Tu reaches into modern JS/TS — spread, optional chaining + ??, ternary, regex literal, ++/+=, try/catch/finally, async/await, external JS escape hatch. Click the JS tab on the right to see the emitted code.",
+  entry: "App.tu",
+  files: [
+    {
+      path: "App.tu",
+      content: `// Showcase: every modern JS/TS feature Tu compiles to native form.
+
+type Todo = { id: number; title: string; done: boolean }
+
+let todos: Todo[] = [
+  { id: 1, title: "Read M5.10 release notes", done: true },
+  { id: 2, title: "Try optional chaining", done: false },
+  { id: 3, title: "Verify regex literal works", done: false },
+]
+let nextId = 4
+let lastError = ""
+
+// Regex literal — used inline + via a method call.
+let slugOk = (s: string): boolean => /^[a-z][a-z0-9-]*$/.test(s)
+
+// Optional chaining + nullish coalescing.
+type User = { name: string; email: string | null }
+let formatUser = (u: User | null): string => {
+  let name = u?.name ?? "anonymous"
+  let email = u?.email ?? "no-email"
+  return name + " <" + email + ">"
+}
+
+// Counts via a manual loop + postfix ++ on a non-cell local.
+let openCount = (xs: Todo[]): number => {
+  let n = 0
+  for t in xs {
+    if (!t.done) { n++ }
+  }
+  return n
+}
+
+// Object spread for immutable toggle, + ternary inside .map.
+let onToggle = (id: number) => {
+  todos = todos.map((t: Todo) => t.id == id ? { ...t, done: !t.done } : t)
+}
+
+// Array spread + compound assignment on a top-level cell.
+let onAdd = () => {
+  let id = nextId.get()
+  todos = [...todos.get(), { id: id, title: "Item #" + id, done: false }]
+  nextId += 1
+}
+
+let onClear = () => {
+  todos = []
+}
+
+// async / try / catch / finally with throw.
+let fakeFetch = async (id: number): Promise<User> => {
+  await new Promise((r: any) => setTimeout(r, 200))
+  if (id < 0) {
+    throw new Error("bad id: " + id)
+  }
+  return { name: "User #" + id, email: "user" + id + "@example.com" }
+}
+
+let profile: User | null = null
+let loading = false
+let onLoad = async (id: number) => {
+  loading = true
+  lastError = ""
+  try {
+    let u = await fakeFetch(id)
+    profile = u
+  } catch (e: unknown) {
+    lastError = e?.message ?? String(e)
+    profile = null
+  } finally {
+    loading = false
+  }
+}
+
+// External JS escape hatch — pure JS for a tight imperative loop +
+// performance.now(). Tu auto-injects nothing here; the body is pasted
+// verbatim into the emitted JS and called as a normal function.
+type ShuffleResult = { ms: number; out: number[] }
+let shuffleAndTime = external JS (xs: number[]): ShuffleResult {
+  const out = xs.slice()
+  const t0 = performance.now()
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = out[i]; out[i] = out[j]; out[j] = tmp
+  }
+  return { ms: performance.now() - t0, out }
+}
+let shuffleResult = shuffleAndTime([1, 2, 3, 4, 5, 6, 7, 8])
+
+export let App = () => div(class: "panel") {
+  h2 { "JS/TS surface — what compiles to native JS" }
+  p(class: "blurb") {
+    "Every block below exercises a different modern JS/TS feature."
+  }
+
+  div(class: "row") {
+    button(class: "btn", onClick: onAdd) { "+ add" }
+    button(class: "btn", onClick: onClear) { "clear" }
+    " "
+    span(class: "muted") { openCount(todos) " open of " todos.length }
+  }
+
+  ul(class: "todos") {
+    for t in todos {
+      li(class: t.done ? "done" : "open", onClick: () => onToggle(t.id)) {
+        span(class: "id") { "#" t.id }
+        " "
+        span(class: "title") { t.title }
+        " "
+        span(class: "tag") { t.done ? "done ✔" : "open" }
+      }
+    }
+  }
+
+  h3 { "Async + try/catch/finally" }
+  div(class: "row") {
+    button(class: "btn", onClick: () => onLoad(7)) {
+      if (loading) { "Loading…" } else { "Fetch user 7" }
+    }
+    button(class: "btn", onClick: () => onLoad(-1)) { "Fetch bad id (will throw)" }
+  }
+  if (profile != null) {
+    p(class: "ok") { "Loaded: " formatUser(profile) }
+  }
+  if (lastError.length > 0) {
+    p(class: "err") { "Caught: " lastError }
+  }
+
+  h3 { "Regex literal + slug check" }
+  ul(class: "slugs") {
+    li { /^[a-z][a-z0-9-]*$/.test("hello") ? "✔ /^[a-z][a-z0-9-]*$/ matches \\"hello\\"" : "no" }
+    li { slugOk("Bad Slug") ? "yes" : "✘ slugOk(\\"Bad Slug\\")" }
+  }
+
+  h3 { "Optional chain + ?? on null user" }
+  p { "formatUser(null) = " formatUser(null) }
+
+  h3 { "external JS escape hatch (Fisher–Yates)" }
+  p(class: "muted") {
+    "Shuffled [1..8] in " shuffleResult.ms.toFixed(2) "ms → "
+    shuffleResult.out.join(", ")
+  }
+
+  style {
+    .panel {
+      max-width: 36rem;
+      padding: 1.25rem 1.5rem;
+      font-family: system-ui, sans-serif;
+    }
+    .panel > h2 { margin: 0 0 0.25rem; font-size: 1.15rem; }
+    .panel > h3 {
+      margin: 1rem 0 0.25rem;
+      font-size: 0.95rem;
+      color: hsl(var(--tu-brand));
+    }
+    .blurb { margin: 0 0 1rem; color: hsl(var(--tu-fg-muted)); font-size: 0.9rem; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin: 0.5rem 0;
+    }
+    .btn {
+      padding: 0.4rem 0.85rem;
+      background: hsl(var(--tu-brand));
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .muted { color: hsl(var(--tu-fg-muted)); font-size: 0.85rem; }
+    .todos, .slugs { margin: 0; padding-left: 1.25rem; }
+    .todos > li { padding: 0.2rem 0; cursor: pointer; }
+    .todos > li:hover { background: hsl(var(--tu-surface-elevated)); }
+    .id { color: hsl(var(--tu-fg-muted)); font-variant-numeric: tabular-nums; }
+    .tag { color: hsl(var(--tu-brand)); font-size: 0.8rem; }
+    .done > .title { color: hsl(var(--tu-fg-muted)); text-decoration: line-through; }
+    .ok { color: hsl(var(--tu-brand)); margin: 0.5rem 0 0; }
+    .err { color: hsl(var(--tu-danger)); margin: 0.5rem 0 0; }
+  }
+}
+`,
+    },
+  ],
+})
+
 // Lambda-factory export — Tu cell-wraps non-lambda module values, so a
 // namespace-imported `m.CASES` would otherwise be a Signal.State
 // instance instead of the array.
@@ -391,4 +587,5 @@ export let CASES = () => [
   todoCase(),
   asyncFetchCase(),
   formCase(),
+  jsCompatCase(),
 ]

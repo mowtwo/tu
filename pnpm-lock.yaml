@@ -78,6 +78,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  examples/js-compat:
+    dependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+
   examples/scoped:
     dependencies:
       '@tu-lang/compiler':

@@ -29,6 +29,7 @@ export let Page = () => div {
     | Auto-rewrite `${Name}Props` to all-optional + `children?: Child[]` | M6.1 | M6.2+ | After M6.1's named-arg form, every prop is optional at the call site by construction; M3.9's emitted interface should reflect that and always include `children?: Child[]`. Needs the props-object detection rule wired in. |
     | Deprecate positional component calls | M6.1 | M6.3 | Soft migration: both forms work through the alpha cycle, then warn-then-remove once tu-xing + migration tooling exist. |
     | Async / Suspense / streaming SSR | M1.7 | M6.3+ | M6.2 ships sync `renderPage` only. Tu has no `async`/`await` syntax. Streaming, per-route data prefetch, and Qwik-style resumability are future work. tu-shu can be built on the sync flavor today. |
+    | `external JS` return type can't start with `{` | M6.9 | TBD | `parseRawTypeUntilBrace` stops at the first `{` at depth 0, so `external JS (…): { ms: number; out: any[] } { … }` reads the return-type's opening brace as the body opener and breaks parsing. Workaround today: declare a `type R = { … }` alias and use `: R`. Surfaced when authoring `examples/js-compat/JsCompat.tu` (2026-05-02). Fix is small — track brace depth so `{` only ends the type span when not balanced inside. |
 
     ## Closed in M3.13
 
