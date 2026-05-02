@@ -7,6 +7,7 @@ import {
   renderPageHtml,
   renderToString,
   renderToStringAsync,
+  Suspense,
   TuRenderError,
   VERSION,
 } from '../src/index.js'
@@ -249,5 +250,94 @@ describe('@tu-lang/runtime', () => {
     const html = await renderPageAsync(() => h('div', {}, ['x']), { title: 'B' })
     expect(html).toContain('<title>B</title>')
     expect(html).toContain('<div>x</div>')
+  })
+
+  // ─── M6.11 / #61 — Suspense ──────────────────────────────────────────
+
+  it('Suspense renders body when children resolve cleanly', async () => {
+    const body = Suspense({
+      fallback: h('div', {}, ['Loading…']),
+      children: [Promise.resolve(h('span', {}, ['done']))],
+    })
+    expect(await renderToStringAsync(body)).toBe('<span>done</span>')
+  })
+
+  it('Suspense renders fallback when a child rejects', async () => {
+    const body = Suspense({
+      fallback: h('div', {}, ['Loading…']),
+      children: [Promise.reject(new Error('boom'))],
+    })
+    expect(await renderToStringAsync(body)).toBe('<div>Loading…</div>')
+  })
+
+  it('Suspense catches a chained-then throw inside the children pipeline', async () => {
+    const body = Suspense({
+      fallback: h('div', {}, ['F']),
+      children: [
+        Promise.resolve(null).then(() => {
+          throw new Error('async throw')
+        }),
+      ],
+    })
+    expect(await renderToStringAsync(body)).toBe('<div>F</div>')
+  })
+
+  it('Suspense composes — inner boundary catches, outer sees only fallback string', async () => {
+    const inner = Suspense({
+      fallback: h('span', {}, ['inner-loading']),
+      children: [Promise.reject(new Error('inner boom'))],
+    })
+    const outer = Suspense({
+      fallback: h('div', {}, ['outer-loading']),
+      children: [inner],
+    })
+    expect(await renderToStringAsync(outer)).toBe('<span>inner-loading</span>')
+  })
+
+  it('Suspense — sibling boundaries resolve independently', async () => {
+    const ok = Suspense({
+      fallback: h('span', {}, ['OK-FB']),
+      children: [Promise.resolve(h('span', {}, ['ok!']))],
+    })
+    const bad = Suspense({
+      fallback: h('span', {}, ['BAD-FB']),
+      children: [Promise.reject(new Error('x'))],
+    })
+    const html = await renderToStringAsync(h('div', {}, [ok, bad]))
+    expect(html).toBe('<div><span>ok!</span><span>BAD-FB</span></div>')
+  })
+
+  it('sync renderToString of Suspense renders fallback (no body walk)', () => {
+    const v = Suspense({
+      fallback: h('div', { class: 'l' }, ['Loading…']),
+      children: [h('span', {}, ['(body would be ignored)'])],
+    })
+    expect(renderToString(v)).toBe('<div class="l">Loading…</div>')
+  })
+
+  it('Suspense fallback may itself contain a promise — async path resolves it', async () => {
+    const v = Suspense({
+      fallback: Promise.resolve(h('div', {}, ['async fallback'])),
+      children: [Promise.reject(new Error('boom'))],
+    })
+    expect(await renderToStringAsync(v)).toBe('<div>async fallback</div>')
+  })
+
+  it('Suspense without children renders the fallback (no body to wait on)', async () => {
+    const v = Suspense({ fallback: h('div', {}, ['just FB']) })
+    // Empty body resolves to empty string — fallback NOT used.
+    expect(await renderToStringAsync(v)).toBe('')
+  })
+
+  it('Suspense end-to-end via renderPageAsync', async () => {
+    const Page = () =>
+      Suspense({
+        fallback: h('div', { class: 'spinner' }, ['…']),
+        children: [Promise.resolve(h('main', {}, ['payload']))],
+      })
+    const html = await renderPageAsync(Page, { title: 'S' })
+    expect(html).toContain('<title>S</title>')
+    expect(html).toContain('<main>payload</main>')
+    expect(html).not.toContain('spinner')
   })
 })

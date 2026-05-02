@@ -81,6 +81,59 @@ export function h(
 const STATIC_TAG = '$static'
 
 /**
+ * Tag sentinel for Suspense boundaries (M6.11 / #61). The boundary is a
+ * vnode with `tag: '$suspense'`, `props.fallback` carrying the placeholder
+ * Child, and `children` carrying the actual subtree.
+ *
+ * Behavior:
+ * - `renderToStringAsync` walks `children`. If everything resolves, emits
+ *   the body. If anything throws / rejects, catches at the boundary and
+ *   emits `fallback` instead. Inner Suspense boundaries gate their own
+ *   rejections so an outer boundary only sees a fallback string from the
+ *   inner one (clean composition).
+ * - Sync `renderToString` always emits `fallback`. The sync path can't
+ *   await; if the body has no promises it's the user's bug to wrap it in
+ *   Suspense at all (a sync subtree is just better off without). The
+ *   sync emit lets callers like the playground render a Tu page that
+ *   *contains* an async boundary without throwing.
+ */
+const SUSPENSE_TAG = '$suspense'
+
+/**
+ * Suspense boundary primitive (M6.11 / #61).
+ *
+ * Tu call-site:
+ * ```tu
+ * import { Suspense } from "@tu-lang/runtime"
+ *
+ * Suspense(fallback: div { "Loading…" }) {
+ *   AsyncChild()
+ * }
+ * ```
+ *
+ * Compiles (M6.1 named-arg form) to:
+ * ```js
+ * Suspense({ fallback: h('div', {}, ['Loading…']), "children": [AsyncChild()] })
+ * ```
+ *
+ * On the SSR async path, if `AsyncChild()` returns a Promise that resolves,
+ * `renderToStringAsync` emits the resolved body; if it rejects, the
+ * boundary catches and emits the fallback. Streaming SSR (#62) layers on
+ * top, flushing fallback first and replacing it via `<template>` once the
+ * body resolves.
+ */
+export function Suspense(props: {
+  fallback: Child
+  children?: Child[]
+}): VNode {
+  return {
+    tag: SUSPENSE_TAG,
+    props: { fallback: props.fallback },
+    children: props.children ?? [],
+  }
+}
+
+/**
  * Fragment helper for component bodies that want to return multiple
  * sibling vnodes without an enclosing wrapper element. Capitalized so it
  * goes through Tu's component-invocation path (M5 V1) — the codegen
@@ -128,6 +181,12 @@ function renderVNode(node: VNode): string {
   // hands it back verbatim. No double-escape.
   if (node.tag === STATIC_TAG && node.html !== undefined) {
     return node.html
+  }
+  // Suspense boundary (#61): sync path can't await — emit the fallback
+  // verbatim. (If the body has no promises the user shouldn't be wrapping
+  // it in Suspense anyway.) The async path handles resolution properly.
+  if (node.tag === SUSPENSE_TAG) {
+    return renderToString((node.props.fallback as Child) ?? null)
   }
   let propStr = ''
   for (const [k, v] of Object.entries(node.props)) {
@@ -265,6 +324,22 @@ export async function renderToStringAsync(node: Child): Promise<string> {
 async function renderVNodeAsync(node: VNode): Promise<string> {
   if (node.tag === STATIC_TAG && node.html !== undefined) {
     return node.html
+  }
+  // Suspense boundary (#61): try to render the body. If anything inside
+  // throws or any awaited promise rejects, fall back to the fallback
+  // Child instead. Boundaries compose: an inner Suspense's catch emits
+  // its own fallback string, so the outer boundary never sees the
+  // rejection.
+  if (node.tag === SUSPENSE_TAG) {
+    const fallback = (node.props.fallback as Child) ?? null
+    try {
+      const parts = await Promise.all(
+        node.children.map((c) => renderToStringAsync(c))
+      )
+      return parts.join('')
+    } catch {
+      return renderToStringAsync(fallback)
+    }
   }
   let propStr = ''
   for (const [k, v] of Object.entries(node.props)) {
