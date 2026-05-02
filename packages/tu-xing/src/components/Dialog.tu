@@ -8,7 +8,7 @@
 //     p { "Are you sure?" }
 //   }
 
-export type DialogProps = {
+export interface DialogProps {
   open?: boolean
   onClose?: () => void
   title?: string

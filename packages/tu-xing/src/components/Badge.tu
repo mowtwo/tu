@@ -4,7 +4,7 @@
 
 export type BadgeVariant = "brand" | "success" | "warning" | "danger" | "outline"
 
-export type BadgeProps = {
+export interface BadgeProps {
   variant?: BadgeVariant
   children?: Child[]
 }

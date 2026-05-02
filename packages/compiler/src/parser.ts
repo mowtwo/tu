@@ -14,6 +14,8 @@ import type {
   Ident,
   IfExpr,
   ImportDecl,
+  InterfaceDecl,
+  InterfaceField,
   Lambda,
   LetDecl,
   LocalLet,
@@ -136,6 +138,10 @@ export class Parser {
       if (this.isTypeAliasNext()) {
         return this.parseTypeAlias(start, true)
       }
+      // `export interface X { … }` — M8 interface decl.
+      if (this.isInterfaceNext()) {
+        return this.parseInterfaceDecl(start, true)
+      }
     }
     if (this.peek().kind === TokenKind.Let) {
       return this.parseLetDecl(start, exported)
@@ -143,8 +149,11 @@ export class Parser {
     if (this.isTypeAliasNext()) {
       return this.parseTypeAlias(start, exported)
     }
+    if (this.isInterfaceNext()) {
+      return this.parseInterfaceDecl(start, exported)
+    }
     throw this.error(
-      `expected 'let', 'export let', 'type', 'export type', 'import', or 'export {…} from …'`
+      `expected 'let', 'export let', 'type', 'export type', 'interface', 'export interface', 'import', or 'export {…} from …'`
     )
   }
 
@@ -161,6 +170,141 @@ export class Parser {
     if (t2?.kind !== TokenKind.Ident) return false
     const t3 = this.tokens[this.pos + 2]
     return t3?.kind === TokenKind.Equals
+  }
+
+  /**
+   * `interface` is contextual the same way: only an introducer when followed
+   * by `Ident {`. Tu's M8 form for object-shape declarations — produces
+   * BOTH a TS interface AND a runtime descriptor const at codegen.
+   */
+  private isInterfaceNext(): boolean {
+    const t1 = this.peek()
+    if (t1.kind !== TokenKind.Ident || t1.text !== 'interface') return false
+    const t2 = this.tokens[this.pos + 1]
+    if (t2?.kind !== TokenKind.Ident) return false
+    const t3 = this.tokens[this.pos + 2]
+    return t3?.kind === TokenKind.LBrace
+  }
+
+  /**
+   * Parse `interface Name { f1: T1; f2?: T2 }`. Field separator is either
+   * `;`, `,`, or a newline (handled by stripping whitespace at scan time).
+   * The type expression for each field is captured as a raw text slice
+   * between `:` and the field terminator — codegen translates it into
+   * a `type.struct` field-list entry.
+   */
+  private parseInterfaceDecl(start: number, exported: boolean): InterfaceDecl {
+    this.pos++ // consume the `interface` ident
+    const nameTok = this.expect(TokenKind.Ident)
+    this.expect(TokenKind.LBrace)
+    const fields: InterfaceField[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      if (this.peek().kind === TokenKind.Eof) {
+        throw this.error(`unterminated interface body — expected '}' before EOF`)
+      }
+      // Skip optional separators between fields.
+      if (
+        this.peek().kind === TokenKind.Semi ||
+        this.peek().kind === TokenKind.Comma
+      ) {
+        this.pos++
+        continue
+      }
+      const fieldName = this.expect(TokenKind.Ident)
+      let optional = false
+      if (this.peek().kind === TokenKind.Question) {
+        this.pos++
+        optional = true
+      }
+      this.expect(TokenKind.Colon)
+      const typeSpan = this.parseRawTypeUntilFieldBoundary()
+      fields.push({
+        name: fieldName.text,
+        rawType: typeSpan.text,
+        optional,
+        nameStart: fieldName.start,
+        nameEnd: fieldName.end,
+        typeStart: typeSpan.start,
+        typeEnd: typeSpan.end,
+      })
+    }
+    const closeBrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'InterfaceDecl',
+      exported,
+      name: nameTok.text,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+      fields,
+      start,
+      end: closeBrace.end,
+    }
+  }
+
+  /**
+   * Read a type-expression span inside an interface body. Tu fields don't
+   * require `;` / `,` separators (newlines are eaten by the lexer's
+   * `skipTrivia`), so we terminate when we see:
+   *   - `}`           closes the interface body
+   *   - `;` / `,`     explicit field separator (allowed for users coming
+   *                   from TS who write them out)
+   *   - `Ident :`     next field's name+colon at depth 0
+   *   - `Ident ? :`   next field's name with optional marker
+   *
+   * `()` / `{}` / `[]` / `<…>` are depth-tracked so generic args + nested
+   * object-type literals don't terminate early.
+   */
+  private parseRawTypeUntilFieldBoundary(): {
+    text: string
+    start: number
+    end: number
+  } {
+    const start = this.peek().start
+    let depth = 0
+    let end = start
+    while (true) {
+      const t = this.peek()
+      if (t.kind === TokenKind.Eof) break
+      if (depth === 0) {
+        if (
+          t.kind === TokenKind.Semi ||
+          t.kind === TokenKind.Comma ||
+          t.kind === TokenKind.RBrace
+        ) {
+          break
+        }
+        // Lookahead: next field starts with `Ident :` (or `Ident ? :`).
+        // Don't treat the FIRST token this way — we MUST consume at least
+        // one token of the type expression.
+        if (t.kind === TokenKind.Ident && this.pos > 0 && t.start > start) {
+          const t2 = this.tokens[this.pos + 1]
+          if (t2?.kind === TokenKind.Colon) break
+          if (t2?.kind === TokenKind.Question) {
+            const t3 = this.tokens[this.pos + 2]
+            if (t3?.kind === TokenKind.Colon) break
+          }
+        }
+      }
+      if (
+        t.kind === TokenKind.LParen ||
+        t.kind === TokenKind.LBrace ||
+        t.kind === TokenKind.LBracket ||
+        t.kind === TokenKind.Lt
+      ) {
+        depth++
+      } else if (
+        t.kind === TokenKind.RParen ||
+        t.kind === TokenKind.RBrace ||
+        t.kind === TokenKind.RBracket ||
+        t.kind === TokenKind.Gt
+      ) {
+        if (depth === 0) break
+        depth--
+      }
+      end = t.end
+      this.pos++
+    }
+    return { text: this.source.slice(start, end), start, end }
   }
 
   private parseTypeAlias(start: number, exported: boolean): TypeAlias {
@@ -208,6 +352,13 @@ export class Parser {
           const t2 = this.tokens[this.pos + 1]
           const t3 = this.tokens[this.pos + 2]
           if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.Equals) break
+        }
+        // M8: contextual `interface X { …` starts a new top-level decl
+        // and terminates the current type-alias span.
+        if (t.kind === TokenKind.Ident && t.text === 'interface') {
+          const t2 = this.tokens[this.pos + 1]
+          const t3 = this.tokens[this.pos + 2]
+          if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.LBrace) break
         }
       }
       if (

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tu-lang/compiler": "workspace:*",
-    "@tu-lang/runtime": "workspace:*"
+    "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/std": "workspace:*"
   }
 }

@@ -412,10 +412,14 @@ function isTypePositionAfter(tokens: Token[], colonIdx: number): boolean {
  * error, but a `type Person = …` above is still extractable).
  */
 function collectUserTypes(source: string): string[] {
-  const re = /^[ \t]*(?:export[ \t]+)?type[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*=/gm
   const out: string[] = []
+  // `type X =` (TS-erased aliases — unions, string-literal aliases).
+  const aliasRe = /^[ \t]*(?:export[ \t]+)?type[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*=/gm
   let m: RegExpExecArray | null
-  while ((m = re.exec(source)) !== null) out.push(m[1]!)
+  while ((m = aliasRe.exec(source)) !== null) out.push(m[1]!)
+  // `interface X {` (M8 — object shapes; runtime descriptor + TS interface).
+  const ifaceRe = /^[ \t]*(?:export[ \t]+)?interface[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\{/gm
+  while ((m = ifaceRe.exec(source)) !== null) out.push(m[1]!)
   return out
 }
 

@@ -95,6 +95,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../../packages/std
       jsdom:
         specifier: ^26.0.0
         version: 26.1.0
@@ -149,6 +152,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../../packages/std
 
   examples/tailwind:
     dependencies:
@@ -236,6 +242,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../../packages/std
 
   packages/cli:
     dependencies:
@@ -339,6 +348,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../std
       tailwindcss:
         specifier: ^4.0.0
         version: 4.2.4
@@ -374,6 +386,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../packages/std
       '@tu-lang/tu-xing':
         specifier: workspace:*
         version: link:../packages/tu-xing

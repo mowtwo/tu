@@ -8,7 +8,7 @@
 
 import { Suspense } from "@tu-lang/runtime"
 
-type User = { id: string; name: string; bio: string }
+interface User { id: string; name: string; bio: string }
 
 let fakeFetchUser = async (id: string, delayMs: number): Promise<User> => {
   await new Promise((res: (v: void) => void) => setTimeout(() => res(), delayMs))

@@ -6,7 +6,7 @@
 //   Tabs(items: ["overview", "settings", "billing"], active: active, onSelect: (id) => active = id)
 //   if (active == "overview") { div { "..." } }
 
-export type TabsProps = {
+export interface TabsProps {
   items?: string[]
   active?: string
   onSelect?: (id: string) => void

@@ -12,7 +12,7 @@
 //     p { "Form fields go here" }
 //   }
 
-export type CardProps = {
+export interface CardProps {
   title?: string
   description?: string
   footer?: () => Child

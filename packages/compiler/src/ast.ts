@@ -14,7 +14,44 @@ interface Ranged {
   end: number
 }
 
-export type Stmt = LetDecl | ImportDecl | ReExportDecl | TypeAlias
+export type Stmt = LetDecl | ImportDecl | ReExportDecl | TypeAlias | InterfaceDecl
+
+/**
+ * `interface Name { field1: T; field2: U }` — Tu's M8 declaration form for
+ * object-shape types. Compiles to BOTH a TS interface (drives tsserver
+ * inference) AND a runtime descriptor const (`const Name = type.struct(…)`)
+ * exported under the same identifier. The descriptor flows through to the
+ * `type.of` / `type.is` runtime API in `@tu-lang/std`.
+ *
+ * Distinct from `TypeAlias` (`type X = …`): the alias keyword stays for
+ * unions and string-literal aliases (which have no runtime descriptor in
+ * v1); `interface` is exclusively for object compounds.
+ */
+export interface InterfaceDecl extends Ranged {
+  kind: 'InterfaceDecl'
+  exported: boolean
+  name: string
+  /** Source byte range of the interface name (drives LSP rename / hover). */
+  nameStart: number
+  nameEnd: number
+  fields: InterfaceField[]
+}
+
+export interface InterfaceField {
+  name: string
+  /** Raw type expression text — the slice between `:` and the field
+   *  terminator (`;`, `,`, or `}`). Codegen translates this to either a
+   *  runtime descriptor reference (Phase 2) or `type.Object` (fallback). */
+  rawType: string
+  /** True iff the field carried a `?:` (optional). */
+  optional: boolean
+  /** Source byte range of the field name. */
+  nameStart: number
+  nameEnd: number
+  /** Source byte range of the type expression. */
+  typeStart: number
+  typeEnd: number
+}
 
 /**
  * `type Name = …` — a TS-style type alias. Tu doesn't parse the RHS itself;

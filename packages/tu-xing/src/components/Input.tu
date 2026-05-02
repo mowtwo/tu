@@ -5,7 +5,7 @@
 
 export type InputSize = "sm" | "md" | "lg"
 
-export type InputProps = {
+export interface InputProps {
   type?: string
   placeholder?: string
   value?: string

@@ -5,8 +5,8 @@
 //
 // Each case's `entry` file must `export let App = () => …`.
 
-type CaseFile = { path: string; content: string }
-type CaseDefinition = {
+interface CaseFile { path: string; content: string }
+interface CaseDefinition {
   id: string
   label: string
   blurb: string
@@ -398,7 +398,7 @@ let jsCompatCase = (): CaseDefinition => ({
       path: "App.tu",
       content: `// Showcase: every modern JS/TS feature Tu compiles to native form.
 
-type Todo = { id: number; title: string; done: boolean }
+interface Todo { id: number; title: string; done: boolean }
 
 let todos: Todo[] = [
   { id: 1, title: "Read M5.10 release notes", done: true },
@@ -412,7 +412,7 @@ let lastError = ""
 let slugOk = (s: string): boolean => /^[a-z][a-z0-9-]*$/.test(s)
 
 // Optional chaining + nullish coalescing.
-type User = { name: string; email: string | null }
+interface User { name: string; email: string | null }
 let formatUser = (u: User | null): string => {
   let name = u?.name ?? "anonymous"
   let email = u?.email ?? "no-email"
@@ -472,7 +472,7 @@ let onLoad = async (id: number) => {
 // External JS escape hatch — pure JS for a tight imperative loop +
 // performance.now(). Tu auto-injects nothing here; the body is pasted
 // verbatim into the emitted JS and called as a normal function.
-type ShuffleResult = { ms: number; out: number[] }
+interface ShuffleResult { ms: number; out: number[] }
 let shuffleAndTime = external JS (xs: number[]): ShuffleResult {
   const out = xs.slice()
   const t0 = performance.now()

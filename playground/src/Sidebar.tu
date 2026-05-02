@@ -29,7 +29,7 @@ let linkClass = (id: string): string =>
     "block px-3 py-1.5 rounded-[var(--tu-radius-sm)] text-[hsl(var(--tu-fg-muted))] hover:bg-[hsl(var(--tu-surface-elevated))] hover:text-[hsl(var(--tu-fg))] no-underline transition-colors"
   }
 
-type DemoLinkProps = { id: string; label: string; mil: string }
+interface DemoLinkProps { id: string; label: string; mil: string }
 
 let DemoLink = (props: DemoLinkProps) => a(
   href: "#" + props.id,

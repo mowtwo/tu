@@ -23,8 +23,8 @@
 import { Fragment } from "@tu-lang/runtime"
 
 // ── Types ───────────────────────────────────────────────────────────
-type Todo = { id: number; title: string; done: boolean }
-type User = { name: string; email: string | null }
+interface Todo { id: number; title: string; done: boolean }
+interface User { name: string; email: string | null }
 
 // ── Reactive state ──────────────────────────────────────────────────
 export let todos: Todo[] = [

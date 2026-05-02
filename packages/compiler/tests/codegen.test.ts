@@ -1072,4 +1072,77 @@ describe('codegen', () => {
     )
     expect(ts).toContain(': { a: 1 } & { b: 2 }')
   })
+
+  // ─── M8 Phase 2 — `interface` keyword + runtime descriptor codegen ───
+
+  it('M8: emits both a TS interface AND a runtime descriptor const', () => {
+    const ts = compileToTS(['interface User {', '  id: number', '  name: string', '}'].join('\n'))
+    expect(ts).toMatch(/interface User \{[\s\S]*?id: number[\s\S]*?name: string[\s\S]*?\}/)
+    expect(ts).toContain(
+      'const User: __tu_TypeDescriptor = type.struct("User", [{ name: "id", type: type.Number }, { name: "name", type: type.String }])'
+    )
+    expect(ts).toContain(
+      `import { type, type TypeDescriptor as __tu_TypeDescriptor } from '@tu-lang/std'`
+    )
+  })
+
+  it('M8: JS mode erases the interface but keeps the runtime descriptor', () => {
+    const js = compile('interface User { id: number\n name: string }')
+    expect(js).not.toContain('interface User')
+    expect(js).toContain(
+      'const User = type.struct("User", [{ name: "id", type: type.Number }, { name: "name", type: type.String }])'
+    )
+    expect(js).toContain(`import { type } from '@tu-lang/std'`)
+  })
+
+  it('M8: export interface emits export modifier on both sides', () => {
+    const ts = compileToTS('export interface User { id: number }')
+    expect(ts).toContain('export interface User {')
+    expect(ts).toContain('export const User: __tu_TypeDescriptor')
+  })
+
+  it('M8: nullable union `T | null` maps to type.Optional(T)', () => {
+    const js = compile('interface U { email: string | null }')
+    expect(js).toContain('{ name: "email", type: type.Optional(type.String) }')
+  })
+
+  it('M8: array sugar `T[]` maps to type.Array(T)', () => {
+    const js = compile('interface U { tags: string[]\n scores: number[] }')
+    expect(js).toContain('{ name: "tags", type: type.Array(type.String) }')
+    expect(js).toContain('{ name: "scores", type: type.Array(type.Number) }')
+  })
+
+  it('M8: optional field marker `?:` flows through to the descriptor', () => {
+    const js = compile('interface U { id: number\n bio?: string }')
+    expect(js).toContain('{ name: "id", type: type.Number }')
+    expect(js).toContain('{ name: "bio", type: type.String, optional: true }')
+  })
+
+  it('M8: nested interface reference compiles to a bare identifier (the runtime const)', () => {
+    const js = compile(['interface Inner { x: number }', 'interface Outer { inner: Inner }'].join('\n'))
+    expect(js).toContain('{ name: "inner", type: Inner }')
+  })
+
+  it('M8: function-typed field falls back to type.Function', () => {
+    const js = compile('interface H { onClick: (e: Event) => void }')
+    expect(js).toContain('{ name: "onClick", type: type.Function }')
+  })
+
+  it('M8: real (non-null) union falls back to type.Object until M9 ships', () => {
+    const js = compile('interface E { kind: string | number }')
+    expect(js).toContain('{ name: "kind", type: type.Object }')
+  })
+
+  it('M8: no interface — no auto-import for @tu-lang/std', () => {
+    const js = compile('export let count = 0')
+    expect(js).not.toContain('@tu-lang/std')
+  })
+
+  it('M8: interface + type alias coexist (alias still compiles to TS-erased)', () => {
+    const ts = compileToTS(['type Variant = "a" | "b" | "c"', 'interface Card { variant: Variant }'].join('\n'))
+    expect(ts).toContain('type Variant = "a" | "b" | "c"')
+    expect(ts).toContain(
+      'const Card: __tu_TypeDescriptor = type.struct("Card", [{ name: "variant", type: Variant }])'
+    )
+  })
 })

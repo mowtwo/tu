@@ -10,6 +10,7 @@ import type {
   Expr,
   ForExpr,
   IfExpr,
+  InterfaceDecl,
   Lambda,
   LocalLet,
   MarkdownBlock,
@@ -88,6 +89,124 @@ function getMd(): MarkdownIt {
 function runtimeImportLine(tsMode: boolean): string {
   if (tsMode) return `import { h, Signal, type Child, type VNode } from '@tu-lang/runtime'`
   return `import { h, Signal } from '@tu-lang/runtime'`
+}
+
+/**
+ * Auto-import for the M8 type metadata API. Emitted at the top of any
+ * compiled module that contains an `interface` declaration (Phase 2). User
+ * `.tu` code can then write `type.struct(…)` / `type.of(v)` / `type.is(v, I)`
+ * via the standard `type.X` member access without writing the import
+ * themselves — same auto-import treatment `h` and `Signal` already get.
+ */
+function typeImportLine(tsMode: boolean): string {
+  if (tsMode)
+    return `import { type, type TypeDescriptor as __tu_TypeDescriptor } from '@tu-lang/std'`
+  return `import { type } from '@tu-lang/std'`
+}
+
+/**
+ * Translate a Tu type-expression text slice to the JS expression that
+ * builds its runtime descriptor. Used by `interface` codegen to populate
+ * `type.struct(…, [{ name, type: <THIS> }])` per field.
+ *
+ * Supported (M8 Phase 2):
+ *   - Primitives: `number`, `string`, `boolean`, `null`, `undefined`,
+ *     `bigint`, `symbol`, `void`, `any`, `unknown`, `never`.
+ *   - Functions: any `(…) => …` shape → `type.Function`.
+ *   - Arrays: `T[]`, `Array<T>`, and `ReadonlyArray<T>` → `type.Array(<T>)`.
+ *   - Nullable union: `T | null` → `type.Optional(<T>)`. The reverse
+ *     `null | T` is also recognized.
+ *   - Bare identifier: assumed to be a user-declared `interface` (or one
+ *     of the built-in JS-type descriptors exposed via `type.X` —
+ *     `type.Promise`, `type.Map`, etc., handled by aliasing in the
+ *     descriptor lookup).
+ *
+ * Anything more exotic (full unions, generics other than the array
+ * sugars, intersection types, conditional types, mapped types) falls
+ * back to `type.Object` — sound (matches any object) but lossy. M9
+ * generics + unions tighten this.
+ */
+function tuTypeToDescriptorExpr(raw: string): string {
+  const t = raw.trim()
+  if (t.length === 0) return 'type.Object'
+  // Function types — any `(…) => …` shape.
+  if (/=>/.test(t) && /^\s*\(/.test(t)) return 'type.Function'
+  // Nullable: `T | null` (or `null | T`). Strip the null branch and
+  // recurse on the other side.
+  const orParts = splitTopLevel(t, '|')
+  if (orParts.length === 2) {
+    const [a, b] = orParts.map((s) => s.trim())
+    if (a === 'null' || a === 'undefined') {
+      return `type.Optional(${tuTypeToDescriptorExpr(b!)})`
+    }
+    if (b === 'null' || b === 'undefined') {
+      return `type.Optional(${tuTypeToDescriptorExpr(a!)})`
+    }
+    // Real union — fall back to Object until M9 ships union descriptors.
+    return 'type.Object'
+  }
+  // Arrays: `T[]`
+  if (t.endsWith('[]')) {
+    const inner = t.slice(0, -2)
+    return `type.Array(${tuTypeToDescriptorExpr(inner)})`
+  }
+  // `Array<T>` / `ReadonlyArray<T>` sugar.
+  const arrM = t.match(/^(?:Readonly)?Array\s*<\s*([\s\S]+)\s*>\s*$/)
+  if (arrM) {
+    return `type.Array(${tuTypeToDescriptorExpr(arrM[1]!)})`
+  }
+  // Primitives.
+  switch (t) {
+    case 'number':
+      return 'type.Number'
+    case 'string':
+      return 'type.String'
+    case 'boolean':
+      return 'type.Boolean'
+    case 'bigint':
+      return 'type.BigInt'
+    case 'symbol':
+      return 'type.Symbol'
+    case 'null':
+    case 'undefined':
+    case 'void':
+      return 'type.Null'
+    case 'any':
+    case 'unknown':
+      return 'type.Any'
+    case 'never':
+      return 'type.Never'
+  }
+  // Bare identifier — assume user-declared interface or built-in.
+  // Identifier-or-namespaced-identifier shape (allow `type.Promise` etc.).
+  if (/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(t)) {
+    return t
+  }
+  // Anything else — soundly fall back to `type.Object` (matches any
+  // non-null object). User can wrap fancy shapes in their own struct.
+  return 'type.Object'
+}
+
+/**
+ * Split `s` on `sep` at depth-0 only — `<>`, `[]`, `{}`, `()` are tracked.
+ * Used by `tuTypeToDescriptorExpr` to detect top-level union splits without
+ * tripping on `Array<A | B>` etc.
+ */
+function splitTopLevel(s: string, sep: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let last = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!
+    if (c === '<' || c === '[' || c === '{' || c === '(') depth++
+    else if (c === '>' || c === ']' || c === '}' || c === ')') depth--
+    else if (depth === 0 && c === sep && s[i - 1] !== sep && s[i + 1] !== sep) {
+      out.push(s.slice(last, i))
+      last = i + 1
+    }
+  }
+  out.push(s.slice(last))
+  return out
 }
 
 export interface SourceMapV3 {
@@ -190,7 +309,13 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     if (stmt.kind === 'TypeAlias') declaredTypeNames.add(stmt.name)
   }
   const cg = new Codegen(cells, scopes, tsMode, declaredTypeNames)
-  cg.write(`${runtimeImportLine(tsMode)}\n\n`)
+  cg.write(`${runtimeImportLine(tsMode)}\n`)
+  // Auto-import the M8 type API when this module declares any interface.
+  // Sniff the program body — interface decls compile to `type.struct(…)`
+  // calls so they need the `type` namespace in scope.
+  const hasInterface = program.body.some((s) => s.kind === 'InterfaceDecl')
+  if (hasInterface) cg.write(`${typeImportLine(tsMode)}\n`)
+  cg.write('\n')
   for (const stmt of program.body) {
     // Type aliases erase entirely in JS mode — they have no runtime presence.
     if (stmt.kind === 'TypeAlias' && !tsMode) continue
@@ -393,6 +518,10 @@ class Codegen {
       this.mark(stmt.nameStart, stmt.nameEnd, () => this.write(stmt.name))
       this.write(' = ')
       this.mark(stmt.typeStart, stmt.typeEnd, () => this.write(stmt.type))
+      return
+    }
+    if (stmt.kind === 'InterfaceDecl') {
+      this.emitInterfaceDecl(stmt)
       return
     }
     const decl = stmt
@@ -1243,6 +1372,60 @@ class Codegen {
     this.write(', {}, [], ')
     this.write(JSON.stringify(wrapped))
     this.write(')')
+  }
+
+  /**
+   * `interface Foo { x: number; y: string }` (M8 / Phase 2):
+   * - In TS mode, emit BOTH the `export interface Foo { … }` for tsserver
+   *   AND a `export const Foo = type.struct("Foo", [...])` runtime descriptor
+   *   bound to the same identifier (TS type/value namespaces are separate, so
+   *   one name carries both meanings — exactly the M8 design intent).
+   * - In JS mode, emit only the runtime const.
+   *
+   * Field type expressions are translated via `tuTypeToDescriptorExpr` —
+   * primitives + arrays + nullable + nested-interface refs are mapped to
+   * concrete `type.X` descriptors. Anything outside this surface (unions
+   * other than `T | null`, function types, generics) falls back to
+   * `type.Object` — sound but lossy until M9 generics + unions land.
+   */
+  private emitInterfaceDecl(node: InterfaceDecl): void {
+    if (this.tsMode) {
+      const exp = node.exported ? 'export ' : ''
+      this.write(`${exp}interface `)
+      this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+      this.write(' {')
+      for (const f of node.fields) {
+        this.write('\n  ')
+        this.mark(f.nameStart, f.nameEnd, () => this.write(f.name))
+        if (f.optional) this.write('?')
+        this.write(': ')
+        this.mark(f.typeStart, f.typeEnd, () => this.write(f.rawType.trim()))
+      }
+      this.write(node.fields.length > 0 ? '\n}\n' : '}\n')
+    }
+    // Runtime descriptor (BOTH modes — JS and TS get the const):
+    const exp = node.exported ? 'export ' : ''
+    this.write(`${exp}const `)
+    this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    if (this.tsMode) {
+      // The const carries the runtime descriptor; the like-named TS
+      // interface lives in TS's type namespace. Annotate as
+      // `__tu_TypeDescriptor` so tsserver doesn't expose the descriptor's
+      // internal shape (`fields`, `kind`) on user reads of `Foo`.
+      this.write(`: __tu_TypeDescriptor`)
+    }
+    this.write(` = type.struct(${JSON.stringify(node.name)}, [`)
+    for (let i = 0; i < node.fields.length; i++) {
+      if (i > 0) this.write(', ')
+      const f = node.fields[i]!
+      this.write('{ name: ')
+      this.write(JSON.stringify(f.name))
+      this.write(', type: ')
+      this.write(tuTypeToDescriptorExpr(f.rawType.trim()))
+      if (f.optional) this.write(', optional: true')
+      this.write(' }')
+    }
+    this.write('])')
   }
 
   private emitStyleBlock(node: StyleBlock): void {

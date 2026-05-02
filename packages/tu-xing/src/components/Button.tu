@@ -11,7 +11,7 @@
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger"
 export type ButtonSize = "sm" | "md" | "lg"
 
-export type ButtonProps = {
+export interface ButtonProps {
   variant?: ButtonVariant
   size?: ButtonSize
   onClick?: (e: Event) => void

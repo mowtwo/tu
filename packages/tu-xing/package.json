@@ -49,6 +49,7 @@
   },
   "peerDependencies": {
     "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/std": "workspace:*",
     "tailwindcss": "^4.0.0"
   },
   "publishConfig": {

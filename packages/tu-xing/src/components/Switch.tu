@@ -3,7 +3,7 @@
 //
 // Usage: Switch(checked: enabled, onChange: (v) => enabled = v)
 
-export type SwitchProps = {
+export interface SwitchProps {
   checked?: boolean
   onChange?: (next: boolean) => void
 }

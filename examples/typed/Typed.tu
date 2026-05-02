@@ -11,7 +11,7 @@
 //   • `origin.x` — member access on a state-cell that holds an object.
 //   • `computed({ … })` — object literal inside a computed cell.
 
-type Point = { x: number; y: number }
+interface Point { x: number; y: number }
 
 export let origin: Point = { x: 0, y: 0 }
 

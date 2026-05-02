@@ -193,7 +193,7 @@ Done in the same commit as the parser change so nothing's left in `type X = …`
 - **Phase 2** — `interface` keyword + codegen + repo migration (the big bang).
 - **Phase 3** — anonymous interface synthesis + shape interning.
 - **Phase 4** — wire the parser bans (`typeof`, `instanceof`, `type X = …`) with directive errors.
-- **Phase 5** — built-in JS-type descriptors (Promise, Map, Set, Error, AbortController) + Temporal types from `@tu-lang/time`.
+- **Phase 5** — built-in JS-type descriptors (Promise, Map, Set, Error, AbortController) + Temporal types from `@tu-lang/std/time` (submodule of std, decided 2026-05-03 not to carve a separate package).
 - **Phase 6 (M9)** — generics (`interface Box<T>`) + unions (`union(A, B)` runtime constructor or syntax) + recursive interfaces.
 
 ## 7. Open questions (resolve during implementation)
