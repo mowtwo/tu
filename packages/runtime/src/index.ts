@@ -404,6 +404,23 @@ export async function renderPageAsync(
 }
 
 function assemblePage(bodyHtml: string, options: RenderPageOptions): string {
+  const { open, close } = assembleShellParts(options)
+  return open + bodyHtml + close
+}
+
+/**
+ * Split the page shell into `open` (everything up to and including `<body>`)
+ * and `close` (the inline-script tail + `</body></html>`). Streaming SSR
+ * (#62) emits `open` first, then the sync portion of the body interleaved
+ * with `<div data-tu-suspense="N">…fallback…</div>` placeholders, then the
+ * replacer script + per-boundary `<template>` chunks as boundaries resolve,
+ * then `close`. The string flavor `assemblePage` reuses this and just
+ * concatenates `open + bodyHtml + close`.
+ */
+function assembleShellParts(options: RenderPageOptions): {
+  open: string
+  close: string
+} {
   const lang = options.lang ?? 'en'
   const meta = {
     charset: 'utf-8',
@@ -440,7 +457,212 @@ function assemblePage(bodyHtml: string, options: RenderPageOptions): string {
   const tail = options.inlineScript
     ? `<script>${options.inlineScript}</script>`
     : ''
-  return `<!doctype html><html lang="${escapeAttr(lang)}"><head>${head}</head><body${bodyClassAttr}>${bodyHtml}${tail}</body></html>`
+  return {
+    open: `<!doctype html><html lang="${escapeAttr(lang)}"><head>${head}</head><body${bodyClassAttr}>`,
+    close: `${tail}</body></html>`,
+  }
+}
+
+// ── Streaming SSR (M6.11 / #62) ───────────────────────────────────────
+//
+// `renderToStream` returns a Web `ReadableStream<Uint8Array>` so callers can
+// pipe straight into a Web `Response` (Bun, Deno, Cloudflare Workers,
+// Node 18+ via `Response.fromWeb`). The first chunk holds the full page
+// shell + the body's sync regions, with one `<div data-tu-suspense="N">…
+// fallback…</div>` placeholder per pending boundary. Each boundary then
+// resolves in parallel and flushes a `<template>` + replace-script chunk
+// the moment it's done — so a fast boundary doesn't wait on a slow sibling.
+//
+// The replace mechanism is a tiny inline `$tu_replace(id)` polyfill (~150
+// bytes) that swaps the placeholder div's children for the matching
+// `<template>`'s content. It runs in the user's browser before hydration
+// and is auto-injected just before the first pending-boundary template is
+// flushed. By the time `hydrate(thunk, root)` runs from `@tu-lang/dom`
+// (typically on `DOMContentLoaded`), every reachable template has already
+// patched its placeholder, so hydration sees a complete SSR DOM and the
+// existing identity-preservation contract still holds.
+
+const REPLACER_SCRIPT =
+  `<script>function $tu_replace(i){var p=document.querySelector('[data-tu-suspense="'+i+'"]'),t=document.getElementById('S:'+i);if(!p||!t)return;p.innerHTML='';while(t.content.firstChild)p.appendChild(t.content.firstChild);t.parentNode.removeChild(t);}</script>`
+
+interface PendingBoundary {
+  id: number
+  /** The body to resolve via `renderToStringAsync` after the shell flushes. */
+  body: Child[]
+}
+
+/**
+ * Walks the tree synchronously, replacing each `$suspense` boundary AND
+ * each bare-Promise child with a `<div data-tu-suspense="N">…fallback…</div>`
+ * placeholder. The deferred subtrees are appended to `pending` for the
+ * stream's resolution phase. A bare Promise (no surrounding Suspense)
+ * gets an empty placeholder — the boundary resolves later and replaces it
+ * inline; if it rejects, the placeholder stays empty.
+ */
+class ShellRenderer {
+  pending: PendingBoundary[] = []
+
+  walk(node: Child): string {
+    if (node == null) return ''
+    if (typeof node === 'string') return escapeText(node)
+    if (typeof node === 'number') return String(node)
+    if (Array.isArray(node)) {
+      let out = ''
+      for (const c of node) out += this.walk(c)
+      return out
+    }
+    if (isPromise(node)) {
+      const id = this.pending.length
+      this.pending.push({ id, body: [node] })
+      return `<div data-tu-suspense="${id}"></div>`
+    }
+    return this.walkVNode(node)
+  }
+
+  private walkVNode(node: VNode): string {
+    if (node.tag === STATIC_TAG && node.html !== undefined) {
+      return node.html
+    }
+    if (node.tag === SUSPENSE_TAG) {
+      const id = this.pending.length
+      const fallback = (node.props.fallback as Child) ?? null
+      this.pending.push({ id, body: node.children })
+      // Render the fallback through the same shell walker, so a fallback
+      // that itself contains a Suspense / bare Promise nests cleanly —
+      // the inner promise becomes its own boundary inside this one's
+      // placeholder, replaced when it resolves.
+      const fallbackHtml = this.walk(fallback)
+      return `<div data-tu-suspense="${id}">${fallbackHtml}</div>`
+    }
+    let propStr = ''
+    for (const [k, v] of Object.entries(node.props)) {
+      if (k === 'key') continue
+      if (v == null || v === false) continue
+      if (typeof v === 'function') continue
+      if (v === true) {
+        propStr += ` ${k}`
+        continue
+      }
+      propStr += ` ${k}="${escapeAttr(String(v))}"`
+    }
+    if (VOID_ELEMENTS.has(node.tag)) {
+      return `<${node.tag}${propStr}>`
+    }
+    let childStr = ''
+    if (RAW_TEXT_ELEMENTS.has(node.tag)) {
+      for (const c of node.children) childStr += this.walkRaw(c)
+    } else {
+      for (const c of node.children) childStr += this.walk(c)
+    }
+    return `<${node.tag}${propStr}>${childStr}</${node.tag}>`
+  }
+
+  private walkRaw(node: Child): string {
+    if (node == null) return ''
+    if (typeof node === 'string') return node
+    if (typeof node === 'number') return String(node)
+    if (Array.isArray(node)) {
+      let out = ''
+      for (const c of node) out += this.walkRaw(c)
+      return out
+    }
+    if (isPromise(node)) {
+      const id = this.pending.length
+      this.pending.push({ id, body: [node] })
+      return `<div data-tu-suspense="${id}"></div>`
+    }
+    return this.walkVNode(node)
+  }
+}
+
+export interface RenderToStreamOptions extends RenderPageOptions {
+  /**
+   * Called once the shell + every fallback placeholder has been enqueued
+   * onto the controller. Useful for hooks like "set HTTP status now that
+   * we've committed to a successful render". Pending boundaries continue
+   * to resolve in the background; the stream stays open until they
+   * complete or reject.
+   */
+  onShellReady?: () => void
+}
+
+/**
+ * Streaming SSR. Returns a `ReadableStream<Uint8Array>` carrying the page
+ * shell, the synchronous body content with `<div data-tu-suspense=…>`
+ * placeholders, and per-boundary `<template>` + replace-script chunks
+ * flushed as each boundary resolves.
+ *
+ * Usage in a Web-standard server:
+ * ```ts
+ * import { renderToStream } from '@tu-lang/runtime'
+ *
+ * const stream = renderToStream(() => Page(), { title: 'My App' })
+ * return new Response(stream, {
+ *   headers: { 'content-type': 'text/html; charset=utf-8' },
+ * })
+ * ```
+ *
+ * Resolution order: boundaries flush in the order they finish, NOT the
+ * order they appear in source. A fast boundary preceded by a slow one
+ * still arrives first, and the replace-script always finds the right
+ * placeholder by id.
+ */
+export function renderToStream(
+  thunk: () => Child | Promise<Child>,
+  options: RenderToStreamOptions = {}
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const result = thunk()
+        const root: Child = isPromise(result)
+          ? ((await (result as Promise<unknown>)) as Child)
+          : (result as Child)
+
+        const renderer = new ShellRenderer()
+        const bodyShell = renderer.walk(root)
+        const { open, close } = assembleShellParts(options)
+        controller.enqueue(encoder.encode(open + bodyShell))
+
+        // Inject the replacer script once, before any per-boundary
+        // template arrives. No-boundary pages skip this (saves ~150 B).
+        if (renderer.pending.length > 0) {
+          controller.enqueue(encoder.encode(REPLACER_SCRIPT))
+        }
+
+        options.onShellReady?.()
+
+        // Resolve every boundary in parallel; emit each as it finishes
+        // (resolution order, not source order). A boundary whose body
+        // rejects flushes nothing — its placeholder stays as-is, so the
+        // user-visible result is the fallback content.
+        await Promise.all(
+          renderer.pending.map(async (b) => {
+            try {
+              const parts = await Promise.all(
+                b.body.map((c) => renderToStringAsync(c))
+              )
+              const html = parts.join('')
+              controller.enqueue(
+                encoder.encode(
+                  `<template id="S:${b.id}">${html}</template>` +
+                  `<script>$tu_replace("${b.id}")</script>`
+                )
+              )
+            } catch {
+              // Boundary rejected — fallback already in the DOM.
+            }
+          })
+        )
+
+        controller.enqueue(encoder.encode(close))
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
 }
 
 function renderRawTextChild(node: Child): string {

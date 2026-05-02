@@ -5,12 +5,40 @@ import {
   renderPage,
   renderPageAsync,
   renderPageHtml,
+  renderToStream,
   renderToString,
   renderToStringAsync,
   Suspense,
   TuRenderError,
   VERSION,
 } from '../src/index.js'
+
+async function streamToString(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let out = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    out += decoder.decode(value, { stream: true })
+  }
+  out += decoder.decode()
+  return out
+}
+
+async function streamChunks(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(decoder.decode(value, { stream: true }))
+  }
+  const tail = decoder.decode()
+  if (tail.length > 0) chunks.push(tail)
+  return chunks
+}
 
 describe('@tu-lang/runtime', () => {
   it('exposes a version', () => {
@@ -339,5 +367,173 @@ describe('@tu-lang/runtime', () => {
     expect(html).toContain('<title>S</title>')
     expect(html).toContain('<main>payload</main>')
     expect(html).not.toContain('spinner')
+  })
+
+  // ─── M6.11 / #62 — streaming SSR ──────────────────────────────────────
+
+  it('renderToStream — no Suspense — emits a complete document and closes', async () => {
+    const stream = renderToStream(() => h('div', {}, ['hi']), { title: 'X' })
+    const html = await streamToString(stream)
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('<title>X</title>')
+    expect(html).toContain('<div>hi</div>')
+    expect(html.endsWith('</body></html>')).toBe(true)
+    // No replacer script when there are no boundaries.
+    expect(html).not.toContain('$tu_replace')
+  })
+
+  it('renderToStream — Suspense placeholder + template + replacer arrive in chunks', async () => {
+    let resolveBody: ((v: unknown) => void) | undefined
+    const bodyP = new Promise<unknown>((r) => {
+      resolveBody = r
+    })
+    const Page = () =>
+      h('main', {}, [
+        Suspense({
+          fallback: h('p', {}, ['Loading…']),
+          children: [bodyP as Promise<unknown> as unknown as never],
+        }),
+      ])
+
+    const stream = renderToStream(Page, { title: 'Y' })
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+
+    // First chunk: shell + body with placeholder.
+    const c1 = await reader.read()
+    expect(c1.done).toBe(false)
+    const first = decoder.decode(c1.value!, { stream: true })
+    expect(first).toContain('<!doctype html>')
+    expect(first).toContain('<title>Y</title>')
+    expect(first).toContain('<main><div data-tu-suspense="0"><p>Loading…</p></div></main>')
+
+    // Second chunk: replacer polyfill (only emitted when there's a boundary).
+    const c2 = await reader.read()
+    expect(c2.done).toBe(false)
+    const second = decoder.decode(c2.value!, { stream: true })
+    expect(second).toContain('$tu_replace')
+
+    // Body still pending — resolver chunk hasn't arrived.
+    // Resolve the boundary now; expect template + replace-call.
+    resolveBody!(h('article', {}, ['payload']))
+    const c3 = await reader.read()
+    expect(c3.done).toBe(false)
+    const third = decoder.decode(c3.value!, { stream: true })
+    expect(third).toContain('<template id="S:0"><article>payload</article></template>')
+    expect(third).toContain('<script>$tu_replace("0")</script>')
+
+    // Final chunk: close tags.
+    const c4 = await reader.read()
+    expect(c4.done).toBe(false)
+    const fourth = decoder.decode(c4.value!, { stream: true })
+    expect(fourth).toBe('</body></html>')
+
+    const c5 = await reader.read()
+    expect(c5.done).toBe(true)
+  })
+
+  it('renderToStream — boundaries flush in resolution order, not source order', async () => {
+    let resolveSlow!: (v: unknown) => void
+    let resolveFast!: (v: unknown) => void
+    const slow = new Promise<unknown>((r) => {
+      resolveSlow = r
+    })
+    const fast = new Promise<unknown>((r) => {
+      resolveFast = r
+    })
+    const Page = () =>
+      h('main', {}, [
+        Suspense({
+          fallback: h('span', {}, ['S-FB']),
+          children: [slow as never],
+        }),
+        Suspense({
+          fallback: h('span', {}, ['F-FB']),
+          children: [fast as never],
+        }),
+      ])
+
+    const stream = renderToStream(Page)
+    // Resolve fast first, slow later.
+    queueMicrotask(() => resolveFast(h('span', {}, ['fast-done'])))
+    setTimeout(() => resolveSlow(h('span', {}, ['slow-done'])), 20)
+
+    const chunks = await streamChunks(stream)
+    // Find the order of template chunks by id.
+    const tplOrder: number[] = []
+    for (const c of chunks) {
+      const m = c.match(/<template id="S:(\d+)"/)
+      if (m) tplOrder.push(parseInt(m[1]!, 10))
+    }
+    // Source order: slow=0, fast=1. Expect fast (id=1) to flush first.
+    expect(tplOrder).toEqual([1, 0])
+    const full = chunks.join('')
+    expect(full).toContain('<span>fast-done</span>')
+    expect(full).toContain('<span>slow-done</span>')
+  })
+
+  it('renderToStream — rejected boundary leaves fallback in place, no template', async () => {
+    const Page = () =>
+      h('main', {}, [
+        Suspense({
+          fallback: h('p', {}, ['(failed-fb)']),
+          children: [Promise.reject(new Error('boom')) as never],
+        }),
+      ])
+    const html = await streamToString(renderToStream(Page))
+    expect(html).toContain('<div data-tu-suspense="0"><p>(failed-fb)</p></div>')
+    // No template injected for the failed boundary.
+    expect(html).not.toContain('<template id="S:0"')
+    // Replacer script still present (we shipped it once after the shell).
+    expect(html).toContain('$tu_replace')
+    expect(html.endsWith('</body></html>')).toBe(true)
+  })
+
+  it('renderToStream — onShellReady fires after the shell + placeholders, before resolutions', async () => {
+    const order: string[] = []
+    let resolveBody!: (v: unknown) => void
+    const body = new Promise<unknown>((r) => {
+      resolveBody = r
+    })
+    const Page = () =>
+      Suspense({
+        fallback: h('p', {}, ['…']),
+        children: [body as never],
+      })
+    const stream = renderToStream(Page, {
+      onShellReady: () => order.push('shell'),
+    })
+    // Drain the stream while the body is pending; resolve mid-drain.
+    const reader = stream.getReader()
+    // First chunk = shell+body. After this chunk, onShellReady is fired.
+    await reader.read()
+    await reader.read() // replacer chunk
+    order.push('post-shell-read')
+    resolveBody(h('span', {}, ['done']))
+    while (true) {
+      const r = await reader.read()
+      if (r.done) break
+    }
+    // The two events: shell flush happens before our reader saw the post.
+    expect(order[0]).toBe('shell')
+    expect(order[1]).toBe('post-shell-read')
+  })
+
+  it('renderToStream — bare Promise child (no Suspense wrapper) becomes its own boundary', async () => {
+    // A naked Promise gets the same placeholder treatment with empty fallback.
+    const Page = () =>
+      h('main', {}, [Promise.resolve(h('span', {}, ['naked'])) as never])
+    const html = await streamToString(renderToStream(Page))
+    expect(html).toContain('<div data-tu-suspense="0"></div>')
+    expect(html).toContain('<template id="S:0"><span>naked</span></template>')
+  })
+
+  it('renderToStream — async thunk is awaited before shell flush', async () => {
+    const asyncThunk = async () => {
+      const v = await Promise.resolve('async-root')
+      return h('p', {}, [v])
+    }
+    const html = await streamToString(renderToStream(asyncThunk))
+    expect(html).toContain('<p>async-root</p>')
   })
 })
