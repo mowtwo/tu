@@ -27,7 +27,8 @@ export function hoverAtTuPosition(
   source: string,
   filename: string,
   line: number,
-  col: number
+  col: number,
+  inMemorySources?: ReadonlyMap<string, string>
 ): TuHover | null {
   // CSS body? Delegate to the CSS language service before touching ts.
   const cssHover = maybeCssHover(source, line, col)
@@ -46,7 +47,7 @@ export function hoverAtTuPosition(
   const attrHover = maybeHtmlAttrHover(source, line, col)
   if (attrHover !== null) return attrHover
 
-  const session = getOrCreateSession(source, filename)
+  const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return null
   // Inclusive end so a cursor sitting at the token's trailing edge
   // still resolves — VS Code typically pins the cursor to the end of

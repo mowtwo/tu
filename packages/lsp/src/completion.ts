@@ -86,7 +86,8 @@ export function completionsAtTuPosition(
   source: string,
   filename: string,
   line: number,
-  col: number
+  col: number,
+  inMemorySources?: ReadonlyMap<string, string>
 ): TuCompletionItem[] {
   // Inside a `style { … }` block, hand the cursor off to a real CSS
   // language service. tsserver has no business there (the CSS body is
@@ -96,7 +97,7 @@ export function completionsAtTuPosition(
   if (cssItems !== null) return cssItems
 
   const out: TuCompletionItem[] = []
-  const tsItems = tsCompletions(source, filename, line, col)
+  const tsItems = tsCompletions(source, filename, line, col, inMemorySources)
   out.push(...tsItems)
 
   const ctx = analyzeCursorContext(source, line, col)
@@ -186,9 +187,10 @@ function tsCompletions(
   source: string,
   filename: string,
   line: number,
-  col: number
+  col: number,
+  inMemorySources?: ReadonlyMap<string, string>
 ): TuCompletionItem[] {
-  const session = getOrCreateSession(source, filename)
+  const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return []
   const mapped = mapSourceLineColToTS(
     session.rootShadow.tokenMappings,

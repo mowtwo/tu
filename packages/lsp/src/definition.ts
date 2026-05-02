@@ -26,9 +26,10 @@ export function definitionAtTuPosition(
   source: string,
   filename: string,
   line: number,
-  col: number
+  col: number,
+  inMemorySources?: ReadonlyMap<string, string>
 ): TuDefinition[] {
-  const session = getOrCreateSession(source, filename)
+  const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return []
   const mapped = mapSourceLineColToTS(
     session.rootShadow.tokenMappings,

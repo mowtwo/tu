@@ -22,10 +22,34 @@ import { completionsAtTuPosition } from './completion.js'
 import { definitionAtTuPosition } from './definition.js'
 import { checkTuSource, type TuDiagnostic } from './diagnostics.js'
 import { hoverAtTuPosition } from './hover.js'
+import { referencesAtTuPosition } from './references.js'
 import { renameAtTuPosition } from './rename.js'
 
 const connection = createConnection(ProposedFeatures.all)
 const documents = new TextDocuments(TextDocument)
+
+/**
+ * Snapshot every open `.tu` document EXCEPT the one currently being analyzed
+ * into a `path → text` map so the LSP layer can read non-root files from the
+ * editor instead of disk. Closes the M6.12 multi-doc gap: editing `Card.tu`
+ * now affects the cross-module analysis the next time `App.tu` is checked.
+ *
+ * `excludeUri` is the document we're treating as the root for this query —
+ * its source text is passed separately (verbatim from the LSP request) so we
+ * don't risk a stale snapshot from this map being preferred over the live
+ * input.
+ */
+function buildInMemorySources(excludeUri: string): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const doc of documents.all()) {
+    if (doc.uri === excludeUri) continue
+    if (!doc.uri.startsWith('file://')) continue
+    if (!doc.uri.endsWith('.tu')) continue
+    const path = fileURLToPath(doc.uri)
+    out.set(path, doc.getText())
+  }
+  return out
+}
 
 connection.onInitialize(() => ({
   capabilities: {
@@ -33,6 +57,7 @@ connection.onInitialize(() => ({
     hoverProvider: true,
     definitionProvider: true,
     renameProvider: true,
+    referencesProvider: true,
     completionProvider: {
       // No `triggerCharacters` — VS Code auto-invokes completion on
       // identifier-typing already, and the only Tu punctuation that could
@@ -177,7 +202,7 @@ function runCheck(uri: string): void {
   let diagnostics: Diagnostic[]
   const documentText = doc.getText()
   try {
-    const tuDiags = checkTuSource(documentText, filename)
+    const tuDiags = checkTuSource(documentText, filename, buildInMemorySources(uri))
     diagnostics = tuDiags.map((d) => toLspDiagnostic(d, documentText))
   } catch (err) {
     // Defensive: never crash the server. Surface unexpected errors as a
@@ -195,7 +220,19 @@ function runCheck(uri: string): void {
 }
 
 documents.onDidOpen((e) => scheduleCheck(e.document.uri))
-documents.onDidChangeContent((e) => scheduleCheck(e.document.uri))
+documents.onDidChangeContent((e) => {
+  // Re-check the changed file AND every other open `.tu` — a change to
+  // `Card.tu` may invalidate diagnostics in `App.tu` if App imports it.
+  // Each per-uri debounce timer collapses keystroke storms independently.
+  // (M6.12 — pairs with the in-memory shadow-graph plumbing so cross-file
+  // edits actually participate in the next analysis.)
+  scheduleCheck(e.document.uri)
+  for (const doc of documents.all()) {
+    if (doc.uri === e.document.uri) continue
+    if (!doc.uri.endsWith('.tu')) continue
+    scheduleCheck(doc.uri)
+  }
+})
 documents.onDidSave((e) => runCheck(e.document.uri))
 documents.onDidClose((e) => {
   const t = debounceTimers.get(e.document.uri)
@@ -217,7 +254,8 @@ connection.onCompletion((params): CompletionItem[] => {
       text,
       filename,
       params.position.line,
-      params.position.character
+      params.position.character,
+      buildInMemorySources(params.textDocument.uri)
     )
     return items.map((it) => {
       const item: CompletionItem = {
@@ -250,7 +288,8 @@ connection.onRenameRequest((params): WorkspaceEdit | null => {
       filename,
       params.position.line,
       params.position.character,
-      params.newName
+      params.newName,
+      buildInMemorySources(params.textDocument.uri)
     )
     if (edits.length === 0) return null
     const changes: Record<string, TextEdit[]> = {}
@@ -283,13 +322,42 @@ connection.onDefinition((params): Location[] => {
       text,
       filename,
       params.position.line,
-      params.position.character
+      params.position.character,
+      buildInMemorySources(params.textDocument.uri)
     )
     return defs.map((d) => ({
       uri: d.uri,
       range: {
         start: { line: d.line, character: d.col },
         end: { line: d.line, character: d.col + d.length },
+      },
+    }))
+  } catch {
+    return []
+  }
+})
+
+connection.onReferences((params): Location[] => {
+  const doc = documents.get(params.textDocument.uri)
+  if (!doc) return []
+  const filename = params.textDocument.uri.startsWith('file://')
+    ? fileURLToPath(params.textDocument.uri)
+    : params.textDocument.uri
+  const text = doc.getText()
+  try {
+    const refs = referencesAtTuPosition(
+      text,
+      filename,
+      params.position.line,
+      params.position.character,
+      { includeDeclaration: params.context?.includeDeclaration ?? true },
+      buildInMemorySources(params.textDocument.uri)
+    )
+    return refs.map((r) => ({
+      uri: r.uri,
+      range: {
+        start: { line: r.line, character: r.col },
+        end: { line: r.line, character: r.col + r.length },
       },
     }))
   } catch {
@@ -305,7 +373,13 @@ connection.onHover((params): Hover | null => {
     : params.textDocument.uri
   const text = doc.getText()
   try {
-    const info = hoverAtTuPosition(text, filename, params.position.line, params.position.character)
+    const info = hoverAtTuPosition(
+      text,
+      filename,
+      params.position.line,
+      params.position.character,
+      buildInMemorySources(params.textDocument.uri)
+    )
     if (!info) return null
     const value =
       '```typescript\n' +

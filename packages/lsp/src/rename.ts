@@ -34,10 +34,11 @@ export function renameAtTuPosition(
   filename: string,
   line: number,
   col: number,
-  newName: string
+  newName: string,
+  inMemorySources?: ReadonlyMap<string, string>
 ): TuRenameEdit[] {
   if (!isValidTuIdent(newName)) return []
-  const session = getOrCreateSession(source, filename)
+  const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return []
   const mapped = mapSourceLineColToTS(
     session.rootShadow.tokenMappings,

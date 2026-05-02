@@ -19,10 +19,14 @@ interface CachedEntry extends TuLspSession {
   rootSource: string
   /** Absolute path of the root `.tu` file. */
   rootFilename: string
-  /** Disk mtime (ms) for each transitively-imported `.tu` file. Empty when
-   *  the root has no imports. Used to invalidate the cache when an imported
-   *  file changes on disk (the in-memory editor only owns the root). */
+  /** Disk mtime (ms) for each transitively-imported `.tu` file that we
+   *  read from disk. In-memory imports (see `inMemoryFingerprint`) do NOT
+   *  appear here because their freshness is checked separately. */
   importStamps: Map<string, number>
+  /** Snapshot of in-memory imports at session-build time: `path → text`.
+   *  Cache hits require an EXACT match — content drift means rebuild.
+   *  Empty when the editor only has the root open. (M6.12.) */
+  inMemoryFingerprint: Map<string, string>
 }
 
 /**
@@ -41,17 +45,29 @@ let cached: CachedEntry | null = null
  * the LSP layer surfaces that via diagnostics; hover/completion/definition
  * just return empty).
  *
+ * `inMemorySources` (M6.12): a map of absolute `.tu` paths → live editor
+ * text for non-root files. The shadow graph reads from this map first,
+ * disk second. Pass the editor's full open-document set so cross-file
+ * features (hover, goto-def, references, diagnostics) see live edits.
+ *
  * Invalidates the cache when:
  *   - the root path or root source text differs from the cached one
- *   - any transitively-imported `.tu` file's mtime has advanced on disk
+ *   - any disk-backed (non-in-memory) import's mtime has advanced
+ *   - any in-memory import's text has changed since the cache was built
+ *   - the set of in-memory keys differs from the cached snapshot
  */
-export function getOrCreateSession(source: string, filename: string): TuLspSession | null {
+export function getOrCreateSession(
+  source: string,
+  filename: string,
+  inMemorySources?: ReadonlyMap<string, string>
+): TuLspSession | null {
   const rootAbsPath = isAbsolute(filename) ? filename : resolve(process.cwd(), filename)
   if (
     cached &&
     cached.rootSource === source &&
     cached.rootFilename === rootAbsPath &&
-    importsStillFresh(cached)
+    importsStillFresh(cached) &&
+    inMemoryStillFresh(cached, inMemorySources)
   ) {
     return cached
   }
@@ -61,7 +77,7 @@ export function getOrCreateSession(source: string, filename: string): TuLspSessi
   }
   let shadows: Map<string, Shadow>
   try {
-    shadows = buildShadowGraph(source, rootAbsPath)
+    shadows = buildShadowGraph(source, rootAbsPath, inMemorySources)
   } catch {
     return null
   }
@@ -73,8 +89,16 @@ export function getOrCreateSession(source: string, filename: string): TuLspSessi
     ts.createDocumentRegistry()
   )
   const importStamps = new Map<string, number>()
+  const inMemoryFingerprint = new Map<string, string>()
   for (const shadow of shadows.values()) {
     if (shadow.tuPath === rootAbsPath) continue
+    const inMem = inMemorySources?.get(shadow.tuPath)
+    if (inMem !== undefined) {
+      // Track in-memory imports separately — their freshness is by-content,
+      // not by mtime.
+      inMemoryFingerprint.set(shadow.tuPath, inMem)
+      continue
+    }
     try {
       importStamps.set(shadow.tuPath, statSync(shadow.tuPath).mtimeMs)
     } catch {
@@ -86,6 +110,7 @@ export function getOrCreateSession(source: string, filename: string): TuLspSessi
     rootSource: source,
     rootFilename: rootAbsPath,
     importStamps,
+    inMemoryFingerprint,
     shadows,
     rootShadow,
     service,
@@ -111,6 +136,45 @@ function importsStillFresh(c: CachedEntry): boolean {
       if (cur !== mtime) return false
     } catch {
       return false
+    }
+  }
+  return true
+}
+
+/**
+ * Validate that the cached session's in-memory imports still match the
+ * editor's current open-document state. Returns false (cache miss) when:
+ *   - any cached in-memory entry has different text now
+ *   - the editor opened a new in-memory file the cache wasn't built with
+ *   - the editor closed an in-memory file the cache had recorded
+ *   - a path moved from in-memory to disk-only or vice versa
+ *
+ * The tightest check is "exact match" — anything else risks stale results.
+ */
+function inMemoryStillFresh(
+  c: CachedEntry,
+  current: ReadonlyMap<string, string> | undefined
+): boolean {
+  // Compare only the keys the cache covered. New in-memory imports added
+  // by the editor since the session was built can't affect ALREADY-cached
+  // shadows (those imports aren't in the graph), but any in-memory entry
+  // that was on the path during build MUST still match.
+  for (const [path, text] of c.inMemoryFingerprint) {
+    const now = current?.get(path)
+    if (now !== text) return false
+  }
+  // If the editor has new in-memory entries that fall on the cached
+  // graph's known paths (i.e. the cache used a disk read for that path
+  // last time, but now the editor opened it in-memory), the disk-mtime
+  // check above won't catch it — invalidate here too.
+  if (current) {
+    for (const path of current.keys()) {
+      // Only fail freshness if this in-memory path is part of the cache's
+      // graph (i.e. was read from disk previously) and content differs
+      // from what the disk read produced. The tightest fix is to just
+      // miss-and-rebuild: if the editor's in-memory set is non-empty and
+      // covers any disk-stamped path, rebuild.
+      if (c.importStamps.has(path)) return false
     }
   }
   return true

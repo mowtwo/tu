@@ -141,9 +141,20 @@ interface ParsedFile {
  *      `ImportDecl`s + the cross-file export map. This fixes the M2.1
  *      reactivity bug where importing a Signal cell silently dropped
  *      `.get()` injection because the compiler couldn't tell its kind.
+ *
+ * `inMemorySources` (optional, M6.12): a map of absolute `.tu` paths → source
+ * text from the editor's open documents. When the BFS encounters an import
+ * whose target absolute path appears in this map, it reads from there
+ * instead of `readFileSync`. This lets the LSP see live edits to ANY open
+ * `.tu` file, not just the root being analyzed — fixing the previous
+ * "edit Card.tu, hover in App.tu shows stale results" gap.
  */
-export function buildShadowGraph(rootSource: string, rootFilename: string): Map<string, Shadow> {
-  const parsed = bfsParseGraph(rootSource, rootFilename)
+export function buildShadowGraph(
+  rootSource: string,
+  rootFilename: string,
+  inMemorySources?: ReadonlyMap<string, string>
+): Map<string, Shadow> {
+  const parsed = bfsParseGraph(rootSource, rootFilename, inMemorySources)
   const exportKinds = collectDirectExportKinds(parsed)
   const shadows = new Map<string, Shadow>()
   for (const file of parsed.values()) {
@@ -177,10 +188,15 @@ export function buildShadowGraph(rootSource: string, rootFilename: string): Map<
  * BFS over the import graph; parse every reachable `.tu`. Files that fail
  * to parse are dropped (the eventual diagnostics flow surfaces the syntax
  * error when the user opens that file directly).
+ *
+ * For each import target the BFS first checks `inMemorySources` (M6.12 —
+ * the editor's open-document store) so live edits across files participate
+ * in cross-module type analysis without needing to save to disk.
  */
 function bfsParseGraph(
   rootSource: string,
-  rootFilename: string
+  rootFilename: string,
+  inMemorySources?: ReadonlyMap<string, string>
 ): Map<string, ParsedFile> {
   const out = new Map<string, ParsedFile>()
   const queue: { source: string; filename: string }[] = [
@@ -204,6 +220,11 @@ function bfsParseGraph(
       if (!stmt.source.startsWith('.')) continue
       const importPath = resolve(dirname(filename), stmt.source)
       if (seen.has(importPath)) continue
+      const inMemory = inMemorySources?.get(importPath)
+      if (inMemory !== undefined) {
+        queue.push({ source: inMemory, filename: importPath })
+        continue
+      }
       try {
         const importedSource = readFileSync(importPath, 'utf-8')
         queue.push({ source: importedSource, filename: importPath })

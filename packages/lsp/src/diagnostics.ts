@@ -26,23 +26,23 @@ export interface TuDiagnostic {
 
 /**
  * Type-check a single `.tu` source against its full import graph. The current
- * document's text is used verbatim; transitively-imported `.tu` files are
- * read from disk. Returns diagnostics for the root file only (cross-file
- * errors land in the file that imports the broken thing).
- *
- * V1 limitations:
- * - In-memory edits to non-root files are NOT seen — this only resolves
- *   through the disk for transitive deps. Open multiple files in VS Code
- *   and switching between them re-runs from disk every time. Acceptable
- *   for the smoke-test scale; future work for incremental.
+ * document's text is used verbatim; transitively-imported `.tu` files come
+ * from `inMemorySources` (M6.12) when present, falling back to disk for any
+ * import not in the editor's open-document store. Returns diagnostics for
+ * the root file only (cross-file errors land in the file that imports the
+ * broken thing).
  */
-export function checkTuSource(source: string, filename: string): TuDiagnostic[] {
+export function checkTuSource(
+  source: string,
+  filename: string,
+  inMemorySources?: ReadonlyMap<string, string>
+): TuDiagnostic[] {
   // Normalize filename to absolute up-front so the BFS keys + the root
   // lookup agree (the BFS uses whatever filename it's given verbatim).
   const rootAbsPath = isAbsolute(filename) ? filename : resolve(process.cwd(), filename)
   let shadows: Map<string, Shadow>
   try {
-    shadows = buildShadowGraph(source, rootAbsPath)
+    shadows = buildShadowGraph(source, rootAbsPath, inMemorySources)
   } catch (err) {
     // A Tu compile error on the ROOT file (the one being checked) surfaces
     // here. The error is already pre-formatted with file:line:col by M1.9.

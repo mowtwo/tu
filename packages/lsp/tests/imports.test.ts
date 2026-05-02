@@ -127,4 +127,47 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     const diags = checkTuSource(aSrc, join(tmp, 'A.tu'))
     expect(diags).toEqual([])
   })
+
+  // ─── M6.12 — in-memory multi-doc edits ───────────────────────────────
+
+  it('in-memory edits to a non-root file are seen by the root analysis', () => {
+    // Disk version of Card.tu has the wrong signature.
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (count: number) => p { count }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    // Without an in-memory override, the disk Card expects a number — App
+    // passing "hi" is a type error.
+    const diagsDisk = checkTuSource(appSrc, appPath)
+    expect(diagsDisk.length).toBeGreaterThan(0)
+    // Now override Card.tu in-memory with a string-accepting version. The
+    // analysis should pick up the in-memory text and pass clean.
+    const inMem = new Map<string, string>([
+      [cardPath, 'export let Card = (label: string) => p { label }\n'],
+    ])
+    expect(checkTuSource(appSrc, appPath, inMem)).toEqual([])
+  })
+
+  it('in-memory edits to non-root file invalidate stale cache from a prior disk-only check', () => {
+    // First check uses disk version. Second check uses in-memory override
+    // for the SAME root source — the cache must rebuild.
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (count: number) => p { count }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    expect(checkTuSource(appSrc, appPath).length).toBeGreaterThan(0)
+    const inMem = new Map<string, string>([
+      [cardPath, 'export let Card = (label: string) => p { label }\n'],
+    ])
+    expect(checkTuSource(appSrc, appPath, inMem)).toEqual([])
+    // And going back to disk-only should resurface the error (cache must
+    // rebuild a third time).
+    expect(checkTuSource(appSrc, appPath).length).toBeGreaterThan(0)
+  })
 })
