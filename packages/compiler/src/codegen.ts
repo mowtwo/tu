@@ -305,16 +305,36 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   // diagnostic "Duplicate identifier 'XProps'"). Type aliases are
   // erased in JS mode but the dedup is cheap to compute either way.
   const declaredTypeNames = new Set<string>()
+  const declaredInterfaceNames = new Set<string>()
   for (const stmt of program.body) {
     if (stmt.kind === 'TypeAlias') declaredTypeNames.add(stmt.name)
+    if (stmt.kind === 'InterfaceDecl') {
+      declaredInterfaceNames.add(stmt.name)
+      // An interface also occupies the type namespace from the user's
+      // perspective — track it under declaredTypeNames so the M3.9 auto-
+      // generated `${Name}Props` interface skips on collision (the
+      // user's hand-written interface always wins).
+      declaredTypeNames.add(stmt.name)
+    }
   }
-  const cg = new Codegen(cells, scopes, tsMode, declaredTypeNames)
+  const cg = new Codegen(cells, scopes, tsMode, declaredTypeNames, declaredInterfaceNames)
   cg.write(`${runtimeImportLine(tsMode)}\n`)
-  // Auto-import the M8 type API when this module declares any interface.
-  // Sniff the program body — interface decls compile to `type.struct(…)`
-  // calls so they need the `type` namespace in scope.
-  const hasInterface = program.body.some((s) => s.kind === 'InterfaceDecl')
-  if (hasInterface) cg.write(`${typeImportLine(tsMode)}\n`)
+  // Auto-import the M8 type API when this module:
+  // (a) declares an `interface` (compiles to `type.struct(…)`), or
+  // (b) has a typed `let X: I = { … }` site where `I` is a LOCALLY-
+  //     declared interface — those get wrapped in `type.tag(I, …)`.
+  // Cross-module imports we conservatively skip in Phase 2.5; Phase 3
+  // will classify imported names so their typed-let sites tag too.
+  const needsTypeImport = program.body.some(
+    (s) =>
+      s.kind === 'InterfaceDecl' ||
+      (s.kind === 'LetDecl' &&
+        s.type !== undefined &&
+        /^[A-Z]\w*$/.test(s.type.trim()) &&
+        s.value.kind === 'ObjectLit' &&
+        declaredInterfaceNames.has(s.type.trim()))
+  )
+  if (needsTypeImport) cg.write(`${typeImportLine(tsMode)}\n`)
   cg.write('\n')
   for (const stmt of program.body) {
     // Type aliases erase entirely in JS mode — they have no runtime presence.
@@ -463,7 +483,8 @@ class Codegen {
     private readonly cells: Map<string, CellKind>,
     private readonly scopedComponents: Map<string, ScopeCtx>,
     private readonly tsMode: boolean = false,
-    private readonly declaredTypeNames: ReadonlySet<string> = new Set()
+    private readonly declaredTypeNames: ReadonlySet<string> = new Set(),
+    private readonly declaredInterfaceNames: ReadonlySet<string> = new Set()
   ) {}
 
   write(text: string): void {
@@ -614,7 +635,29 @@ class Codegen {
       const widenEmpty =
         this.tsMode && decl.type === undefined && isEmptyArray(decl.value)
       this.write(widenEmpty ? 'new Signal.State<any[]>(' : 'new Signal.State(')
-      this.emitExpr(decl.value)
+      // M8 Phase 2.5 — `let X: I = { … }` wraps the object in
+      // `type.tag(I, …)` so `type.of(value)` recovers the user's
+      // interface descriptor. Triggers ONLY when:
+      //   - value is an ObjectLit (genuine new-object site)
+      //   - annotation is a bare PascalCase identifier
+      //   - that identifier is locally-declared as `interface` (NOT as
+      //     `type X = …` alias — those have no runtime descriptor)
+      // Cross-module imports (where we don't know the kind) don't
+      // inject — Phase 3 will add classification through the import
+      // graph so imported interfaces also tag correctly.
+      const annot = decl.type?.trim()
+      const wrapInTag =
+        decl.value.kind === 'ObjectLit' &&
+        annot !== undefined &&
+        /^[A-Z]\w*$/.test(annot) &&
+        this.declaredInterfaceNames.has(annot)
+      if (wrapInTag) {
+        this.write(`type.tag(${annot}, `)
+        this.emitExpr(decl.value)
+        this.write(')')
+      } else {
+        this.emitExpr(decl.value)
+      }
       this.write(')')
     } finally {
       if (ctx) this.scopes.pop()

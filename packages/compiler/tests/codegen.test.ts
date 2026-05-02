@@ -1138,6 +1138,35 @@ describe('codegen', () => {
     expect(js).not.toContain('@tu-lang/std')
   })
 
+  it('M8 Phase 2.5: typed `let X: I = { … }` wraps value in type.tag(I, …)', () => {
+    const js = compile([
+      'interface User { id: number; name: string }',
+      'let alice: User = { id: 1, name: "Alice" }',
+    ].join('\n'))
+    expect(js).toContain('new Signal.State(type.tag(User, { id: 1, name: "Alice" }))')
+  })
+
+  it('M8 Phase 2.5: array-typed let does NOT inject tag', () => {
+    const js = compile('let xs: number[] = [1, 2, 3]')
+    expect(js).not.toContain('type.tag')
+    // No interface in the file → no @tu-lang/std import either.
+    expect(js).not.toContain('@tu-lang/std')
+  })
+
+  it('M8 Phase 2.5: imported interface name does NOT trigger injection (Phase 3 work)', () => {
+    // Cross-module classification of imports is a Phase 3 concern;
+    // until then conservative codegen skips tag injection so we don't
+    // emit `type.tag(typeAliasName, …)` calls that error at runtime.
+    const js = compile([
+      'import { User } from "./user.tu"',
+      'let bob: User = { id: 2, name: "Bob" }',
+    ].join('\n'))
+    // No injection — User isn't classified as an interface here.
+    expect(js).not.toContain('type.tag')
+    // No std auto-import either, since the rule keys on local interface decls.
+    expect(js).not.toContain(`'@tu-lang/std'`)
+  })
+
   it('M8: interface + type alias coexist (alias still compiles to TS-erased)', () => {
     const ts = compileToTS(['type Variant = "a" | "b" | "c"', 'interface Card { variant: Variant }'].join('\n'))
     expect(ts).toContain('type Variant = "a" | "b" | "c"')
