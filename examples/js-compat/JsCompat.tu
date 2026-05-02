@@ -61,7 +61,7 @@ let toggle = (id: number): Todo[] => todos.map((t: Todo) => t.id == id
 let append = (title: string): Todo[] => {
   let id = nextId
   nextId += 1
-  return [...todos.get(), { id: id, title: title, done: false }]
+  return [...todos.get(), { id, title, done: false }]
 }
 
 // Mark every todo done via .map; ternary just to show the operator.
@@ -83,12 +83,10 @@ let countLabel = (xs: Todo[]): string => {
 //
 // Tu's `for x in xs` is array-yielding, so it can't reach into raw
 // imperative timing + a hot index-swap loop. Drop into JS for the
-// shuffle, return the array. The Tu side keeps its types — note the
-// return type uses a type alias because external-JS return-type spans
-// stop at the first `{` (which would otherwise read as the body start).
-type ShuffleResult = { ms: number; out: any[] }
-
-let shuffleAndTime = external JS (xs: any[]): ShuffleResult {
+// shuffle, return the array. The return type is an inline object
+// shape — this used to require a type alias as a workaround, fixed
+// in the M6.10.1 parser update.
+let shuffleAndTime = external JS (xs: any[]): { ms: number; out: any[] } {
   const out = xs.slice()
   const t0 = performance.now()
   for (let i = out.length - 1; i > 0; i--) {
@@ -122,10 +120,10 @@ export let loadProfile = async (id: number): Promise<LoadResult> => {
   let started = Date.now()
   try {
     let user = await fakeFetchUser(id)
-    return { tag: "ok", user: user, took: `${Date.now() - started}ms` }
+    return { tag: "ok", user, took: `${Date.now() - started}ms` }
   } catch (e: unknown) {
     let message = e?.message ?? String(e)
-    return { tag: "err", message: message }
+    return { tag: "err", message }
   } finally {
     log = [...log.get(), `loadProfile(${id}) done`]
   }
@@ -180,14 +178,14 @@ export let runDemo = async (): Promise<{
   log = [...log.get(), `formatted null user → ${formatUser(null)}`]
 
   return {
-    initial: initial,
-    afterToggle: afterToggle,
-    afterAppend: afterAppend,
-    afterAllDone: afterAllDone,
-    shuffleSummary: shuffleSummary,
-    slugChecks: slugChecks,
-    okProfile: okProfile,
-    badProfile: badProfile,
+    initial,
+    afterToggle,
+    afterAppend,
+    afterAllDone,
+    shuffleSummary,
+    slugChecks,
+    okProfile,
+    badProfile,
     finalLog: log.get(),
   }
 }

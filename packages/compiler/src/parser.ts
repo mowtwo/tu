@@ -40,6 +40,25 @@ import type {
 import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
 
+/** Tokens whose presence immediately before a `{` (inside a TS-style
+ *  type span) means the `{` opens a TYPE LITERAL, not the body of a
+ *  surrounding form. Used by `parseRawTypeUntilBrace` to disambiguate
+ *  external-JS return types like `: { ms: number } { ... }` from
+ *  regular ones like `: string { ... }`. */
+function isTypeContinuationToken(k: TokenKind): boolean {
+  return (
+    k === TokenKind.Colon ||
+    k === TokenKind.Amp ||
+    k === TokenKind.Pipe ||
+    k === TokenKind.FatArrow ||
+    k === TokenKind.Comma ||
+    k === TokenKind.LBracket ||
+    k === TokenKind.LParen ||
+    k === TokenKind.Lt ||
+    k === TokenKind.Question
+  )
+}
+
 const COMPOUND_ASSIGN_OPS: Partial<Record<TokenKind, BinaryOp>> = {
   [TokenKind.PlusEq]: '+',
   [TokenKind.MinusEq]: '-',
@@ -910,7 +929,14 @@ export class Parser {
     // bodies don't accept a leading spread expression.
     if (t1.kind === TokenKind.DotDotDot) return true
     const t2 = this.tokens[this.pos + 2]
-    if (!t2 || t2.kind !== TokenKind.Colon) return false
+    if (!t2) return false
+    // Shorthand `{ id, … }` — Ident immediately followed by `,` is an
+    // unambiguous object-literal signal (Block bodies use newlines
+    // between statements, not commas). Single-item `{ id }` (Ident
+    // then `}`) stays a Block to preserve last-expression-returns
+    // semantics, since either reading is valid there.
+    if (t1.kind === TokenKind.Ident && t2.kind === TokenKind.Comma) return true
+    if (t2.kind !== TokenKind.Colon) return false
     return t1.kind === TokenKind.Ident || t1.kind === TokenKind.String
   }
 
@@ -951,6 +977,30 @@ export class Parser {
       throw this.error(`expected object-literal key (identifier or string), got ${TokenKind[keyTok.kind]}`)
     }
     this.pos++
+    // Shorthand: `{ id, … }` and `{ id }` (when reached via the new
+    // ident-comma rule in peekObjectLitShape, or via a sibling
+    // shorthand prop). The key doubles as the value: `{ id }` is
+    // equivalent to `{ id: id }`. Ident keys only — string keys
+    // can't reference a binding by the same name.
+    const after = this.peek()
+    if (
+      keyKind === 'ident' &&
+      (after.kind === TokenKind.Comma || after.kind === TokenKind.RBrace)
+    ) {
+      const value: Expr = {
+        kind: 'Ident',
+        name: key,
+        start: keyTok.start,
+        end: keyTok.end,
+      }
+      return {
+        key,
+        keyKind,
+        value,
+        keyStart: keyTok.start,
+        keyEnd: keyTok.end,
+      }
+    }
     this.expect(TokenKind.Colon)
     const value = this.parseExpr()
     return {
@@ -1228,14 +1278,35 @@ export class Parser {
 
   /** Like parseRawTypeUntilFatArrow but stops at `{` (the body opener)
    *  instead of `=>`. Used by parseExternalLambda to read the optional
-   *  return-type span between `: T` and the body brace. */
+   *  return-type span between `: T` and the body brace.
+   *
+   *  Tricky case: object-shape return types like
+   *    `external JS (xs: T): { ms: number; out: any[] } { … }`
+   *  The `{` at depth 0 here could be a type literal (e.g. start of
+   *  `{ ms: number }`) OR the body opener. Disambiguate by looking at
+   *  the IMMEDIATELY PRECEDING token: if it's a "type-continuation"
+   *  token (`:` after the colon, `&`/`|` operator, `=>` from a
+   *  function type, `,` inside a tuple, `[`, `(`, `<`, `?`), the `{`
+   *  starts a type literal — consume the balanced `{…}` and keep
+   *  scanning. Otherwise the `{` is the body opener — stop. */
   private parseRawTypeUntilBrace(): { text: string; start: number; end: number } {
     const start = this.peek().start
+    const startPos = this.pos
     let depth = 0
     while (this.pos < this.tokens.length) {
       const t = this.peek()
       if (t.kind === TokenKind.Eof) break
-      if (depth === 0 && t.kind === TokenKind.LBrace) break
+      if (depth === 0 && t.kind === TokenKind.LBrace) {
+        // Decide: type literal or body opener.
+        const prev = this.pos > startPos ? this.tokens[this.pos - 1] : undefined
+        const isTypeLiteral = prev === undefined || isTypeContinuationToken(prev.kind)
+        if (!isTypeLiteral) break
+        const close = this.findBalancedBraceClose(this.pos)
+        if (close < 0) break // unbalanced — bail to caller
+        // Consume the whole balanced `{…}` as part of the type span.
+        this.pos = close + 1
+        continue
+      }
       if (
         t.kind === TokenKind.LParen ||
         t.kind === TokenKind.LBrace ||
@@ -1252,6 +1323,21 @@ export class Parser {
     }
     const end = this.tokens[this.pos - 1]?.end ?? start
     return { text: this.source.slice(start, end).trim(), start, end }
+  }
+
+  /** Walk forward from `startPos` (must point at a `{`) and return the
+   *  index of its matching `}`. Returns -1 if unbalanced before EOF. */
+  private findBalancedBraceClose(startPos: number): number {
+    let depth = 0
+    for (let i = startPos; i < this.tokens.length; i++) {
+      const k = this.tokens[i]!.kind
+      if (k === TokenKind.LBrace) depth++
+      else if (k === TokenKind.RBrace) {
+        depth--
+        if (depth === 0) return i
+      } else if (k === TokenKind.Eof) return -1
+    }
+    return -1
   }
 
   private parseLambda(): Lambda {

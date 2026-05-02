@@ -665,6 +665,54 @@ describe('codegen', () => {
     expect(js).toContain('const p = new Signal.State(make({ x: 1 }))')
   })
 
+  it('M6.10.1: shorthand prop `{ x, y, z: 1 }` desugars to `{ x: x, y: y, z: 1 }`', () => {
+    // `{ id, title, done: false }` was the failing case in the
+    // js-compat example pre-fix. Multi-prop shorthand works because
+    // an `Ident` followed by `,` is unambiguously an object-literal
+    // signal (Block bodies don't separate statements with `,`).
+    const js = compile(`
+      let id = 1
+      let title = "hi"
+      let mk = () => ({ id, title, done: false })
+    `)
+    expect(js).toContain('id: id.get()')
+    expect(js).toContain('title: title.get()')
+    expect(js).toContain('done: false')
+  })
+
+  it('M6.10.1: shorthand at the start of a multi-prop literal still detects ObjectLit', () => {
+    // `{ id, more: 2 }` — the trailing colon-prop should still parse.
+    const js = compile('let mk = (id) => ({ id, more: 2 })')
+    expect(js).toContain('{ id: id, more: 2 }')
+  })
+
+  it('M6.10.1: member compound assign desugars `obj.x += 1` → `obj.x = obj.x + 1`', () => {
+    const js = compile('let App = (obj: any) => { obj.x += 1; obj }')
+    expect(js).toContain('(obj.x = (obj.x + 1))')
+  })
+
+  it('M6.10.1: index compound assign desugars `arr[i] += 1`', () => {
+    const js = compile('let App = (arr: any, i: number) => { arr[i] += 1; arr }')
+    expect(js).toContain('(arr[i] = (arr[i] + 1))')
+  })
+
+  it('M6.10.1: `obj.x ||= "default"` desugars to logical-or short-circuit', () => {
+    const js = compile('let App = (obj: any) => { obj.x ||= "default"; obj }')
+    expect(js).toContain('(obj.x = (obj.x || "default"))')
+  })
+
+  it('M6.10.1: cell-backed object compound assign unwraps via .get() on both reads', () => {
+    // Top-level `let counts = { a: 0 }` is a Signal.State cell. The
+    // compound desugar produces `counts.get().a = counts.get().a + 5`
+    // — both the read and the target's host go through `.get()`.
+    const js = compile(`
+      let counts = { a: 0 }
+      let bump = () => counts.a += 5
+    `)
+    expect(js).toContain('counts = new Signal.State({ a: 0 })')
+    expect(js).toContain('(counts.get().a = (counts.get().a + 5))')
+  })
+
   it('M2.5: nested array of class refs round-trips through scoped components', () => {
     const js = compile(`
       let App = () => {
@@ -1002,5 +1050,26 @@ describe('codegen', () => {
     const js = compile('let make = external JS () { const o = { a: { b: 1 } }; return o }')
     expect(js).toContain('const o = { a: { b: 1 } }')
     expect(js).toContain('return o')
+  })
+
+  it('M6.9: external JS return type can start with `{` (object shape)', () => {
+    // Pre-fix bug: `parseRawTypeUntilBrace` stopped at the first `{`
+    // at depth 0, mis-reading the type's opening brace as the body
+    // opener and breaking parse.
+    const ts = compileToTS(
+      'let make = external JS (xs: number[]): { ms: number; out: any[] } { const t0 = performance.now(); return { ms: performance.now() - t0, out: xs } }'
+    )
+    expect(ts).toContain(': { ms: number; out: any[] }')
+    expect(ts).toContain('return { ms: performance.now() - t0, out: xs }')
+  })
+
+  it('M6.9: external JS return type can be `{ … } & Tail` (intersection)', () => {
+    // After the `{ … }` literal closes, the type continues with `&`.
+    // The lookahead rule consumes the literal and keeps going because
+    // the next token (`&`) is not the body opener.
+    const ts = compileToTS(
+      'let mk = external JS (): { a: 1 } & { b: 2 } { return Object.assign({ a: 1 }, { b: 2 }) }'
+    )
+    expect(ts).toContain(': { a: 1 } & { b: 2 }')
   })
 })
