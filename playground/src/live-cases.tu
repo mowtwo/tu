@@ -3,12 +3,18 @@
 // The live demo loads one at a time; the user picks via the sidebar
 // dropdown.
 //
-// Shape:
-//   { id, label, blurb, entry, files: [{ path, content }] }
-//
 // Each case's `entry` file must `export let App = () => …`.
 
-let counterCase = () => ({
+type CaseFile = { path: string; content: string }
+type CaseDefinition = {
+  id: string
+  label: string
+  blurb: string
+  entry: string
+  files: CaseFile[]
+}
+
+let counterCase = (): CaseDefinition => ({
   id: "counter",
   label: "Counter",
   blurb: "Single-file reactive cell + scoped style. The simplest case.",
@@ -54,7 +60,7 @@ export let App = () => div(class: "counter") {
   ],
 })
 
-let compositionCase = () => ({
+let compositionCase = (): CaseDefinition => ({
   id: "composition",
   label: "Composition (multi-file)",
   blurb: "Two .tu files importing each other — Card component reused twice in App. Validates cross-file Tu imports.",
@@ -115,7 +121,7 @@ export let App = () => div(class: "stack") {
   ],
 })
 
-let todoCase = () => ({
+let todoCase = (): CaseDefinition => ({
   id: "todo",
   label: "Todo (control flow)",
   blurb: "Reactive list with for-loop, computed cells, if/else if/else. Validates Tu's expression-shaped control flow.",
@@ -192,7 +198,7 @@ export let App = () => div(class: "todo") {
   ],
 })
 
-let asyncFetchCase = () => ({
+let asyncFetchCase = (): CaseDefinition => ({
   id: "async-fetch",
   label: "Async fetch (try/catch)",
   blurb: "Async lambda + try/catch + dynamic state machine (loading / error / success). Validates Tu's async surface.",
@@ -285,7 +291,7 @@ export let jokeApi = async (): Promise<string> => {
   ],
 })
 
-let formCase = () => ({
+let formCase = (): CaseDefinition => ({
   id: "form",
   label: "Form binding",
   blurb: "Two-way input binding via cells, derived validation, computed enable/disable. Validates Tu's reactive bindings.",
@@ -382,7 +388,7 @@ export let App = () => div(class: "form") {
   ],
 })
 
-let jsCompatCase = () => ({
+let jsCompatCase = (): CaseDefinition => ({
   id: "js-compat",
   label: "JS/TS surface (compat)",
   blurb: "How far Tu reaches into modern JS/TS — spread, optional chaining + ??, ternary, regex literal, ++/+=, try/catch/finally, async/await, external JS escape hatch. Click the JS tab on the right to see the emitted code.",

@@ -22,14 +22,16 @@ let demos = [
   { id: "live",        label: "Live editor", mil: "图" },
 ]
 
-let linkClass = (id) =>
+let linkClass = (id: string): string =>
   if (activeId == id) {
     "block px-3 py-1.5 rounded-[var(--tu-radius-sm)] bg-[hsl(var(--tu-brand))]/15 text-[hsl(var(--tu-brand))] no-underline transition-colors"
   } else {
     "block px-3 py-1.5 rounded-[var(--tu-radius-sm)] text-[hsl(var(--tu-fg-muted))] hover:bg-[hsl(var(--tu-surface-elevated))] hover:text-[hsl(var(--tu-fg))] no-underline transition-colors"
   }
 
-let DemoLink = (props) => a(
+type DemoLinkProps = { id: string; label: string; mil: string }
+
+let DemoLink = (props: DemoLinkProps) => a(
   href: "#" + props.id,
   class: linkClass(props.id),
 ) {

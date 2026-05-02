@@ -6,6 +6,15 @@ import { Badge } from "@tu-lang/tu-xing/Badge.tu"
 import { Switch } from "@tu-lang/tu-xing/Switch.tu"
 import { Dialog } from "@tu-lang/tu-xing/Dialog.tu"
 import { Tabs } from "@tu-lang/tu-xing/Tabs.tu"
+import { Event } from "@tu-lang/dom"
+
+// Tu has no `as` type assertion yet (deferred row in docs/DEFERRED.tu),
+// so we route Event.target.value through `external JS` to bridge the
+// EventTarget→HTMLInputElement gap with one explicit, typed escape.
+let inputValueOf = external JS (e: Event): string {
+  const t = e.target
+  return t && 'value' in t ? String(t.value) : ''
+}
 
 export let count = 0
 export let dialogOpen = false
@@ -13,8 +22,8 @@ export let switchOn = false
 export let activeTab = "buttons"
 export let inputValue = ""
 
-let setTab = (id) => activeTab = id
-let toggleSwitch = (v) => switchOn = v
+let setTab = (id: string) => activeTab = id
+let toggleSwitch = (v: boolean) => switchOn = v
 let openDialog = () => dialogOpen = true
 let closeDialog = () => dialogOpen = false
 
@@ -41,7 +50,7 @@ let inputsPanel = () => div(class: "space-y-3") {
   Input(placeholder: "Disabled", disabled: true)
   div(class: "pt-2") {
     p(class: "text-sm text-[hsl(var(--tu-fg-muted))] mb-2") { "Live value:" }
-    Input(placeholder: "type here", value: inputValue, onInput: (e) => inputValue = e.target.value)
+    Input(placeholder: "type here", value: inputValue, onInput: (e: Event) => inputValue = inputValueOf(e))
     p(class: "mt-2 text-sm text-[hsl(var(--tu-brand))]") { "you typed: " inputValue }
   }
 }

@@ -226,7 +226,7 @@ let setStatus = (kind: string, text: string) => {
   liveStatusEl.textContent = text
 }
 
-let recompileLive = async () => {
+let recompileLive = async (): Promise<void> => {
   if (!liveCurrentCaseId || !liveModels) { return }
   let caseDef = CASES().find((c) => c.id == liveCurrentCaseId)
   if (!caseDef) { return }
@@ -372,7 +372,7 @@ let createReadOnlyMonaco = external JS (host: any, language: string): any {
   return { editor, dispose: () => { editor.getModel()?.dispose(); editor.dispose() } }
 }
 
-let attachLiveCompiler = () => {
+let attachLiveCompiler = (): void => {
   let mountEl = document.getElementById("mount")
   if (!mountEl) { return }
   // Live demo takes over the whole viewport — playground chrome
