@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { compile, setMarkdownHighlight } from '@tu-lang/compiler'
-import { renderToString } from '@tu-lang/runtime'
+import { renderToStringAsync } from '@tu-lang/runtime'
 import { getMarkdownItHighlighter } from './markdown.js'
 
 // Wire tu-shu's Shiki highlighter into the compiler's markdown { … }
@@ -73,8 +73,11 @@ export async function loadTuPage(absPath: string): Promise<LoadedTuPage> {
   if (typeof Page !== 'function') {
     throw new Error(`tu-shu: .tu page must export \`Page\` component (in ${absPath})`)
   }
+  // Page may be sync or async — Tu's M6.6 added async lambdas, and
+  // M6.11 (#60) extended the renderer to await Promise children.
+  // `renderToStringAsync` accepts both shapes.
   const vnode = Page()
-  const html = renderToString(vnode as never)
+  const html = await renderToStringAsync(vnode as never)
 
   // Title precedence: explicit frontmatter.title > inferred from any
   // <h1> in the rendered HTML.

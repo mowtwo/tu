@@ -336,7 +336,23 @@ function flattenInto(out: NormalizedChild[], c: Child): void {
     for (const cc of c) flattenInto(out, cc)
     return
   }
-  out.push(c)
+  // Promise children are valid in @tu-lang/runtime's async SSR path
+  // (M6.11 / #60), but mount/hydrate run synchronously and have no
+  // reactive scheduling for an unresolved promise yet — that's CSR
+  // Suspense, separate work. Surface a typed error so the caller knows
+  // the offending shape; the message points to the right escape hatch.
+  if (
+    c != null &&
+    (typeof c === 'object' || typeof c === 'function') &&
+    typeof (c as { then?: unknown }).then === 'function'
+  ) {
+    throw new Error(
+      '[@tu-lang/dom] mount/hydrate hit a Promise child — async ' +
+      'components on the client are not yet supported. Pre-render via ' +
+      'renderToStringAsync (SSR) or wrap the boundary in <Suspense>.'
+    )
+  }
+  out.push(c as VNode)
 }
 
 function materializeInstance(child: NormalizedChild): Instance {

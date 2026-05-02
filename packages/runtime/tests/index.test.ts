@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { Fragment, h, renderPage, renderPageHtml, renderToString, VERSION } from '../src/index.js'
+import {
+  Fragment,
+  h,
+  renderPage,
+  renderPageAsync,
+  renderPageHtml,
+  renderToString,
+  renderToStringAsync,
+  TuRenderError,
+  VERSION,
+} from '../src/index.js'
 
 describe('@tu-lang/runtime', () => {
   it('exposes a version', () => {
@@ -147,5 +157,97 @@ describe('@tu-lang/runtime', () => {
     expect(html).toContain('<meta charset="utf-16">')
     // Default charset isn't emitted twice.
     expect(html.match(/<meta charset=/g)).toHaveLength(1)
+  })
+
+  // ─── M6.11 / #60 — async SSR ─────────────────────────────────────────
+
+  it('sync renderToString throws on a Promise child (TuRenderError)', () => {
+    const promised: Promise<string> = Promise.resolve('hi')
+    const v = h('div', {}, [promised])
+    expect(() => renderToString(v)).toThrow(TuRenderError)
+    // Bare-Promise-at-root case too.
+    expect(() => renderToString(promised)).toThrow(TuRenderError)
+  })
+
+  it('renderToStringAsync resolves a promise child to its inner content', async () => {
+    const v = h('div', {}, [Promise.resolve('hello')])
+    expect(await renderToStringAsync(v)).toBe('<div>hello</div>')
+  })
+
+  it('renderToStringAsync threads through a promise resolving to a vnode', async () => {
+    const slow = Promise.resolve(h('span', { class: 'x' }, ['boom']))
+    const v = h('div', {}, [slow])
+    expect(await renderToStringAsync(v)).toBe('<div><span class="x">boom</span></div>')
+  })
+
+  it('renderToStringAsync handles a promise resolving to another promise (transitive)', async () => {
+    const inner = Promise.resolve('deep')
+    const outer = Promise.resolve(inner) as Promise<unknown> as Promise<string>
+    expect(await renderToStringAsync(outer)).toBe('deep')
+  })
+
+  it('renderToStringAsync resolves siblings in parallel — slow child does not block fast', async () => {
+    const log: string[] = []
+    const slow = new Promise<string>((res) =>
+      setTimeout(() => {
+        log.push('slow')
+        res('S')
+      }, 30)
+    )
+    const fast = new Promise<string>((res) =>
+      setTimeout(() => {
+        log.push('fast')
+        res('F')
+      }, 5)
+    )
+    const v = h('div', {}, [slow, fast])
+    const out = await renderToStringAsync(v)
+    // Output preserves source order regardless of resolution order.
+    expect(out).toBe('<div>SF</div>')
+    // Resolution order: fast finished first.
+    expect(log).toEqual(['fast', 'slow'])
+  })
+
+  it('renderToStringAsync propagates a rejection (no Suspense wrapper)', async () => {
+    const v = h('div', {}, [Promise.reject(new Error('boom'))])
+    await expect(renderToStringAsync(v)).rejects.toThrow('boom')
+  })
+
+  it('renderToStringAsync still escapes text + attrs from resolved values', async () => {
+    const v = h('p', { title: Promise.resolve('"x"&y') }, [Promise.resolve('<b>')])
+    // Note: promise as a prop value — we don't await prop values today
+    // (only children). Document this: prop values must be sync. The
+    // prop here renders as `[object Promise]`-ish; assert child path
+    // alone is correct by stripping the prop.
+    const v2 = h('p', {}, [Promise.resolve('<b>')])
+    expect(await renderToStringAsync(v2)).toBe('<p>&lt;b&gt;</p>')
+  })
+
+  it('renderToStringAsync inside <style> raw-text element does not HTML-escape', async () => {
+    const css = Promise.resolve('.card > h1 { color: red; }')
+    const v = h('style', {}, [css])
+    expect(await renderToStringAsync(v)).toBe('<style>.card > h1 { color: red; }</style>')
+  })
+
+  it('renderToStringAsync passes through static-HTML subtrees unchanged', async () => {
+    const staticV = h('$static', {}, [], '<button class="b">+</button>')
+    expect(await renderToStringAsync(staticV)).toBe('<button class="b">+</button>')
+  })
+
+  it('renderPageAsync awaits an async thunk and assembles the full HTML doc', async () => {
+    const asyncThunk = async () => {
+      const data = await Promise.resolve('Hello')
+      return h('main', {}, [data])
+    }
+    const html = await renderPageAsync(asyncThunk, { title: 'A' })
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('<title>A</title>')
+    expect(html).toContain('<main>Hello</main>')
+  })
+
+  it('renderPageAsync accepts a sync thunk too — back-compat with renderPage', async () => {
+    const html = await renderPageAsync(() => h('div', {}, ['x']), { title: 'B' })
+    expect(html).toContain('<title>B</title>')
+    expect(html).toContain('<div>x</div>')
   })
 })

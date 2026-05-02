@@ -4,7 +4,45 @@ export const VERSION = '0.0.0'
 
 export { Signal }
 
-export type Child = VNode | string | number | null | undefined | Child[]
+export type Child =
+  | VNode
+  | string
+  | number
+  | null
+  | undefined
+  | Child[]
+  // M6.11 — async SSR (#60). A child may be a Promise resolving to another
+  // Child shape. Sync `renderToString` throws on Promise children so callers
+  // discover an accidentally-async component immediately rather than seeing
+  // `[object Promise]` in the output. `renderToStringAsync` awaits the
+  // promise and continues. `Suspense` (#61) uses this same shape for its
+  // boundary children.
+  | Promise<Child>
+
+// Return type is `Promise<unknown>` (not `Promise<Child>`) because TS rejects
+// `value is Promise<X>` when `X` references the promise type recursively (the
+// `Child` union has `Promise<Child>` as a member). Callers `await` the value
+// and feed the resolved shape back through the renderer, which re-narrows.
+function isPromise(value: unknown): value is Promise<unknown> {
+  return (
+    value != null &&
+    (typeof value === 'object' || typeof value === 'function') &&
+    typeof (value as { then?: unknown }).then === 'function'
+  )
+}
+
+/**
+ * Error thrown by sync `renderToString` when it encounters a Promise child —
+ * the symptom of a Tu `async` component being rendered through the sync
+ * path. The error names the offending tag (when knowable) so the fix is
+ * obvious: switch the caller to `renderToStringAsync` / `renderPageAsync`.
+ */
+export class TuRenderError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TuRenderError'
+  }
+}
 
 export interface VNode {
   tag: string
@@ -73,6 +111,13 @@ export function renderToString(node: Child): string {
     let out = ''
     for (const c of node) out += renderToString(c)
     return out
+  }
+  if (isPromise(node)) {
+    throw new TuRenderError(
+      'renderToString hit a Promise child — an async component was rendered ' +
+      'through the sync path. Switch the caller to `renderToStringAsync` / ' +
+      '`renderPageAsync`, or wrap the boundary in <Suspense>.'
+    )
   }
   return renderVNode(node)
 }
@@ -180,6 +225,109 @@ export function renderPageHtml(bodyHtml: string, options: RenderPageOptions = {}
   return assemblePage(bodyHtml, options)
 }
 
+/**
+ * Async counterpart to `renderToString` (M6.11 / #60). Awaits any Promise
+ * child it encounters and continues the walk. Sibling subtrees inside an
+ * array — including the implicit array of children on every vnode — resolve
+ * in parallel via `Promise.all`, so two independent `await fetch(...)` calls
+ * don't serialize.
+ *
+ * The static-HTML fast path (`tag === '$static'`, M6.0) stays sync because
+ * `isStaticTree` (in the compiler) excludes any subtree containing component
+ * invocations — so by construction a `$static` body holds no promises.
+ *
+ * Suspense boundaries (#61) participate via the dedicated `$suspense` tag
+ * branch; #60 leaves that branch as a passthrough so this function ships
+ * standalone before the boundary primitive lands.
+ */
+export async function renderToStringAsync(node: Child): Promise<string> {
+  if (node == null) return ''
+  if (typeof node === 'string') return escapeText(node)
+  if (typeof node === 'number') return String(node)
+  if (isPromise(node)) {
+    // Cast through Child — the promise's fulfillment type is `unknown`
+    // because `isPromise` returns `Promise<unknown>` (TS forbids the
+    // recursive `Promise<Child>` shape in a type-guard return). At
+    // runtime the resolved value is whatever the user produced; if it's
+    // not a valid Child the recursive `renderToStringAsync` call will
+    // fall through to `renderVNodeAsync` and crash on a missing `.tag`,
+    // which is the same outcome as a sync renderToString seeing junk.
+    const resolved = (await (node as Promise<unknown>)) as Child
+    return renderToStringAsync(resolved)
+  }
+  if (Array.isArray(node)) {
+    const parts = await Promise.all(node.map((c) => renderToStringAsync(c)))
+    return parts.join('')
+  }
+  return renderVNodeAsync(node)
+}
+
+async function renderVNodeAsync(node: VNode): Promise<string> {
+  if (node.tag === STATIC_TAG && node.html !== undefined) {
+    return node.html
+  }
+  let propStr = ''
+  for (const [k, v] of Object.entries(node.props)) {
+    if (k === 'key') continue
+    if (v == null || v === false) continue
+    if (typeof v === 'function') continue
+    if (v === true) {
+      propStr += ` ${k}`
+      continue
+    }
+    propStr += ` ${k}="${escapeAttr(String(v))}"`
+  }
+  if (VOID_ELEMENTS.has(node.tag)) {
+    return `<${node.tag}${propStr}>`
+  }
+  let childStr = ''
+  if (RAW_TEXT_ELEMENTS.has(node.tag)) {
+    for (const c of node.children) {
+      childStr += await renderRawTextChildAsync(c)
+    }
+  } else {
+    const parts = await Promise.all(
+      node.children.map((c) => renderToStringAsync(c))
+    )
+    childStr = parts.join('')
+  }
+  return `<${node.tag}${propStr}>${childStr}</${node.tag}>`
+}
+
+async function renderRawTextChildAsync(node: Child): Promise<string> {
+  if (node == null) return ''
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (isPromise(node)) {
+    const resolved = (await (node as Promise<unknown>)) as Child
+    return renderRawTextChildAsync(resolved)
+  }
+  if (Array.isArray(node)) {
+    const parts = await Promise.all(node.map((c) => renderRawTextChildAsync(c)))
+    return parts.join('')
+  }
+  return renderVNodeAsync(node)
+}
+
+/**
+ * Async counterpart to `renderPage`. The thunk itself may be async — Tu's
+ * `let Page = async () => …` compiles to an async lambda, so calling it
+ * returns a Promise. The body is rendered via `renderToStringAsync` and
+ * then assembled into the same `<!doctype html>…</html>` shell as the
+ * sync flavor.
+ */
+export async function renderPageAsync(
+  thunk: () => Child | Promise<Child>,
+  options: RenderPageOptions = {}
+): Promise<string> {
+  const result = thunk()
+  const root = (isPromise(result)
+    ? ((await (result as Promise<unknown>)) as Child)
+    : (result as Child))
+  const body = await renderToStringAsync(root)
+  return assemblePage(body, options)
+}
+
 function assemblePage(bodyHtml: string, options: RenderPageOptions): string {
   const lang = options.lang ?? 'en'
   const meta = {
@@ -228,6 +376,12 @@ function renderRawTextChild(node: Child): string {
     let out = ''
     for (const c of node) out += renderRawTextChild(c)
     return out
+  }
+  if (isPromise(node)) {
+    throw new TuRenderError(
+      'renderToString hit a Promise child inside a raw-text element ' +
+      '(<style> / <script>). Switch the caller to `renderToStringAsync`.'
+    )
   }
   return renderVNode(node)
 }
