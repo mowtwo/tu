@@ -1,8 +1,10 @@
-import { lineColAt } from '@tu-lang/compiler'
-import { readFileSync } from 'node:fs'
+import { lineColAt, parse, tokenize } from '@tu-lang/compiler'
+import { existsSync, readFileSync } from 'node:fs'
+import { basename } from 'node:path'
 import ts from 'typescript'
 import { cssService, findCssContextAt } from './css-lsp.js'
 import { findAttrAt, findTagCallAt, renderHtmlAttrDocs, renderHtmlTagDocs } from './html-lsp.js'
+import { findImportSourceAt } from './import-source.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { lineColToOffset, mapSourceLineColToTS } from './source-map.js'
 
@@ -46,6 +48,12 @@ export function hoverAtTuPosition(
   // MDN attribute description.
   const attrHover = maybeHtmlAttrHover(source, line, col)
   if (attrHover !== null) return attrHover
+
+  // Import-source string — `import { X } from "./Card.tu"`. Show the
+  // resolved path and the file's exported names so the user knows what's
+  // available without opening the file. (M6.12.)
+  const importHover = maybeImportSourceHover(source, filename, line, col, inMemorySources)
+  if (importHover !== null) return importHover
 
   const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return null
@@ -139,6 +147,68 @@ function maybeHtmlAttrHover(
 export function hoverAtTuFile(path: string, line: number, col: number): TuHover | null {
   const source = readFileSync(path, 'utf-8')
   return hoverAtTuPosition(source, path, line, col)
+}
+
+/**
+ * Hover for the source string of `import { … } from "./X.tu"`. Surfaces
+ * the resolved file's name + its top-level `export let` bindings so the
+ * user can see what's importable without jumping to the file.
+ */
+function maybeImportSourceHover(
+  source: string,
+  filename: string,
+  line: number,
+  col: number,
+  inMemorySources?: ReadonlyMap<string, string>
+): TuHover | null {
+  const hit = findImportSourceAt(source, filename, line, col)
+  if (!hit) return null
+  const startLC = lineColAt(source, hit.quoteStart)
+  const length = hit.quoteEnd - hit.quoteStart + 1
+  // Best-effort introspection: load the resolved file (in-memory first,
+  // disk second), parse it, and list its `export let` names. Any failure
+  // (file missing, doesn't parse) just yields a path-only hover.
+  let exportNames: string[] = []
+  if (hit.resolvedPath) {
+    const inMem = inMemorySources?.get(hit.resolvedPath)
+    let target: string | null = inMem ?? null
+    if (target === null && existsSync(hit.resolvedPath)) {
+      try {
+        target = readFileSync(hit.resolvedPath, 'utf-8')
+      } catch {
+        target = null
+      }
+    }
+    if (target !== null) {
+      try {
+        const ast = parse(tokenize(target, hit.resolvedPath), target, hit.resolvedPath)
+        for (const stmt of ast.body) {
+          if (stmt.kind === 'LetDecl' && stmt.exported) exportNames.push(stmt.name)
+          if (stmt.kind === 'ReExportDecl') exportNames.push(...stmt.names)
+        }
+      } catch {
+        // unparsable — show path only
+      }
+    }
+  }
+  let contents = `module ${JSON.stringify(hit.rawSource)}`
+  if (hit.resolvedPath) {
+    contents += `\n// → ${basename(hit.resolvedPath)}`
+  }
+  let documentation: string | undefined
+  if (exportNames.length > 0) {
+    documentation = `**Exports** — ${exportNames.map((n) => `\`${n}\``).join(', ')}`
+  } else if (hit.resolvedPath) {
+    documentation = `*(no \`export let\` bindings found in target file)*`
+  }
+  const result: TuHover = {
+    contents,
+    line: startLC.line - 1,
+    col: startLC.col - 1,
+    length,
+  }
+  if (documentation !== undefined) result.documentation = documentation
+  return result
 }
 
 /**

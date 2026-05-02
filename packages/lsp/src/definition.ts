@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { findImportSourceAt } from './import-source.js'
 import { getOrCreateSession } from './lsp-session.js'
 import { mapSourceLineColToTS, mapTSRangeToSource } from './source-map.js'
 
@@ -29,6 +31,26 @@ export function definitionAtTuPosition(
   col: number,
   inMemorySources?: ReadonlyMap<string, string>
 ): TuDefinition[] {
+  // Import-source string — `import { … } from "./Card.tu"`. Goto-def
+  // jumps to the head of the resolved file. (M6.12.) Handled before the
+  // tsserver path because the source string isn't covered by a TS
+  // textSpan we could map back.
+  const importHit = findImportSourceAt(source, filename, line, col)
+  if (importHit !== null && importHit.resolvedPath !== null) {
+    const exists =
+      inMemorySources?.has(importHit.resolvedPath) ?? existsSync(importHit.resolvedPath)
+    if (exists) {
+      return [
+        {
+          uri: pathToFileURL(importHit.resolvedPath).toString(),
+          line: 0,
+          col: 0,
+          length: 0,
+        },
+      ]
+    }
+  }
+
   const session = getOrCreateSession(source, filename, inMemorySources)
   if (!session) return []
   const mapped = mapSourceLineColToTS(

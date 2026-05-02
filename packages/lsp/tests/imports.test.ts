@@ -2,13 +2,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { definitionAtTuPosition } from '../src/definition.js'
 import { checkTuSource } from '../src/diagnostics.js'
+import { hoverAtTuPosition } from '../src/hover.js'
+import { disposeSessionCache } from '../src/lsp-session.js'
 
 let tmp: string
 beforeEach(() => {
+  disposeSessionCache()
   tmp = mkdtempSync(join(tmpdir(), 'tu-lsp-imports-'))
 })
 afterEach(() => {
+  disposeSessionCache()
   rmSync(tmp, { recursive: true, force: true })
 })
 
@@ -149,6 +154,83 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
       [cardPath, 'export let Card = (label: string) => p { label }\n'],
     ])
     expect(checkTuSource(appSrc, appPath, inMem)).toEqual([])
+  })
+
+  // ─── M6.12 — hover / goto-def on the import-source string ───────────
+
+  it('hover on the source string of an import shows resolved path + exports', () => {
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(
+      cardPath,
+      [
+        'export let Card = (label: string) => p { label }',
+        'export let helper = (n: number) => n + 1',
+      ].join('\n')
+    )
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    // Cursor inside the quoted source on line 0.
+    // `import { Card } from "./Card.tu"` — `"` starts at col 21, path runs
+    // until col 31, closing quote at col 32. Land cursor on col 25 (mid-path).
+    const hover = hoverAtTuPosition(appSrc, appPath, 0, 25)
+    expect(hover).not.toBeNull()
+    expect(hover!.contents).toContain('"./Card.tu"')
+    expect(hover!.contents).toContain('Card.tu') // basename annotation
+    // Export list surfaces in documentation.
+    expect(hover!.documentation).toMatch(/Card/)
+    expect(hover!.documentation).toMatch(/helper/)
+  })
+
+  it('goto-definition on the source string of an import jumps to the resolved file', () => {
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    // Cursor mid-path of the import string on line 0.
+    const defs = definitionAtTuPosition(appSrc, appPath, 0, 25)
+    expect(defs.length).toBe(1)
+    expect(defs[0]!.uri).toContain('Card.tu')
+    expect(defs[0]!.line).toBe(0)
+    expect(defs[0]!.col).toBe(0)
+  })
+
+  it('hover on import source path that does not exist on disk shows path-only', () => {
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Ghost } from "./Missing.tu"',
+      'export let App = () => Ghost()',
+    ].join('\n')
+    // Cursor inside the import-source quotes.
+    const hover = hoverAtTuPosition(appSrc, appPath, 0, 26)
+    expect(hover).not.toBeNull()
+    expect(hover!.contents).toContain('"./Missing.tu"')
+    // Path doesn't exist → no exports list / reference to file body.
+    expect(hover!.contents.includes('Missing.tu')).toBe(true)
+  })
+
+  it('hover on identifier in import statement is NOT shadowed by the import-source helper', () => {
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    // Cursor on the call site `Card("hi")` on line 1, col 23. Should
+    // produce a TS-shaped hover (signature), not the path-module hover.
+    const hover = hoverAtTuPosition(appSrc, appPath, 1, 24)
+    expect(hover).not.toBeNull()
+    // The import-source hover starts with `module "..."`. Confirm we
+    // didn't mistakenly route THIS through the import-source path.
+    expect(hover!.contents).not.toMatch(/^module /)
+    // It should mention the lambda's signature.
+    expect(hover!.contents).toMatch(/string/)
   })
 
   it('in-memory edits to non-root file invalidate stale cache from a prior disk-only check', () => {
