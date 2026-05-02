@@ -40,6 +40,7 @@ export default {
       text: 'Reference',
       items: [
         { text: 'Language', link: '/LANGUAGE' },
+        { text: 'SSR async + Suspense (design)', link: '/SSR-ASYNC-DESIGN' },
         { text: 'Deferred backlog', link: '/DEFERRED' },
       ],
     },

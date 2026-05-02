@@ -1,4 +1,4 @@
-// Generated from docs/install.md — Tu-native docs page.
+// Tu-native docs page (install.tu).
 
 export let frontmatter = {}
 
@@ -14,8 +14,10 @@ export let Page = () => div {
 
     ```sh
     pnpm add -D @tu-lang/vite@alpha @tu-lang/compiler@alpha
-    pnpm add @tu-lang/runtime@alpha
+    pnpm add @tu-lang/runtime@alpha @tu-lang/dom@alpha
     ```
+
+    `@tu-lang/runtime` is universal — Signals, vnode construction, SSR helpers (`renderToString`, `renderPageAsync`, `renderToStream`, `Suspense`). `@tu-lang/dom` is the browser side — `mount`, `hydrate`, `defineCustomElement`, plus typed re-exports of common DOM types. Server-only consumers (Node SSR, edge functions) only need `@tu-lang/runtime`. See [LANGUAGE: Runtime + platform packages](./LANGUAGE#runtime--platform-packages).
 
     ```ts
     // vite.config.ts
@@ -50,15 +52,9 @@ export let Page = () => div {
 
     The VS Code extension (`vscode-tu`) is **not yet on the Marketplace**. Two ways to use it today:
 
-    ### Option A — install from a `.vsix`
+    ### Option A — install from a `.vsix` (when published)
 
-    Download the latest `.vsix` from this site and install it manually:
-
-    - [vscode-tu-latest.vsix](./install/vscode-tu-latest.vsix) *(coming soon — built by the docs deploy workflow)*
-
-    ```sh
-    code --install-extension vscode-tu-latest.vsix
-    ```
+    The Marketplace listing and a `.vsix` artifact under `Releases` are planned but not yet published. Until then, use Option B.
 
     ### Option B — clone + dev-install
 

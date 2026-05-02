@@ -21,7 +21,7 @@ export let frontmatter = {
     { title: "Types via TypeScript", details: "Volar pattern — Tu compiles to a TypeScript shadow, tsserver does the inference. Hover, completion, goto-definition, and rename all work cross-<code>.tu</code>." },
     { title: "Object literals + member access", details: "<code>let p: Point = { x: 1, y: 2 }</code> and <code>p.x</code> work end-to-end with reactive cells. Lambda return-type annotations close the typed-data loop." },
     { title: "Native markdown blocks", details: "<code>markdown { … }</code> as a first-class language form (M6.3) — embed prose alongside Tu components, pre-rendered at compile time." },
-    { title: "SSR + hydration", details: "<code>renderToString()</code> for server-side rendering, <code>renderPage()</code> for full HTML documents, <code>hydrate()</code> for the client handoff (focus / scroll / <code>&lt;input&gt;</code> value preserved across the boundary)." },
+    { title: "SSR + Suspense + streaming (M6.11)", details: "<code>renderToString()</code> for sync server-side rendering, <code>renderPageAsync()</code> + <code>Suspense</code> for async data fetching, <code>renderToStream()</code> for ReadableStream-based per-boundary flushing, <code>hydrate()</code> for the client handoff (focus / scroll / <code>&lt;input&gt;</code> value preserved). See the <a href=\"https://github.com/mowtwo/tu/tree/main/examples/suspense\">suspense example</a>." },
     { title: "Ecosystem", details: "<a href=\"/tu-xing\">tu-xing</a> — shadcn-style UI library. <a href=\"/tu-shu\">tu-shu</a> — Tu-native SSG (renders this page). <a href=\"/tailwind\">Tailwind</a> drops in via <code>@source</code>. The whole stack dogfoods itself." },
   ],
 }
@@ -63,7 +63,7 @@ export let Page = () => div {
 
     ## Status
 
-    Tu is **pre-alpha (`0.1.0-alpha.7` on npm)**. The compiler, runtime, type system, full LSP, SSR + hydration, Custom Elements wrapper, [tu-xing](/tu-xing) UI library, and [tu-shu](/tu-shu) SSG (which builds this site) are all shipped. The repo is the public preview — the API surface may change before v0.1, but every example you'll see in [`examples/`](https://github.com/mowtwo/tu/tree/main/examples) actually runs today.
+    Tu is **pre-alpha (`0.1.0-alpha.8` on npm)**. The compiler, runtime, type system, full LSP, SSR + Suspense + streaming (M6.11), Custom Elements wrapper, [tu-xing](/tu-xing) UI library, and [tu-shu](/tu-shu) SSG (which builds this site) are all shipped. The repo is the public preview — the API surface may change before v0.1, but every example in [`examples/`](https://github.com/mowtwo/tu/tree/main/examples) actually runs today.
 
     For features explicitly **deferred** to a later milestone (live editor, per-component HMR, local reactivity, etc.) see the [Deferred backlog](/DEFERRED).
   }

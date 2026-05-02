@@ -7,8 +7,8 @@ export let Page = () => div {
     # Tu Language Reference
 
     A practical reference for every Tu syntactic form that compiles today. Covers
-    the language as of the M5.x line — see [DEFERRED.md](./DEFERRED.md) for
-    work still in flight.
+    the language through the M6.11 line (async / Suspense / streaming SSR) — see
+    [DEFERRED](./DEFERRED) for work still in flight.
 
     Tu is a single-pass, expression-oriented language that compiles to a small
     ESM module per `.tu` file. The compiler also emits a TypeScript shadow with
@@ -572,6 +572,70 @@ export let Page = () => div {
 
     ---
 
+    ## Runtime + platform packages
+
+    Tu's runtime is split into two packages so a `.tu` file that doesn't intend to run in a browser can never accidentally pull DOM impls (M6.10):
+
+    - **`@tu-lang/runtime`** — the *universal* half. `Signal`, `h`, `Fragment`, `VNode`, `Child`, `renderToString`, `renderPage`, `renderPageHtml`, `renderToStringAsync`, `renderPageAsync`, `renderToStream`, `Suspense`, `TuRenderError`. Compiled Tu auto-imports `Signal` / `h` / `Fragment` from here. Safe to use from Node, edge runtimes, Cloudflare Workers — anywhere without a `document`.
+    - **`@tu-lang/dom`** — the *browser* half. `mount`, `hydrate`, `defineCustomElement`, plus typed re-exports of the standard DOM types your Tu code touches (`Event`, `MouseEvent`, `HTMLInputElement`, `Node`, `Element`, `RequestInit`, `AbortController`, …). Anything that touches `document` lives behind an explicit `import { … } from "@tu-lang/dom"`.
+
+    Typical browser entry:
+
+    ```tu
+    import { mount } from "@tu-lang/dom"
+    import { App } from "./App.tu"
+
+    mount(() => App(), document.getElementById("app"))
+    ```
+
+    Typical SSR entry:
+
+    ```tu
+    import { renderPageAsync } from "@tu-lang/runtime"
+    import { Page } from "./Page.tu"
+
+    let html = await renderPageAsync(() => Page(), { title: "Hi" })
+    ```
+
+    The split is enforced at the *runtime-function* layer today. Strict type-level isolation (dropping `lib.dom` from the LSP shadow so unused DOM globals can't sneak in) is tracked in DEFERRED.
+
+    ## External JS escape hatch (M6.9 / M6.10.1)
+
+    For interop with browser APIs, third-party JS, or anything outside Tu's grammar, declare a typed bridge with `external JS`:
+
+    ```tu
+    let inputValueOf = external JS (e: Event): string {
+      const t = e.target
+      return t && 'value' in t ? String(t.value) : ''
+    }
+
+    let App = () =>
+      input(onInput: (e: Event) => state = inputValueOf(e))
+    ```
+
+    The block body is raw JavaScript — Tu doesn't parse it, just emits it verbatim into the compiled module. The signature `(e: Event): string` is a regular Tu type annotation and propagates into the TS shadow, so call sites get full type checking without Tu having to understand the body.
+
+    Use cases:
+
+    - DOM-level extraction that needs a cast Tu doesn't have yet (`event.target` → `HTMLInputElement.value`).
+    - Native browser APIs not surfaced through `@tu-lang/dom` (`URL`, `crypto.subtle`, `IntersectionObserver`, …).
+    - Interop with non-Tu npm packages whose shape Tu's TypeScript emit doesn't import-friendly.
+    - Performance escape hatches where you want to drop into hand-written JS without leaving the file.
+
+    Inline object-shape return types are supported (M6.10.1):
+
+    ```tu
+    let measure = external JS (xs: any[]): { ms: number; out: any[] } {
+      const t0 = performance.now()
+      const out = xs.slice().sort()
+      return { ms: performance.now() - t0, out }
+    }
+    ```
+
+    The `{` after `:` is parsed as a type literal, not a body opener — the parser disambiguates by the immediately-preceding token.
+
+    ---
+
     ## Imports / exports
 
     ### Named import
@@ -641,20 +705,32 @@ export let Page = () => div {
 
     ## What's not in V1
 
-    See [DEFERRED.md](./DEFERRED.md) for the live list. As of M3.9 / M2.5 the
-    notable gaps are:
+    See [DEFERRED](./DEFERRED) for the live list. As of M6.11 the notable gaps are:
 
     - **Default exports** — TBD; revisit when component-as-file becomes idiomatic.
-    - **Suspense / async components** — no async story yet.
+    - **Lifecycle hooks + element ref sugar** — no `onMount` / `onUnmount`; no Vue-2-style explicit `ref`.
+    - **Router** — Tu has no built-in routing yet; tu-shu loads pages by file discovery, but there's no general router (M7 milestone).
+    - **`as` type assertion** — no `expr as Type` cast; route through `external JS` for now.
     - **Per-component fine-grained HMR** — full module re-import on save.
     - **Local reactivity** — full thunk re-runs on cell mutation; per-binding
       patches are deeper rework.
     - **CSS4 nesting / `@layer` / `@scope`** — needs a real CSS parser; the
       regex-based scanner handles most flat selectors today.
-    - **Static-HTML optimization** — non-reactive subtrees still go through
-      `h()` instead of `<template>`-cloned strings.
-    - **Style ↔ JS state interop** — bind CSS custom properties to cells via
-      a syntax sugar (post-M2 work).
+    - **Style ↔ JS state interop** — design pending; cells don't auto-bind to CSS variables yet.
+    - **Qwik-style resumability** — hydrate re-runs the first-frame thunk; serialized listener references are future work.
+
+    ## What landed in M6.11 (async + SSR)
+
+    - **`renderToStringAsync(node)`** — awaits any `Promise` child during the SSR walk. `Child` gained a `Promise<Child>` member; sync `renderToString` now throws `TuRenderError` on Promise children (was silently emitting `[object Promise]`).
+    - **`renderPageAsync(thunk, options)`** — thunk may be a sync function or an async lambda; the body is rendered via `renderToStringAsync` and assembled into a complete HTML document.
+    - **`Suspense({ fallback, children })`** — boundary primitive that catches Promise rejections inside its body and emits the `fallback` Child instead. Boundaries compose; sync `renderToString` of a Suspense renders fallback verbatim. Tu call-site is named-arg form: `Suspense(fallback: div { "Loading…" }) { AsyncChild() }`.
+    - **`renderToStream(thunk, options)`** — Web `ReadableStream<Uint8Array>` ready to pipe into a `Response`. Shell + sync body + per-boundary `<div data-tu-suspense="N">…fallback…</div>` placeholders flush first; resolved bodies stream later as `<template id="S:N">…</template><script>$tu_replace("N")</script>` chunks in resolution order. Rejected boundaries leave the placeholder (with its fallback content) in place.
+
+    Examples:
+    - `examples/ssr/` — sync `renderToString` + client-side `hydrate` round-trip.
+    - `examples/suspense/` — async + Suspense + streaming, both pipelines exercised end-to-end.
+
+    See `docs/SSR-ASYNC-DESIGN.md` for the design context behind these primitives.
 
   }
 }
