@@ -134,7 +134,10 @@ export function findTagCallAt(
   for (const stmt of program.body) {
     if (stmt.kind !== 'LetDecl') continue
     walkTagCalls(stmt.value, (t) => {
-      if (offset >= t.tagStart && offset < t.tagEnd) hit = t
+      // Inclusive end so a cursor at the trailing edge still hits —
+      // VS Code typically sends col = token's end column when
+      // hovering on the last char.
+      if (offset >= t.tagStart && offset <= t.tagEnd) hit = t
     })
     if (hit) break
   }
@@ -170,7 +173,7 @@ export function findAttrAt(
     walkTagCalls(stmt.value, (t) => {
       for (const p of t.props) {
         if (p.nameStart === undefined || p.nameEnd === undefined) continue
-        if (offset >= p.nameStart && offset < p.nameEnd) {
+        if (offset >= p.nameStart && offset <= p.nameEnd) {
           hitTag = t
           hitAttrStart = p.nameStart
           hitAttrEnd = p.nameEnd
@@ -196,54 +199,111 @@ function walkTagCalls(
 ): void {
   if (!expr) return
   const e = expr as Record<string, unknown>
+  const visit = (node: unknown) => walkTagCalls(node as { kind: string }, hit)
   switch (expr.kind) {
     case 'TagCall': {
       const t = expr as unknown as TagCall
       hit(t)
-      for (const p of t.props) walkTagCalls(p.value as { kind: string }, hit)
-      for (const c of t.children) walkTagCalls(c as { kind: string }, hit)
+      for (const p of t.props) visit(p.value)
+      for (const c of t.children) visit(c)
       return
     }
     case 'Lambda':
-      walkTagCalls(e.body as { kind: string }, hit)
+      visit(e.body)
       return
     case 'Block':
-      for (const c of e.body as { kind: string }[]) walkTagCalls(c, hit)
+      for (const c of e.body as { kind: string }[]) visit(c)
+      return
+    case 'LocalLet':
+      visit(e.value)
       return
     case 'IfExpr':
-      walkTagCalls(e.cond as { kind: string }, hit)
-      walkTagCalls(e.then as { kind: string }, hit)
-      if (e.else) walkTagCalls(e.else as { kind: string }, hit)
+      visit(e.cond)
+      visit(e.then)
+      if (e.else) visit(e.else)
       return
     case 'ForExpr':
-      walkTagCalls(e.iter as { kind: string }, hit)
-      walkTagCalls(e.body as { kind: string }, hit)
+      visit(e.iter)
+      visit(e.body)
       return
     case 'ArrayLit':
-      for (const c of e.elements as { kind: string }[]) walkTagCalls(c, hit)
+      for (const c of e.elements as unknown[]) visit(c)
       return
     case 'ObjectLit':
-      for (const p of e.properties as { value: { kind: string } }[]) walkTagCalls(p.value, hit)
-      return
-    case 'CallExpr':
-      for (const a of e.args as { kind: string }[]) walkTagCalls(a, hit)
-      if (Array.isArray(e.children)) {
-        for (const c of e.children as { kind: string }[]) walkTagCalls(c, hit)
+      // ObjectLit's `properties` items are either `ObjectProp` (key+value)
+      // or `ObjectSpread` (kind: 'ObjectSpread', arg). Walk both.
+      for (const p of e.properties as Array<Record<string, unknown>>) {
+        if (p.kind === 'ObjectSpread') visit(p.arg)
+        else visit(p.value)
       }
       return
-    case 'BinaryExpr':
-      walkTagCalls(e.left as { kind: string }, hit)
-      walkTagCalls(e.right as { kind: string }, hit)
-      return
-    case 'AssignExpr':
-      walkTagCalls(e.value as { kind: string }, hit)
-      return
-    case 'MemberExpr':
-      walkTagCalls(e.object as { kind: string }, hit)
+    case 'CallExpr':
+      for (const a of e.args as unknown[]) visit(a)
+      if (Array.isArray(e.children)) for (const c of e.children) visit(c)
+      if (Array.isArray(e.namedArgs)) {
+        for (const p of e.namedArgs as Array<Record<string, unknown>>) visit(p.value)
+      }
       return
     case 'MethodCallExpr':
-      walkTagCalls(e.object as { kind: string }, hit)
-      for (const a of e.args as { kind: string }[]) walkTagCalls(a, hit)
+      visit(e.object)
+      for (const a of e.args as unknown[]) visit(a)
+      return
+    case 'InvokeExpr':
+      visit(e.callee)
+      for (const a of e.args as unknown[]) visit(a)
+      return
+    case 'BinaryExpr':
+      visit(e.left)
+      visit(e.right)
+      return
+    case 'TernaryExpr':
+      visit(e.cond)
+      visit(e.then)
+      visit(e.else)
+      return
+    case 'AssignExpr':
+      visit(e.value)
+      return
+    case 'MemberAssignExpr':
+      visit(e.target)
+      visit(e.value)
+      return
+    case 'MemberExpr':
+      visit(e.object)
+      return
+    case 'IndexExpr':
+      visit(e.object)
+      visit(e.index)
+      return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+    case 'NewExpr':
+    case 'UpdateExpr':
+    case 'AwaitExpr':
+    case 'ImportExpr':
+    case 'ThrowExpr':
+    case 'SpreadElement':
+      visit(e.arg)
+      return
+    case 'ReturnExpr':
+      if (e.value) visit(e.value)
+      return
+    case 'TryExpr':
+      visit(e.body)
+      if (e.catchClause) visit((e.catchClause as { body: unknown }).body)
+      if (e.finallyClause) visit(e.finallyClause)
+      return
+    case 'TemplateLit':
+      for (const ex of e.expressions as unknown[]) visit(ex)
+      return
+    case 'StyleBlock':
+    case 'MarkdownBlock':
+    case 'StringLit':
+    case 'NumberLit':
+    case 'Ident':
+    case 'ClassRef':
+    case 'RegexLit':
+    case 'ExternalLambda':
       return
     default:
       return

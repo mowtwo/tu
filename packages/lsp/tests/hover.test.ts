@@ -132,4 +132,41 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     const src = 'export let App = () => h1 { "missing close brace"'
     expect(hoverAtTuPosition(src, join(tmp, 'broken.tu'), 0, 12)).toBeNull()
   })
+
+  it('LSP walkers reach into every expr kind — hover works on tags nested in newer constructs', () => {
+    // Each line wraps the same `button { "x" }` tag-call inside one of
+    // the newer expression kinds (try/return/throw, ternary, nested
+    // lambda + IIFE, await + import, member assign, template literal,
+    // local let). Cursor lands on the `button` ident; we expect the
+    // HTML hover to fire (which means the AST walker reached it). The
+    // bug pre-fix: walkers stopped at TryExpr / TernaryExpr / etc.,
+    // so hover would silently no-op on these files.
+    const lines = [
+      // 0: try
+      'export let A = () => try { button { "a" } } catch (e) { p { "e" } }',
+      // 1: ternary
+      'export let B = (c: boolean) => c ? button { "y" } : p { "n" }',
+      // 2: throw inside if
+      'export let C = (x: number) => { if (x < 0) { throw button { "neg" } }; p { "ok" } }',
+      // 3: template literal in an attr
+      'export let D = (n: string) => button(class: `b-${n}`) { "x" }',
+      // 4: local let then tag
+      'export let E = () => { let label = "click"; button { label } }',
+    ]
+    const src = lines.join('\n')
+    // For each line above, point col at the START of `button`. The
+    // tag's tagStart is right after the construct's prefix.
+    const cases = [
+      { line: 0, col: src.split('\n')[0]!.indexOf('button') },
+      { line: 1, col: src.split('\n')[1]!.indexOf('button') },
+      { line: 2, col: src.split('\n')[2]!.indexOf('button') },
+      { line: 3, col: src.split('\n')[3]!.indexOf('button') },
+      { line: 4, col: src.split('\n')[4]!.indexOf('button') },
+    ]
+    for (const c of cases) {
+      const info = hoverAtTuPosition(src, join(tmp, 'walker-coverage.tu'), c.line, c.col)
+      expect(info, `hover failed at line ${c.line}, col ${c.col}`).not.toBeNull()
+      expect(info!.contents).toContain('`<button>`')
+    }
+  })
 })

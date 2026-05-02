@@ -133,7 +133,10 @@ function findEnclosingStyleBlock(program: Program, offset: number): StyleBlock |
   return found
 }
 
-/** Visit every `StyleBlock` reachable from `expr` (depth-first). */
+/** Visit every `StyleBlock` reachable from `expr` (depth-first).
+ *  Covers EVERY expression kind the parser can produce so cursor
+ *  hover inside a style block of, say, an async lambda's try-catch
+ *  body still finds the block. */
 function visitStyleBlocks(
   expr: { kind: string } | undefined,
   hit: (b: StyleBlock) => void
@@ -144,51 +147,97 @@ function visitStyleBlocks(
     return
   }
   const e = expr as Record<string, unknown>
+  const visit = (node: unknown) => visitStyleBlocks(node as { kind: string }, hit)
   switch (expr.kind) {
     case 'Lambda':
-      visitStyleBlocks(e.body as { kind: string }, hit)
+      visit(e.body)
       return
     case 'Block':
-      for (const c of e.body as { kind: string }[]) visitStyleBlocks(c, hit)
+      for (const c of e.body as unknown[]) visit(c)
+      return
+    case 'LocalLet':
+      visit(e.value)
       return
     case 'TagCall':
-      for (const p of e.props as { value: { kind: string } }[]) visitStyleBlocks(p.value, hit)
-      for (const c of e.children as { kind: string }[]) visitStyleBlocks(c, hit)
+      for (const p of e.props as Array<Record<string, unknown>>) visit(p.value)
+      for (const c of e.children as unknown[]) visit(c)
       return
     case 'IfExpr':
-      visitStyleBlocks(e.cond as { kind: string }, hit)
-      visitStyleBlocks(e.then as { kind: string }, hit)
-      if (e.else) visitStyleBlocks(e.else as { kind: string }, hit)
+      visit(e.cond)
+      visit(e.then)
+      if (e.else) visit(e.else)
       return
     case 'ForExpr':
-      visitStyleBlocks(e.iter as { kind: string }, hit)
-      visitStyleBlocks(e.body as { kind: string }, hit)
+      visit(e.iter)
+      visit(e.body)
       return
     case 'ArrayLit':
-      for (const c of e.elements as { kind: string }[]) visitStyleBlocks(c, hit)
+      for (const c of e.elements as unknown[]) visit(c)
       return
     case 'ObjectLit':
-      for (const p of e.properties as { value: { kind: string } }[]) visitStyleBlocks(p.value, hit)
+      for (const p of e.properties as Array<Record<string, unknown>>) {
+        if (p.kind === 'ObjectSpread') visit(p.arg)
+        else visit(p.value)
+      }
       return
     case 'MemberExpr':
-      visitStyleBlocks(e.object as { kind: string }, hit)
+      visit(e.object)
+      return
+    case 'IndexExpr':
+      visit(e.object)
+      visit(e.index)
       return
     case 'MethodCallExpr':
-      visitStyleBlocks(e.object as { kind: string }, hit)
-      for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
+      visit(e.object)
+      for (const a of e.args as unknown[]) visit(a)
+      return
+    case 'InvokeExpr':
+      visit(e.callee)
+      for (const a of e.args as unknown[]) visit(a)
       return
     case 'CallExpr':
-      for (const a of e.args as { kind: string }[]) visitStyleBlocks(a, hit)
-      if (Array.isArray(e.children)) {
-        for (const c of e.children as { kind: string }[]) visitStyleBlocks(c, hit)
+      for (const a of e.args as unknown[]) visit(a)
+      if (Array.isArray(e.children)) for (const c of e.children) visit(c)
+      if (Array.isArray(e.namedArgs)) {
+        for (const p of e.namedArgs as Array<Record<string, unknown>>) visit(p.value)
       }
       return
     case 'BinaryExpr':
-      visitStyleBlocks(e.left as { kind: string }, hit)
-      visitStyleBlocks(e.right as { kind: string }, hit)
+      visit(e.left)
+      visit(e.right)
+      return
+    case 'TernaryExpr':
+      visit(e.cond)
+      visit(e.then)
+      visit(e.else)
       return
     case 'AssignExpr':
-      visitStyleBlocks(e.value as { kind: string }, hit)
+      visit(e.value)
+      return
+    case 'MemberAssignExpr':
+      visit(e.target)
+      visit(e.value)
+      return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+    case 'NewExpr':
+    case 'UpdateExpr':
+    case 'AwaitExpr':
+    case 'ImportExpr':
+    case 'ThrowExpr':
+    case 'SpreadElement':
+      visit(e.arg)
+      return
+    case 'ReturnExpr':
+      if (e.value) visit(e.value)
+      return
+    case 'TryExpr':
+      visit(e.body)
+      if (e.catchClause) visit((e.catchClause as { body: unknown }).body)
+      if (e.finallyClause) visit(e.finallyClause)
+      return
+    case 'TemplateLit':
+      for (const ex of e.expressions as unknown[]) visit(ex)
       return
     default:
       return

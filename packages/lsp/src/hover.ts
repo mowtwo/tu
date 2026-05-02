@@ -48,11 +48,15 @@ export function hoverAtTuPosition(
 
   const session = getOrCreateSession(source, filename)
   if (!session) return null
+  // Inclusive end so a cursor sitting at the token's trailing edge
+  // still resolves — VS Code typically pins the cursor to the end of
+  // the last char being pointed at.
   const mapped = mapSourceLineColToTS(
     session.rootShadow.tokenMappings,
     session.rootShadow.tuSource,
     line,
-    col
+    col,
+    { inclusiveEnd: true }
   )
   if (!mapped) return null
   const quickInfo = session.service.getQuickInfoAtPosition(
