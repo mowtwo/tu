@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { h, mount, Signal } from '../src/index.js'
+import { h, Signal } from '@tu-lang/runtime'
+import { mount } from '../src/index.js'
 
 let dom: JSDOM
 beforeEach(() => {

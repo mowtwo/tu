@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { h, hydrate, renderToString, Signal } from '../src/index.js'
+import { h, renderToString, Signal } from '@tu-lang/runtime'
+import { hydrate } from '../src/index.js'
 
 let dom: JSDOM
 beforeEach(() => {

@@ -3,7 +3,8 @@
 // no createElement on the first frame — and verify identity preservation
 // + event listener wiring + post-hydration patchChildren.
 import { compile } from '@tu-lang/compiler'
-import { hydrate, renderToString } from '@tu-lang/runtime'
+import { renderToString } from '@tu-lang/runtime'
+import { hydrate } from '@tu-lang/dom'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

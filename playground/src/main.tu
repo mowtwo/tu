@@ -11,7 +11,7 @@
 //      (Monaco + @tu-lang/compiler in the browser); kept in
 //      live-demo.js to keep it out of the initial bundle.
 
-import { mount } from "@tu-lang/runtime"
+import { mount } from "@tu-lang/dom"
 
 import * as Sidebar from "./Sidebar.tu"
 import * as Header from "./StageHeader.tu"

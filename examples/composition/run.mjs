@@ -7,7 +7,7 @@
 //   - Dual class injection: `class="card card-tu-XXX"` in markup,
 //     `.card-tu-XXX` only in the scoped CSS.
 import { compile } from '@tu-lang/compiler'
-import { mount } from '@tu-lang/runtime'
+import { mount } from '@tu-lang/dom'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

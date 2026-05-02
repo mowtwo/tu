@@ -210,7 +210,7 @@ function synthesizeEntryHtml(s: EntryShape): string {
   <body${bodyAttr}>
     <div id="${escapeHtmlAttr(s.mountId)}"></div>
     <script type="module">
-      import { mount } from '@tu-lang/runtime'
+      import { mount } from '@tu-lang/dom'
       import { App } from '${entryUrl}'
       mount(() => App(), document.getElementById('${escapeHtmlAttr(s.mountId)}'))
     </script>

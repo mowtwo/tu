@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/dom": "workspace:*",
     "@tu-lang/runtime": "workspace:*",
     "jsdom": "^26.0.0"
   }

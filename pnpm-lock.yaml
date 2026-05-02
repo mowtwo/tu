@@ -32,6 +32,9 @@ importers:
       '@tu-lang/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@tu-lang/dom':
+        specifier: workspace:*
+        version: link:../../packages/dom
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -44,6 +47,9 @@ importers:
       '@tu-lang/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@tu-lang/dom':
+        specifier: workspace:*
+        version: link:../../packages/dom
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -83,6 +89,9 @@ importers:
       '@tu-lang/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@tu-lang/dom':
+        specifier: workspace:*
+        version: link:../../packages/dom
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -104,6 +113,9 @@ importers:
       '@tu-lang/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@tu-lang/dom':
+        specifier: workspace:*
+        version: link:../../packages/dom
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -234,6 +246,19 @@ importers:
 
   packages/create-tu: {}
 
+  packages/dom:
+    dependencies:
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.1
+        version: 28.0.1
+      jsdom:
+        specifier: ^29.1.0
+        version: 29.1.0
+
   packages/format:
     dependencies:
       '@tu-lang/compiler':
@@ -266,13 +291,6 @@ importers:
       signal-polyfill:
         specifier: ^0.2.2
         version: 0.2.2
-    devDependencies:
-      '@types/jsdom':
-        specifier: ^28.0.1
-        version: 28.0.1
-      jsdom:
-        specifier: ^29.1.0
-        version: 29.1.0
 
   packages/std: {}
 
@@ -332,6 +350,9 @@ importers:
 
   playground:
     dependencies:
+      '@tu-lang/dom':
+        specifier: workspace:*
+        version: link:../packages/dom
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../packages/runtime

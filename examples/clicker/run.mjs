@@ -2,7 +2,7 @@
 // click the buttons, and print the DOM after each click. Verifies M1.5
 // end-to-end without needing a real browser.
 import { compile } from '@tu-lang/compiler'
-import { mount } from '@tu-lang/runtime'
+import { mount } from '@tu-lang/dom'
 import { JSDOM } from 'jsdom'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

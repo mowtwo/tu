@@ -10,7 +10,7 @@
 //          └─ <div class="live-pane preview">        tabs / preview / error / JS / DTS
 
 import { compile, compileToTS } from "@tu-lang/compiler"
-import { mount } from "@tu-lang/runtime"
+import { mount } from "@tu-lang/dom"
 
 import {
   clearCompileErrorsOn,

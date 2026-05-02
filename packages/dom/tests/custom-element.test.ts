@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineCustomElement, h, Signal } from '../src/index.js'
+import { h, Signal } from '@tu-lang/runtime'
+import { defineCustomElement } from '../src/index.js'
 
 let dom: JSDOM
 beforeEach(() => {

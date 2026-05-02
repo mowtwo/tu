@@ -12,6 +12,7 @@
     "check": "echo 'no checks'"
   },
   "dependencies": {
+    "@tu-lang/dom": "workspace:*",
     "@tu-lang/runtime": "workspace:*",
     "@tu-lang/tu-xing": "workspace:*",
     "monaco-editor": "^0.55.1"

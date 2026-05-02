@@ -18,20 +18,57 @@ export function tuPathToTs(p: string): string {
   return p.endsWith('.tu') ? p.slice(0, -'.tu'.length) + '.ts' : p + '.ts'
 }
 
+/**
+ * Workspace-internal Tu packages whose `.d.ts` should be resolved via a
+ * direct path lookup instead of standard node_modules. This is purely a
+ * monorepo-development convenience — without `paths` entries here, the
+ * LSP would need every package built + symlinked into a node_modules
+ * before any cross-package import resolves. Keeping the list explicit
+ * (rather than auto-scanning `packages/*`) means we never accidentally
+ * surface internal-only packages (compiler, lsp, vite, tu-shu) as
+ * importable from user `.tu` files.
+ *
+ * Adding a new Tu platform package (e.g. `@tu-lang/node` once it lands)
+ * is one entry in this list.
+ *
+ * Third-party platform packages do NOT need to be registered here —
+ * `moduleResolution: "Bundler"` resolves them from the user's
+ * node_modules just like a normal TS project would.
+ */
+export const TU_PLATFORM_PACKAGES: readonly string[] = [
+  'runtime',
+  'dom',
+  // future: 'node', 'workers', 'react-native-bridge', …
+]
+
 /** Locate `@tu-lang/runtime`'s `.d.ts` so the in-memory program can resolve the import. */
 export function findRuntimeTypesPath(): string {
+  return findSiblingPackageDts('runtime')
+}
+
+/** Locate `@tu-lang/dom`'s `.d.ts` for the same reason — Tu code that
+ *  imports typed DOM wrappers / mount needs tsserver to resolve them. */
+export function findDomTypesPath(): string {
+  return findSiblingPackageDts('dom')
+}
+
+/** Generic resolver — caller passes the bare package name (the part
+ *  after `@tu-lang/`). Used both by the named accessors above and by
+ *  `getTuCompilerOptions` to build the `paths` map for every entry in
+ *  `TU_PLATFORM_PACKAGES`. */
+export function findSiblingPackageDts(pkgName: string): string {
   // From dist/shadow-graph.js → dist/ → packages/lsp/ → packages/ → repo/
   const here = dirname(fileURLToPath(import.meta.url))
   const candidates = [
-    resolve(here, '..', '..', 'runtime', 'dist', 'index.d.ts'),
-    resolve(here, '..', '..', '..', 'runtime', 'dist', 'index.d.ts'),
-    resolve(here, '..', '..', '..', '..', 'packages', 'runtime', 'dist', 'index.d.ts'),
+    resolve(here, '..', '..', pkgName, 'dist', 'index.d.ts'),
+    resolve(here, '..', '..', '..', pkgName, 'dist', 'index.d.ts'),
+    resolve(here, '..', '..', '..', '..', 'packages', pkgName, 'dist', 'index.d.ts'),
   ]
   for (const c of candidates) {
     if (existsSync(c)) return c
   }
   throw new Error(
-    `@tu-lang/lsp could not locate @tu-lang/runtime types (looked in ${candidates.join(', ')})`
+    `@tu-lang/lsp could not locate @tu-lang/${pkgName} types (looked in ${candidates.join(', ')})`
   )
 }
 
@@ -41,6 +78,13 @@ export function findRuntimeTypesPath(): string {
  * strict / path settings, so factor it once.
  */
 export function getTuCompilerOptions(): ts.CompilerOptions {
+  // Build the platform-package `paths` map from the registry. Each
+  // entry maps `@tu-lang/<name>` → its workspace `.d.ts`. Outside the
+  // registry, imports flow through the standard Bundler resolver.
+  const paths: Record<string, string[]> = {}
+  for (const name of TU_PLATFORM_PACKAGES) {
+    paths[`@tu-lang/${name}`] = [findSiblingPackageDts(name)]
+  }
   return {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,
@@ -51,9 +95,14 @@ export function getTuCompilerOptions(): ts.CompilerOptions {
     strict: true,
     skipLibCheck: true,
     noEmit: true,
-    paths: {
-      '@tu-lang/runtime': [findRuntimeTypesPath()],
-    },
+    // M6.10 platform-API split — runtime-function boundary is enforced
+    // physically (mount/hydrate/defineCustomElement only live in
+    // @tu-lang/dom). DOM lib stays ambient for now so user code that
+    // *does* opt into the DOM (anything imported from @tu-lang/dom)
+    // gets methods like `el.appendChild` resolved without us having to
+    // ship our own DOM type forks. Strict type-level isolation (no
+    // ambient `document`/`Event`) is tracked in DEFERRED.tu.
+    paths,
   }
 }
 
