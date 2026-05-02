@@ -98,18 +98,38 @@ jobs:
           fi
           echo "Publishing with dist-tag: $DIST_TAG"
           cd .release
-          # Per-tarball publish with resilient error handling: a single
-          # 404 (typically a missing Pending Publisher for a new package)
-          # shouldn't block the rest from publishing. Track failures and
-          # exit non-zero only at the end, so partial-success runs report
-          # which packages still need attention.
+          # Per-tarball publish with resilient error handling.
+          #
+          # Three outcome buckets:
+          #
+          #   1. SUCCESS — npm publish exits 0. Most common path.
+          #
+          #   2. ALREADY-PUBLISHED — npm rejects with 403 "cannot publish
+          #      over the previously published versions". This happens
+          #      when a maintainer manually published a single package at
+          #      this version (e.g. brand-new package's first publish
+          #      before Trusted Publishing was set up) and CI is running
+          #      against the same tag. Treat as success: the package IS
+          #      on npm at the requested version, which is the goal.
+          #
+          #   3. REAL FAILURE — anything else (404 missing Pending
+          #      Publisher, network, OIDC misconfig). Track in `failed`
+          #      and exit non-zero at the end so the run surfaces it.
           failed=()
+          skipped=()
           for tarball in *.tgz; do
             echo "::group::Publish $tarball"
-            if npx -y npm@11 publish "$tarball" \
+            output=$(npx -y npm@11 publish "$tarball" \
               --access public \
               --tag "$DIST_TAG" \
-              --provenance; then
+              --provenance 2>&1)
+            rc=$?
+            echo "$output"
+            if [[ $rc -eq 0 ]]; then
+              echo "::endgroup::"
+            elif echo "$output" | grep -q "cannot publish over the previously published versions"; then
+              skipped+=("$tarball")
+              echo "::notice::$tarball already on npm at this version — treating as success"
               echo "::endgroup::"
             else
               failed+=("$tarball")
@@ -117,6 +137,9 @@ jobs:
               echo "::endgroup::"
             fi
           done
+          if [[ ${#skipped[@]} -gt 0 ]]; then
+            echo "::notice::Already-published (no-op) packages: ${skipped[*]}"
+          fi
           if [[ ${#failed[@]} -gt 0 ]]; then
             echo "::warning::Failed packages: ${failed[*]}"
             exit 1
