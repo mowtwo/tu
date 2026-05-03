@@ -1511,11 +1511,29 @@ describe('codegen', () => {
     expect(js).not.toContain(`'@tu-lang/std'`)
   })
 
-  it('M8: interface + type alias coexist (alias still compiles to TS-erased)', () => {
+  it('M9 fix: type-alias as runtime descriptor — JS-emit also inlines (regression: tu-xing BadgeVariant)', () => {
+    const js = compile([
+      'export type BadgeVariant = "brand" | "success" | "danger"',
+      'export interface BadgeProps { variant?: BadgeVariant }',
+    ].join('\n'))
+    // Bug: the descriptor used to emit `type: BadgeVariant` — a bare
+    // reference to a TS-only symbol that doesn't exist at runtime,
+    // crashing tu-xing-demo at module-init with `ReferenceError`. The
+    // fix inlines the alias body so the runtime sees `type.String`.
+    expect(js).not.toContain('type: BadgeVariant')
+    expect(js).toContain('type: type.String')
+  })
+
+  it('M8 + M9: interface field typed by a type-alias inlines the alias body to a runtime descriptor', () => {
+    // `Variant` is a TS-only `type X = …` — has NO runtime symbol. The
+    // descriptor must inline the alias body (`"a" | "b" | "c"` reduces
+    // to `type.String`) instead of emitting a bare `Variant` reference,
+    // which would crash with `ReferenceError: Variant is not defined`
+    // at runtime. See: tu-xing-demo BadgeVariant regression.
     const ts = compileToTS(['type Variant = "a" | "b" | "c"', 'interface Card { variant: Variant }'].join('\n'))
     expect(ts).toContain('type Variant = "a" | "b" | "c"')
     expect(ts).toContain(
-      'const Card: __tu_TypeDescriptor = type.struct("Card", [{ name: "variant", type: Variant }])'
+      'const Card: __tu_TypeDescriptor = type.struct("Card", [{ name: "variant", type: type.String }])'
     )
   })
 })

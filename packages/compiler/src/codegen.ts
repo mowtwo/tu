@@ -299,34 +299,55 @@ function renderPropsTypeText(fields: ReadonlyArray<{ name: string; rawType: stri
  * back to `type.Object` — sound (matches any object) but lossy. M9
  * generics + unions tighten this.
  */
-function tuTypeToDescriptorExpr(raw: string): string {
+function tuTypeToDescriptorExpr(
+  raw: string,
+  typeAliases?: ReadonlyMap<string, string>,
+  visited?: Set<string>
+): string {
   const t = raw.trim()
   if (t.length === 0) return 'type.Object'
+  // String-literal: `"foo"` → `type.String` (for union members like
+  // `"a" | "b" | "c"` after recursion). Keeps the descriptor close to
+  // the runtime shape without needing a real union descriptor yet.
+  if (/^"[^"]*"$/.test(t) || /^'[^']*'$/.test(t)) return 'type.String'
+  // Numeric-literal: `42` → `type.Number`.
+  if (/^-?\d/.test(t) && !isNaN(Number(t))) return 'type.Number'
+  // Boolean-literal: `true` / `false` → `type.Boolean`.
+  if (t === 'true' || t === 'false') return 'type.Boolean'
   // Function types — any `(…) => …` shape.
   if (/=>/.test(t) && /^\s*\(/.test(t)) return 'type.Function'
   // Nullable: `T | null` (or `null | T`). Strip the null branch and
   // recurse on the other side.
   const orParts = splitTopLevel(t, '|')
-  if (orParts.length === 2) {
-    const [a, b] = orParts.map((s) => s.trim())
-    if (a === 'null' || a === 'undefined') {
-      return `type.Optional(${tuTypeToDescriptorExpr(b!)})`
+  if (orParts.length >= 2) {
+    const trimmed = orParts.map((s) => s.trim())
+    // 2-part unions with a null/undefined arm → Optional<T>.
+    if (trimmed.length === 2) {
+      const [a, b] = trimmed
+      if (a === 'null' || a === 'undefined') {
+        return `type.Optional(${tuTypeToDescriptorExpr(b!, typeAliases, visited)})`
+      }
+      if (b === 'null' || b === 'undefined') {
+        return `type.Optional(${tuTypeToDescriptorExpr(a!, typeAliases, visited)})`
+      }
     }
-    if (b === 'null' || b === 'undefined') {
-      return `type.Optional(${tuTypeToDescriptorExpr(a!)})`
-    }
-    // Real union — fall back to Object until M9 ships union descriptors.
+    // Multi-arm union: if every arm reduces to the SAME descriptor (e.g.
+    // `"a" | "b" | "c"` → all `type.String`), pick that. Otherwise fall
+    // back to Object until M9 ships a real union descriptor.
+    const armDescs = trimmed.map((s) => tuTypeToDescriptorExpr(s, typeAliases, visited))
+    const first = armDescs[0]!
+    if (armDescs.every((d) => d === first)) return first
     return 'type.Object'
   }
   // Arrays: `T[]`
   if (t.endsWith('[]')) {
     const inner = t.slice(0, -2)
-    return `type.Array(${tuTypeToDescriptorExpr(inner)})`
+    return `type.Array(${tuTypeToDescriptorExpr(inner, typeAliases, visited)})`
   }
   // `Array<T>` / `ReadonlyArray<T>` sugar.
   const arrM = t.match(/^(?:Readonly)?Array\s*<\s*([\s\S]+)\s*>\s*$/)
   if (arrM) {
-    return `type.Array(${tuTypeToDescriptorExpr(arrM[1]!)})`
+    return `type.Array(${tuTypeToDescriptorExpr(arrM[1]!, typeAliases, visited)})`
   }
   // Primitives.
   switch (t) {
@@ -350,9 +371,16 @@ function tuTypeToDescriptorExpr(raw: string): string {
     case 'never':
       return 'type.Never'
   }
-  // Bare identifier — assume user-declared interface or built-in.
+  // Bare identifier — could be an interface (runtime descriptor const), a
+  // type alias (TS-only — must inline its body), or a built-in.
   // Identifier-or-namespaced-identifier shape (allow `type.Promise` etc.).
   if (/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(t)) {
+    if (typeAliases?.has(t)) {
+      const seen = visited ?? new Set<string>()
+      if (seen.has(t)) return 'type.Object' // self-referential alias guard
+      seen.add(t)
+      return tuTypeToDescriptorExpr(typeAliases.get(t)!, typeAliases, seen)
+    }
     return t
   }
   // Anything else — soundly fall back to `type.Object` (matches any
@@ -512,8 +540,16 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   // erased in JS mode but the dedup is cheap to compute either way.
   const declaredTypeNames = new Set<string>()
   const declaredInterfaceNames = new Set<string>()
+  // Type-alias bodies are needed for runtime descriptor resolution: a
+  // field typed `BadgeVariant` (where `type BadgeVariant = "a" | "b"`)
+  // must inline the alias body to `type.String` — the alias name has no
+  // runtime symbol because TS-only `type X = …` is erased in JS-emit.
+  const typeAliasBodies = new Map<string, string>()
   for (const stmt of program.body) {
-    if (stmt.kind === 'TypeAlias') declaredTypeNames.add(stmt.name)
+    if (stmt.kind === 'TypeAlias') {
+      declaredTypeNames.add(stmt.name)
+      typeAliasBodies.set(stmt.name, stmt.type)
+    }
     if (stmt.kind === 'InterfaceDecl') {
       declaredInterfaceNames.add(stmt.name)
       // An interface also occupies the type namespace from the user's
@@ -551,7 +587,8 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     declaredTypeNames,
     declaredInterfaceNames,
     synth.letToAnon,
-    opts?.canonicalNamesForFile
+    opts?.canonicalNamesForFile,
+    typeAliasBodies
   )
   cg.write(`${runtimeImportLine(tsMode)}\n`)
   // Auto-import the M8 type API when this module:
@@ -760,7 +797,8 @@ class Codegen {
     private readonly declaredTypeNames: ReadonlySet<string> = new Set(),
     private readonly declaredInterfaceNames: ReadonlySet<string> = new Set(),
     private readonly anonInterfaceForLet: ReadonlyMap<LetDecl, string> = new Map(),
-    private readonly canonicalNamesForFile: ReadonlyMap<string, string> | undefined = undefined
+    private readonly canonicalNamesForFile: ReadonlyMap<string, string> | undefined = undefined,
+    private readonly typeAliasBodies: ReadonlyMap<string, string> = new Map()
   ) {}
 
   write(text: string): void {
@@ -1919,7 +1957,7 @@ class Codegen {
       this.write('{ name: ')
       this.write(JSON.stringify(f.name))
       this.write(', type: ')
-      this.write(tuTypeToDescriptorExpr(f.rawType.trim()))
+      this.write(tuTypeToDescriptorExpr(f.rawType.trim(), this.typeAliasBodies))
       if (f.optional) this.write(', optional: true')
       this.write(' }')
     }

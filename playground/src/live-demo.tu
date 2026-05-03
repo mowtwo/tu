@@ -292,7 +292,7 @@ let recompileLive = async (): Promise<void> => {
 let updatePathBar = () => {
   if (!livePathBarEl || liveCurrentPath == null) { return }
   let caseDef = CASES().find((c) => c.id == liveCurrentCaseId)
-  let prefix = caseDef ? caseDef.label + " / " : ""
+  let prefix = if (caseDef) { caseDef.label + " / " } else { "" }
   livePathBarEl.textContent = prefix + liveCurrentPath
 }
 
@@ -313,7 +313,7 @@ let setActiveTab = (tab: string) => {
   views.forEach((v) => {
     if (v.el == null) { return }
     if (v.tab == tab) {
-      v.el.style.display = v.tab == "preview" ? "block" : (v.tab == "error" ? "block" : "block")
+      v.el.style.display = "block"
     } else {
       v.el.style.display = "none"
     }
