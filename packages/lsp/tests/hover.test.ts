@@ -144,8 +144,8 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     const lines = [
       // 0: try
       'export let A = () => try { button { "a" } } catch (e) { p { "e" } }',
-      // 1: ternary
-      'export let B = (c: boolean) => c ? button { "y" } : p { "n" }',
+      // 1: if-else expression (M9 banned ternary; if/else is the replacement)
+      'export let B = (c: boolean) => if (c) { button { "y" } } else { p { "n" } }',
       // 2: throw inside if
       'export let C = (x: number) => { if (x < 0) { throw button { "neg" } }; p { "ok" } }',
       // 3: template literal in an attr

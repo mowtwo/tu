@@ -65,7 +65,9 @@ let append = (title: string): Todo[] => {
 }
 
 // Mark every todo done via .map; ternary just to show the operator.
-let markAllDone = (): Todo[] => todos.map((t: Todo) => t.done ? t : { ...t, done: true })
+let markAllDone = (): Todo[] => todos.map((t: Todo) =>
+  if (t.done) { t } else { { ...t, done: true } }
+)
 
 // Counts via a manual loop + the postfix `++` operator on a plain local
 // binding (Tu's update operators only legally apply to non-cell locals

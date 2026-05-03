@@ -693,17 +693,17 @@ describe('codegen', () => {
   })
 
   it('M6.10.1: member compound assign desugars `obj.x += 1` → `obj.x = obj.x + 1`', () => {
-    const js = compile('let App = (obj: any) => { obj.x += 1; obj }')
+    const js = compile('let App = (obj: { x: number }) => { obj.x += 1; obj }')
     expect(js).toContain('(obj.x = (obj.x + 1))')
   })
 
   it('M6.10.1: index compound assign desugars `arr[i] += 1`', () => {
-    const js = compile('let App = (arr: any, i: number) => { arr[i] += 1; arr }')
+    const js = compile('let App = (arr: number[], i: number) => { arr[i] += 1; arr }')
     expect(js).toContain('(arr[i] = (arr[i] + 1))')
   })
 
   it('M6.10.1: `obj.x ||= "default"` desugars to logical-or short-circuit', () => {
-    const js = compile('let App = (obj: any) => { obj.x ||= "default"; obj }')
+    const js = compile('let App = (obj: { x: string }) => { obj.x ||= "default"; obj }')
     expect(js).toContain('(obj.x = (obj.x || "default"))')
   })
 
@@ -939,23 +939,41 @@ describe('codegen', () => {
     expect(js).not.toContain('=> {')
   })
 
-  it('M6.5: ternary `cond ? a : b` emits as JS conditional expression', () => {
-    expect(compile('let f = (c) => c ? "y" : "n"')).toContain('(c ? "y" : "n")')
+  it('M9: ternary `cond ? a : b` is BANNED with a directive error', () => {
+    expect(() => compile('let f = (c) => c ? "y" : "n"')).toThrow(/ternary.*banned.*if cond/i)
   })
 
-  it('M6.5: ternary right-associates: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`', () => {
-    const js = compile('let f = (n) => n > 10 ? "big" : n > 0 ? "pos" : "non-pos"')
-    expect(js).toContain('((n > 10) ? "big" : ((n > 0) ? "pos" : "non-pos"))')
-  })
-
-  it('M6.5: `new` operator', () => {
+  it('M6.5: `new` operator (still allowed for genuine constructors like Error/Date)', () => {
     expect(compile('let err = () => new Error("bad")')).toContain('(new Error("bad"))')
     expect(compile('let d = () => new Date().getTime()')).toContain('(new Date().getTime())')
   })
 
-  it('M6.5: prefix and postfix `++`/`--` pass through as JS-native update', () => {
-    expect(compile('let inc = () => ++count')).toContain('(++count)')
-    expect(compile('let dec = () => count--')).toContain('(count--)')
+  it('M9: `new Array(n)` is BANNED — use `[…]` literal instead', () => {
+    expect(() => compile('let xs = new Array(10)')).toThrow(/new Array.*banned/i)
+  })
+
+  it('M9: prefix `++` is BANNED', () => {
+    expect(() => compile('let inc = () => ++count')).toThrow(/prefix.*banned.*\+= 1/i)
+  })
+
+  it('M9: postfix `--` is BANNED', () => {
+    expect(() => compile('let inc = () => count--')).toThrow(/postfix.*banned.*-= 1/i)
+  })
+
+  it('M9: explicit `: any` annotation is BANNED outside external JS', () => {
+    expect(() => compile('let f = (x: any) => x')).toThrow(/'any'.*banned.*unknown/i)
+  })
+
+  it('M9: `: any` inside external JS lambda signatures is ALLOWED (escape hatch)', () => {
+    // External JS body bodies pass through verbatim AND their lambda
+    // signatures (params + return type) skip the any-check.
+    const js = compile('let raw = external JS (v: any): any { return v }')
+    expect(js).toContain('(v) =>')
+  })
+
+  it('M9: sparse array slot `[a, , c]` normalizes to `null` in the empty position', () => {
+    const js = compile('let xs = [1, , 3]')
+    expect(js).toContain('[1, null, 3]')
   })
 
   it('M6.5: compound assignment `x += y` desugars to `x = x + y` (cell-aware via existing AssignExpr)', () => {

@@ -734,24 +734,19 @@ export class Parser {
     return left
   }
 
-  /** Ternary `cond ? then : else` sits BELOW assignment but ABOVE all
-   *  binary operators. Right-associative — `a ? b : c ? d : e` parses
-   *  as `a ? b : (c ? d : e)`. */
+  /** Ternary `cond ? then : else` was added in M6.5 but is BANNED in
+   *  M9 — Tu has expression-position `if cond { … } else { … }` which
+   *  yields a value, so the ternary is redundant duplication of
+   *  control-flow surface. The parser keeps the lookahead (so error
+   *  messages still point at `?`) but throws a directive when the
+   *  pattern matches. `external JS { … }` block bodies skip this
+   *  check (their JS is opaque to Tu). */
   private parseTernary(): Expr {
     const cond = this.parseBinary(0)
     if (this.peek().kind !== TokenKind.Question) return cond
-    this.pos++ // consume `?`
-    const thenExpr = this.parseExpr()
-    this.expect(TokenKind.Colon)
-    const elseExpr = this.parseExpr()
-    return {
-      kind: 'TernaryExpr',
-      cond,
-      then: thenExpr,
-      else: elseExpr,
-      start: cond.start,
-      end: elseExpr.end,
-    }
+    throw this.error(
+      `ternary '?:' is banned in Tu source. Use \`if cond { … } else { … }\` — it's an expression that yields a value (works wherever a ternary would). Inside \`external JS { … }\` block bodies the ternary is allowed (raw JS, opaque to Tu).`
+    )
   }
 
   private parseBinary(minPrec: number): Expr {
@@ -803,15 +798,15 @@ export class Parser {
       // accidentally attach to a TagCall. Tu desugars these in codegen
       // to `x = x + 1` / `x = x - 1`; postfix returns the *old* value
       // via an IIFE wrap.
+      // M9 ban: postfix `++` / `--` redirects to `+= 1` / `-= 1`.
       if (
         (this.peek().kind === TokenKind.PlusPlus || this.peek().kind === TokenKind.MinusMinus) &&
         isMemberAccessibleExpr(expr)
       ) {
-        const tok = this.peek()
-        const op = tok.kind === TokenKind.PlusPlus ? '++' : '--'
-        this.pos++
-        expr = { kind: 'UpdateExpr', op, arg: expr, prefix: false, start: expr.start, end: tok.end }
-        continue
+        const op = this.peek().kind === TokenKind.PlusPlus ? '++' : '--'
+        throw this.error(
+          `postfix '${op}' is banned in Tu source. Use \`x ${op === '++' ? '+=' : '-='} 1\` — produces the same effect with no statement-vs-expression ambiguity.`
+        )
       }
       // TS-style non-null assertion `expr!` — only attach to value-yielding
       // exprs (Ident, MemberExpr, etc.); the helper does the same gating
@@ -983,6 +978,22 @@ export class Parser {
       const tok = this.peek()
       this.pos++ // consume `new`
       const arg = this.parsePostfix(this.parsePrefix())
+      // M9 ban: `new Array(n)` — single-numeric-arg ctor produces a
+      // sparse-length array, the JS-Array footgun source. Use `[…]`
+      // literal for explicit elements (sparse slots become `null` per
+      // the M9 sparse-array normalization). Multi-arg `new Array(1, 2,
+      // 3)` is also banned for consistency — it's a confusing alias
+      // for `[1, 2, 3]`. Other constructors (`new Promise`, `new Map`,
+      // `new Error`, …) pass through.
+      if (
+        arg.kind === 'CallExpr' &&
+        typeof arg.callee === 'string' &&
+        arg.callee === 'Array'
+      ) {
+        throw this.error(
+          `'new Array(…)' is banned in Tu source. Use array literal \`[…]\` instead — explicit elements are clearer than ctor-arg semantics, and Tu normalizes sparse slots to \`null\`.`
+        )
+      }
       return { kind: 'NewExpr', arg, start: tok.start, end: arg.end }
     }
     if (k === TokenKind.Async) {
@@ -1021,11 +1032,10 @@ export class Parser {
       return { kind: 'ImportExpr', arg, start: tok.start, end: rparen.end }
     }
     if (k === TokenKind.PlusPlus || k === TokenKind.MinusMinus) {
-      const tok = this.peek()
       const op = k === TokenKind.PlusPlus ? '++' : '--'
-      this.pos++
-      const arg = this.parsePostfix(this.parsePrefix())
-      return { kind: 'UpdateExpr', op, arg, prefix: true, start: tok.start, end: arg.end }
+      throw this.error(
+        `prefix '${op}' is banned in Tu source. Use \`x ${op === '++' ? '+=' : '-='} 1\` — produces the same effect with no statement-vs-expression ambiguity.`
+      )
     }
     if (k === TokenKind.Backtick) return this.parseTemplateLit()
     if (k === TokenKind.Bang || k === TokenKind.Minus || k === TokenKind.Plus) {
@@ -1272,7 +1282,19 @@ export class Parser {
   private parseArrayLit(): ArrayLit {
     const lbracket = this.expect(TokenKind.LBracket)
     const elements: Expr[] = []
+    // M9 ban: sparse-array slots `[a, , c]` are normalized to explicit
+    // `null` instead of leaving holes (the JS-Array footgun). When the
+    // loop sees a leading `,` (no value yet pushed since the last
+    // comma boundary), synthesize a NullLit-shaped Ident('null') in
+    // its place. Trailing comma `[a,]` is fine — exits the loop on
+    // `]` without re-entering the empty-slot branch.
     while (this.peek().kind !== TokenKind.RBracket) {
+      if (this.peek().kind === TokenKind.Comma) {
+        const tok = this.peek()
+        elements.push({ kind: 'Ident', name: 'null', start: tok.start, end: tok.start } as Expr)
+        this.pos++
+        continue
+      }
       elements.push(this.parseSpreadOrExpr())
       if (this.peek().kind === TokenKind.Comma) this.pos++
     }
@@ -2188,7 +2210,93 @@ export class Parser {
 }
 
 export function parse(tokens: Token[], source: string = '', filename?: string): Program {
-  return new Parser(tokens, source, filename).parseProgram()
+  const program = new Parser(tokens, source, filename).parseProgram()
+  validateNoAny(program, source, filename)
+  return program
+}
+
+/**
+ * M9 Phase A polish — reject explicit `: any` in Tu source EXCEPT
+ * inside `external JS` lambda signatures (the escape hatch). Walks
+ * every captured raw-type slice in the AST and throws a directive
+ * error pointing at `unknown` + the M8 `type.as` flow.
+ *
+ * Conservative: only flags whole-word `any`. `Array<any>` triggers,
+ * `MyAnyClass` does not. Inline object-literal shapes inside type
+ * spans (`{ x: any }`) are caught as part of the parent slice.
+ */
+function validateNoAny(program: Program, source: string, filename?: string): void {
+  const anyRe = /\bany\b/
+  const check = (text: string | undefined, start: number | undefined): void => {
+    if (text === undefined) return
+    if (!anyRe.test(text)) return
+    const pos = (start ?? 0) + text.search(anyRe)
+    const lc = pos >= 0 ? formatErrorLineCol(source, pos) : { line: 1, col: 1 }
+    throw new Error(
+      `${filename ?? 'input.tu'}:${lc.line}:${lc.col}: '${text.match(anyRe)![0]}' is banned in Tu source — use \`unknown\` for unknown values + \`type.as(v, T)\` for runtime narrowing. Inside \`external JS { … }\` block bodies + their lambda SIGNATURES \`any\` is allowed (escape hatch).`
+    )
+  }
+  for (const stmt of program.body) {
+    if (stmt.kind === 'LetDecl') {
+      check(stmt.type, (stmt as LetDecl).typeStart)
+      walkExprForAny(stmt.value, check)
+    } else if (stmt.kind === 'TypeAlias') {
+      check(stmt.type, stmt.typeStart)
+    } else if (stmt.kind === 'InterfaceDecl' || stmt.kind === 'ExceptionDecl') {
+      for (const f of stmt.fields) check(f.rawType, f.typeStart)
+    }
+  }
+}
+
+function walkExprForAny(
+  expr: Expr,
+  check: (t: string | undefined, start: number | undefined) => void
+): void {
+  // Skip ExternalLambda — its params/returnType are inside the
+  // escape hatch.
+  if (expr.kind === 'ExternalLambda') return
+  if (expr.kind === 'Lambda') {
+    for (const p of expr.params) check(p.type, p.nameStart)
+    check(expr.returnType, expr.returnTypeStart)
+    check(expr.throwsType, expr.throwsTypeStart)
+    walkExprForAny(expr.body, check)
+    return
+  }
+  // Generic recursion: iterate plausible-Expr-bearing fields.
+  for (const v of Object.values(expr as object)) {
+    if (v && typeof v === 'object') {
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (item && typeof item === 'object' && 'kind' in item)
+            walkExprForAny(item as Expr, check)
+          else if (item && typeof item === 'object' && 'value' in item) {
+            // Prop / ObjectProp shape
+            const p = item as { value?: Expr }
+            if (p.value && typeof p.value === 'object' && 'kind' in p.value)
+              walkExprForAny(p.value, check)
+          }
+        }
+      } else if ('kind' in v) {
+        walkExprForAny(v as Expr, check)
+      }
+    }
+  }
+}
+
+/** Tiny line/col helper without pulling in diagnostics.ts (avoids
+ *  a circular import). Counts newlines up to byte offset. */
+function formatErrorLineCol(source: string, offset: number): { line: number; col: number } {
+  let line = 1
+  let col = 1
+  for (let i = 0; i < offset && i < source.length; i++) {
+    if (source.charCodeAt(i) === 0x0a) {
+      line++
+      col = 1
+    } else {
+      col++
+    }
+  }
+  return { line, col }
 }
 
 /**
