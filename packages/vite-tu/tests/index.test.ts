@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import tu, { VERSION } from '../src/index.js'
+import tu, { tuBundle, VERSION } from '../src/index.js'
 
 let tmp: string
 beforeEach(() => {
@@ -101,5 +101,67 @@ describe('@tu-lang/vite', () => {
     expect(result!.map.version).toBe(3)
     expect(result!.map.sources).toEqual([file])
     expect(result!.map.sourcesContent[0]).toContain('let count = 0')
+  })
+
+  // ─── M8 Phase 6 — tuBundle() canonicalize plugin ───────────────────
+
+  it('tuBundle returns a named plugin with the expected hooks', () => {
+    const plugin = tuBundle()
+    expect(plugin.name).toBe('vite-tu-bundle')
+    expect(plugin.enforce).toBe('pre')
+    expect(typeof plugin.buildStart).toBe('function')
+    expect(typeof plugin.resolveId).toBe('function')
+    expect(typeof plugin.load).toBe('function')
+  })
+
+  it('tuBundle canonicalizes a multi-file project + serves the shared module', async () => {
+    // Two .tu files declaring same-shape interfaces — should merge to ONE
+    // canonical descriptor in the shared module.
+    writeFileSync(join(tmp, 'a.tu'), 'export interface User { id: number; name: string }\n')
+    writeFileSync(join(tmp, 'b.tu'), 'export interface Person { id: number; name: string }\n')
+    const plugin = tuBundle({ root: tmp, dev: true })
+    // configResolved fires before buildStart in real Vite; mock it.
+    const configResolved = plugin.configResolved as
+      | ((this: unknown, c: { root: string; command: 'serve' | 'build' }) => void)
+      | undefined
+    configResolved!.call({}, { root: tmp, command: 'build' })
+    const buildStart = plugin.buildStart as (this: unknown) => Promise<void>
+    await buildStart.call({})
+    // resolveId for the shared module returns the internal id.
+    const resolveId = plugin.resolveId as (
+      this: unknown,
+      id: string
+    ) => string | null
+    const sharedId = resolveId.call({}, './__tu_types.generated.js')
+    expect(sharedId).toBeTruthy()
+    // load returns the shared module's emitted code.
+    const load = plugin.load as (
+      this: unknown,
+      id: string
+    ) => null | string | { code: string; map: unknown }
+    const sharedOut = load.call({}, sharedId!)
+    expect(typeof sharedOut).toBe('string')
+    expect(sharedOut as string).toContain('export const User')
+    // load on a per-file path returns its bundled output (with canonical refs).
+    const aOut = load.call({}, join(tmp, 'a.tu')) as { code: string }
+    expect(aOut).toBeTruthy()
+    expect(aOut.code).toContain(`from "./__tu_types.generated.js"`)
+    expect(aOut.code).toContain('User = __tu_canon_User')
+  })
+
+  it('tuBundle skips canonicalization in dev mode by default (per-file fallback)', async () => {
+    writeFileSync(join(tmp, 'a.tu'), 'export interface X { y: number }\n')
+    const plugin = tuBundle({ root: tmp })
+    // dev (serve) mode without `dev: true` opt-in → no rebuild.
+    const configResolved = plugin.configResolved as
+      | ((this: unknown, c: { root: string; command: 'serve' | 'build' }) => void)
+      | undefined
+    configResolved!.call({}, { root: tmp, command: 'serve' })
+    const buildStart = plugin.buildStart as (this: unknown) => Promise<void>
+    await buildStart.call({})
+    // load returns null — falls through to base tu() plugin.
+    const load = plugin.load as (this: unknown, id: string) => unknown
+    const fileOut = load.call({}, join(tmp, 'a.tu'))
+    expect(fileOut).toBeNull()
   })
 })

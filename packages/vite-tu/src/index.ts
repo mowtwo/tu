@@ -1,7 +1,7 @@
-import { compileWithMap } from '@tu-lang/compiler'
-import { existsSync } from 'node:fs'
+import { compileBundle, compileWithMap, type BundleResult } from '@tu-lang/compiler'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
-import { resolve as resolvePath } from 'node:path'
+import { join, resolve as resolvePath } from 'node:path'
 import type { Plugin, ResolvedConfig } from 'vite'
 import { importedNameKindsFor } from './import-kinds.js'
 
@@ -224,4 +224,163 @@ function escapeHtmlAttr(s: string): string {
 
 function escapeHtmlText(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// ── M8 Phase 6 — `tuBundle()` plugin (cross-module canonicalize) ────
+
+export interface TuBundleOptions {
+  /** Project root to scan for .tu files. Defaults to Vite's resolved root. */
+  root?: string
+  /** Extra dirs to skip during scan. `node_modules` + `dist` are always skipped. */
+  skip?: ReadonlyArray<string>
+  /** When true, also enable canonicalize in dev mode (re-scans on file save).
+   *  Defaults to false — dev mode falls back to per-file emit, which is
+   *  fast and avoids the scan-on-every-save cost. */
+  dev?: boolean
+}
+
+/**
+ * **Tu cross-module canonicalize plugin** — pairs with the base `tu()`
+ * plugin to enable M8 Phase 6's bundle-mode emit. At build start (and
+ * optionally on every dev save) the plugin walks the project's `.tu`
+ * files, runs `compileBundle()`, and serves:
+ *
+ *   - The shared `__tu_types.generated.ts` virtual module (one
+ *     `export const T_HASH = type.struct(…)` per merged shape).
+ *   - Per-file outputs whose interface decls + anon synth references
+ *     import from the shared module instead of redeclaring locally.
+ *
+ * Production wins: smaller bundle (deduped descriptors), faster
+ * compile (no redundant struct construction), runtime descriptor
+ * reference equality across files (`type.of(x) === type.of(y)` for
+ * same shapes).
+ *
+ * Usage:
+ * ```ts
+ * import tu, { tuBundle } from '@tu-lang/vite'
+ *
+ * export default defineConfig({
+ *   plugins: [tu(), tuBundle()],
+ * })
+ * ```
+ *
+ * The plugin sits AFTER `tu()` so its `load` hook handler wins for
+ * .tu files when canonicalize is active. When canonicalize is off
+ * (dev mode without `dev: true`), the base `tu()` plugin's per-file
+ * emit handles loads as before.
+ */
+export function tuBundle(options: TuBundleOptions = {}): Plugin {
+  const skip = new Set(['node_modules', 'dist', '.git', '.tu-out', ...(options.skip ?? [])])
+  let resolved: ResolvedConfig | undefined
+  let bundle: BundleResult | null = null
+  let isDev = false
+
+  // Virtual module IDs follow Vite's `\0`-prefix convention so other
+  // plugins know to skip resolution.
+  const SHARED_ID_PUBLIC = './__tu_types.generated.js'
+  const SHARED_ID_INTERNAL = '\0__tu_types.generated.js'
+
+  async function rebuild(): Promise<void> {
+    const root = options.root ?? resolved?.root ?? process.cwd()
+    const files = scanTuFiles(root, skip)
+    if (files.length === 0) {
+      bundle = null
+      return
+    }
+    const inputs = await Promise.all(
+      files.map(async (f) => ({ filename: f, source: await readFile(f, 'utf-8') }))
+    )
+    bundle = compileBundle(inputs, {
+      sharedImportPath: SHARED_ID_PUBLIC,
+      emitTS: false,
+    })
+  }
+
+  return {
+    name: 'vite-tu-bundle',
+    enforce: 'pre',
+    configResolved(c) {
+      resolved = c
+      isDev = c.command === 'serve'
+    },
+    async buildStart() {
+      // Skip dev mode unless opted in — the per-file path in `tu()`
+      // covers it and avoids the scan cost.
+      if (isDev && !options.dev) {
+        bundle = null
+        return
+      }
+      await rebuild()
+    },
+    resolveId(id) {
+      // The per-file emit imports from `./__tu_types.generated.js`.
+      // We resolve it (relative or bare) to our internal virtual id.
+      if (
+        id === SHARED_ID_PUBLIC ||
+        id === '__tu_types.generated.js' ||
+        id === SHARED_ID_INTERNAL ||
+        id.endsWith('/__tu_types.generated.js')
+      ) {
+        return SHARED_ID_INTERNAL
+      }
+      return null
+    },
+    load(id) {
+      if (id === SHARED_ID_INTERNAL) {
+        return bundle?.sharedModule.code ?? null
+      }
+      const cleanId = id.split('?', 1)[0] ?? id
+      if (!cleanId.endsWith('.tu')) return null
+      const fileResult = bundle?.files.get(cleanId)
+      if (!fileResult) return null
+      // Stripping the source-map suffix would lose the inline map;
+      // Vite consumes the `map` property separately.
+      return { code: fileResult.code, map: fileResult.map }
+    },
+    handleHotUpdate(ctx) {
+      if (!ctx.file.endsWith('.tu')) return undefined
+      // Dev-mode rebuild: re-canonicalize on every .tu save when
+      // `dev: true` is set. Cheap because the file count is small in
+      // practice; expensive projects can keep dev=false (default) and
+      // pay the canonical cost only at production build.
+      if (isDev && options.dev) {
+        void rebuild()
+      }
+      return undefined
+    },
+  }
+}
+
+/** Recursively list every `.tu` file under `root`, skipping common
+ *  build / vendor dirs. Synchronous to keep startup straightforward. */
+function scanTuFiles(root: string, skip: ReadonlySet<string>): string[] {
+  const out: string[] = []
+  const queue: string[] = [root]
+  while (queue.length > 0) {
+    const dir = queue.shift()!
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (skip.has(name)) continue
+      if (name.startsWith('.tu-')) continue // generated dirs
+      const path = join(dir, name)
+      let s
+      try {
+        s = statSync(path)
+      } catch {
+        continue
+      }
+      if (s.isDirectory()) {
+        queue.push(path)
+      } else if (s.isFile() && name.endsWith('.tu')) {
+        out.push(path)
+      }
+    }
+  }
+  // Stable sort for deterministic canonical-name ordering across builds.
+  return out.sort()
 }
