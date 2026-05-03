@@ -113,12 +113,52 @@ describe('M8 Phase 6a — canonicalizeShapes()', () => {
     expect(fileMap.has('__anon_spread')).toBe(false)
   })
 
-  it('canonical name embeds the hash so collisions are unambiguous', () => {
-    const a = programOf('export interface A { id: number }', 'a.tu')
+  it('NAMED interface uses its own name as canonical (no T_ prefix)', () => {
+    // M8 Phase 6 named-preference: when a named interface is present
+    // (no anon-only competition), the canonical export uses the
+    // user's name directly. Generated `T_<idx>_<hash>` is reserved
+    // for purely anonymous shapes.
+    const a = programOf('export interface User { id: number }', 'a.tu')
+    const result = canonicalizeShapes(new Map([['a.tu', a]]))
+    const desc = result.descriptors[0]!
+    expect(desc.canonicalName).toBe('User')
+  })
+
+  it('PURELY-anon shapes get a generated T_<idx>_<hash> canonical name', () => {
+    const a = programOf('let p = { x: 1, y: 2 }', 'a.tu')
     const result = canonicalizeShapes(new Map([['a.tu', a]]))
     const desc = result.descriptors[0]!
     expect(desc.canonicalName).toMatch(/^T_\d+_[0-9a-f]{8}$/)
     expect(desc.canonicalName).toContain(desc.hash.slice(0, 8))
+  })
+
+  it('ReScript-style: anon shape matching a NAMED interface promotes to the named canonical', () => {
+    // Anon `let p = { id: 1 }` and named `interface User { id: number }`
+    // share a hash → both end up canonicalized to `User` (the named
+    // origin wins — no synthetic T_ prefix appears in either file's
+    // mapping).
+    const namedFirst = canonicalizeShapes(
+      new Map([
+        ['a.tu', programOf('export interface User { id: number }', 'a.tu')],
+        ['b.tu', programOf('let p = { id: 1 }', 'b.tu')],
+      ])
+    )
+    expect(namedFirst.descriptors).toHaveLength(1)
+    expect(namedFirst.descriptors[0]!.canonicalName).toBe('User')
+    expect(namedFirst.perFile.get('a.tu')!.get('User')).toBe('User')
+    expect(namedFirst.perFile.get('b.tu')!.get('__anon_p')).toBe('User')
+
+    // Reverse order: anon registered first, then named arrives — still
+    // promotes to the named canonical. The fix-up sweep rewrites
+    // already-recorded perFile entries.
+    const anonFirst = canonicalizeShapes(
+      new Map([
+        ['b.tu', programOf('let p = { id: 1 }', 'b.tu')],
+        ['a.tu', programOf('export interface User { id: number }', 'a.tu')],
+      ])
+    )
+    expect(anonFirst.descriptors[0]!.canonicalName).toBe('User')
+    expect(anonFirst.perFile.get('b.tu')!.get('__anon_p')).toBe('User')
   })
 
   it('sorts canonical fields by name for stable emit', () => {

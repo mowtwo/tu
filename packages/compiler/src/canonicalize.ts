@@ -97,9 +97,19 @@ export function canonicalizeShapes(
         .sort((a, b) => a.name.localeCompare(b.name))
       const hash = hashFields(fields)
       let entry = hashToCanonical.get(hash)
+      const isNamed = !shape.originalName.startsWith('__anon_')
       if (!entry) {
+        // M8 Phase 6 named-preference: prefer the named interface's
+        // identifier as the canonical export name when available; fall
+        // back to a generated `T_<idx>_<hash>` for purely-anonymous
+        // hashes. ReScript-style — when an anon shape later merges
+        // here AND a named version exists, both files alias to the
+        // named export.
+        const canonicalName = isNamed
+          ? shape.originalName
+          : `T_${counter++}_${hash.slice(0, 8)}`
         entry = {
-          canonicalName: `T_${counter++}_${hash.slice(0, 8)}`,
+          canonicalName,
           hash,
           origins: [{ filename, originalName: shape.originalName }],
           fields,
@@ -110,8 +120,36 @@ export function canonicalizeShapes(
         ;(entry.origins as Array<{ filename: string; originalName: string }>).push(
           { filename, originalName: shape.originalName }
         )
+        // If THIS shape is named and the existing entry's canonical
+        // name is a synthesized `T_<idx>_<hash>` (anon-only so far),
+        // promote to the named one. The end-of-loop sweep below
+        // rewrites earlier files' perFile entries that used the
+        // demoted name.
+        if (isNamed && entry.canonicalName.startsWith('T_')) {
+          entry.canonicalName = shape.originalName
+        }
       }
       fileMap.set(shape.originalName, entry.canonicalName)
+    }
+  }
+
+  // M8 Phase 6 named-preference fix-up: walk the per-file maps once
+  // more and re-resolve every entry against the (post-promotion)
+  // canonical names. Any entry whose recorded name was
+  // demoted-to-named gets the named version.
+  for (const [filename, shapes] of shapeByOrigin) {
+    const fileMap = perFile.get(filename)!
+    for (const shape of shapes.shapes) {
+      const fields = shape.fields
+        .map((f) => ({
+          name: f.name,
+          typeExpr: canonicalizeTypeExpr(f.typeExpr),
+          optional: f.optional,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+      const hash = hashFields(fields)
+      const entry = hashToCanonical.get(hash)
+      if (entry) fileMap.set(shape.originalName, entry.canonicalName)
     }
   }
 

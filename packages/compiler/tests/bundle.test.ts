@@ -14,36 +14,24 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
       },
     ]
     const bundle = compileBundle(inputs)
-    // Two files in, two files out.
     expect(bundle.files.size).toBe(2)
-    // Shared module exists with the canonical descriptor.
     expect(bundle.sharedModule.path).toBe('__tu_types.generated.ts')
-    expect(bundle.sharedModule.code).toContain('export const T_0_')
-    expect(bundle.sharedModule.code).toContain(
-      `import { type } from '@tu-lang/std'`
-    )
-    // Both files' canonical entries point to the SAME canonical name.
+    // M8 Phase 6 named-preference: first-encountered named origin
+    // wins → the canonical export is `User`, not `T_…`.
+    expect(bundle.sharedModule.code).toContain('export const User')
+    expect(bundle.sharedModule.code).toContain(`import { type } from '@tu-lang/std'`)
     const aOut = bundle.files.get('a.tu')!.code
     const bOut = bundle.files.get('b.tu')!.code
-    // Each file imports the canonical from the shared module.
     expect(aOut).toContain('./__tu_types.generated.ts')
     expect(bOut).toContain('./__tu_types.generated.ts')
-    // Each file's `User`/`Person` is now an alias to the same canonical name.
     expect(aOut).toContain('export const User =')
     expect(bOut).toContain('export const Person =')
-    // Strip source map for cleaner inspection.
     const stripMap = (s: string) => s.split('//#')[0]!
     const aClean = stripMap(aOut)
     const bClean = stripMap(bOut)
-    // Locate the canonical name from the shared module.
-    const canonMatch = bundle.sharedModule.code.match(/export const (T_\d+_[0-9a-f]+)/)
-    expect(canonMatch).toBeTruthy()
-    const canonName = canonMatch![1]!
-    // Both files reference it.
-    expect(aClean).toContain(`User = ${canonName}`)
-    expect(bClean).toContain(`Person = ${canonName}`)
-    // Sanity: the shared module hash includes the SAME canonical for both
-    // by virtue of merging — verified through `canonical.descriptors`.
+    // Both files alias to the SAME canonical name (User).
+    expect(aClean).toContain('User = User')
+    expect(bClean).toContain('Person = User')
     expect(bundle.canonical.descriptors).toHaveLength(1)
   })
 
@@ -54,9 +42,25 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     ]
     const bundle = compileBundle(inputs)
     expect(bundle.canonical.descriptors).toHaveLength(2)
-    // Shared module declares both.
-    const matches = bundle.sharedModule.code.match(/export const T_\d+_[0-9a-f]+/g) ?? []
-    expect(matches).toHaveLength(2)
+    expect(bundle.sharedModule.code).toContain('export const Pos')
+    expect(bundle.sharedModule.code).toContain('export const Tag')
+  })
+
+  it('ReScript-style: anon let shape matching a named interface aliases to the named canonical', () => {
+    const inputs: BundleInput[] = [
+      { filename: 'user.tu', source: 'export interface User { id: number; name: string }' },
+      { filename: 'app.tu', source: 'let bob = { id: 2, name: "Bob" }' },
+    ]
+    const bundle = compileBundle(inputs)
+    // ONE descriptor — the named User — and the anon let aliases to it.
+    expect(bundle.canonical.descriptors).toHaveLength(1)
+    expect(bundle.canonical.descriptors[0]!.canonicalName).toBe('User')
+    // Shared module exports User (no T_ entry).
+    expect(bundle.sharedModule.code).toContain('export const User')
+    expect(bundle.sharedModule.code).not.toMatch(/export const T_/)
+    // app.tu's anon let aliases to `User`.
+    const appOut = bundle.files.get('app.tu')!.code
+    expect(appOut).toMatch(/const __tu_anon_\d+ = User/)
   })
 
   it('anonymous let shapes participate in cross-file merge', () => {
@@ -85,7 +89,7 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     ]
     const bundle = compileBundle(inputs, { emitTS: true })
     expect(bundle.sharedModule.code).toContain('TypeDescriptor as __tu_TypeDescriptor')
-    expect(bundle.sharedModule.code).toMatch(/export const T_\d+_[0-9a-f]+: __tu_TypeDescriptor/)
+    expect(bundle.sharedModule.code).toMatch(/export const User: __tu_TypeDescriptor/)
     // Per-file TS still has the local interface decl (drives tsserver).
     const aOut = bundle.files.get('a.tu')!.code
     expect(aOut).toContain('interface User {')
