@@ -118,6 +118,38 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('export const Card = (title: string, body: string) =>')
   })
 
+  it('M9: param destructuring `({ a, b }: T) =>` emits TS-native pattern verbatim', () => {
+    const ts = compileToTS(
+      'export interface CardProps { title: string; body: string }\n' +
+      'export let Card = ({ title, body }: CardProps) => p { title body }'
+    )
+    expect(ts).toContain('({ title, body }: CardProps) =>')
+    // Auto-Props is suppressed because the user already named the prop
+    // shape (CardProps) via the destructure annotation. Only ONE
+    // interface CardProps appears (the user's `export interface`); no
+    // duplicate auto-emit.
+    const matches = ts.match(/interface CardProps/g)
+    expect(matches?.length ?? 0).toBe(1)
+  })
+
+  it('M9: param destructuring with cell-of-same-name in module scope shadows correctly', () => {
+    const ts = compileToTS(
+      'export let count = 0\n' +
+      'interface CountProps { count: number }\n' +
+      'export let Show = ({ count }: CountProps) => p { count }'
+    )
+    // Inside the lambda, `count` refers to the destructured local — NOT
+    // the module cell. The shadow set must include destructure fields.
+    expect(ts).toContain('({ count }: CountProps) =>')
+    expect(ts).toContain('h("p", {}, [count])')  // bare `count`, no `.get()`
+  })
+
+  it('M9: destructured param without `: Type` is rejected with a directive', () => {
+    expect(() => compileToTS('export let f = ({ a, b }) => a + b')).toThrowError(
+      /destructured params require a type annotation/
+    )
+  })
+
   it('M9: auto-Props omits the children slot when the lambda already declares a `children` param', () => {
     const ts = compileToTS(
       'export let Wrap = (title: string, children: string) => div { title children }'

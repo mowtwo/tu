@@ -1794,6 +1794,37 @@ export class Parser {
   }
 
   private parseParam(): Param {
+    // M9 — object-destructure pattern `({ a, b, c }: T)`. We synthesize
+    // a placeholder name; codegen branches on `destructureFields` to
+    // emit `{ a, b, c }` in the param position instead. Type annotation
+    // is REQUIRED — an untyped destructure would land on TS's M9-default
+    // `unknown` and error on every key access.
+    if (this.peek().kind === TokenKind.LBrace) {
+      const lbrace = this.expect(TokenKind.LBrace)
+      const fields: string[] = []
+      while (this.peek().kind !== TokenKind.RBrace) {
+        const fieldTok = this.expect(TokenKind.Ident)
+        fields.push(fieldTok.text)
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      const rbrace = this.expect(TokenKind.RBrace)
+      if (this.peek().kind !== TokenKind.Colon) {
+        throw this.error(
+          `destructured params require a type annotation — write \`{ ${fields.join(', ')} }: SomeType\`. Without one, TS narrows the param to \`unknown\` (M9 default) and rejects every field access.`
+        )
+      }
+      this.pos++ // consume `:`
+      const span = this.parseRawTypeUntilParamBoundary()
+      return {
+        name: `__tu_destruct_${lbrace.start}`,
+        destructureFields: fields,
+        type: span.text,
+        start: lbrace.start,
+        end: span.end,
+        nameStart: lbrace.start,
+        nameEnd: rbrace.end,
+      } satisfies Param
+    }
     const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
     let endOffset = nameTok.end

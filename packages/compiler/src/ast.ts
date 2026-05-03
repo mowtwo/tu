@@ -218,9 +218,27 @@ export interface Lambda extends Ranged {
 }
 
 export interface Param extends Ranged {
+  /**
+   * Param identifier as written. For an object-destructured param
+   * (`({ title, body }: T) =>`), `name` is a synthesized placeholder
+   * (`__tu_destruct_<idx>`) that won't appear in the emitted code —
+   * codegen branches on `destructureFields` to write `{ field1, field2 }`
+   * instead.
+   */
   name: string
   /** Type annotation as a raw identifier ('string', 'number'…) — full type AST lands later. */
   type?: string
+  /**
+   * Object-destructure pattern. When present, codegen emits `{ a, b, c }`
+   * in the param position (TS-native destructuring) and the body sees
+   * `a`, `b`, `c` as in-scope bindings. Mutually exclusive with using
+   * the synthesized `name` at runtime — the body should reference the
+   * destructured field names directly.
+   *
+   * MVP scope: flat object pattern only. No nesting, no defaults, no
+   * rename (`{ a: b }`), no array destructuring. Add as use cases show.
+   */
+  destructureFields?: string[]
   /** Source byte range of the param name only (without the `: type` suffix). */
   nameStart: number
   nameEnd: number

@@ -846,12 +846,17 @@ class Codegen {
       // call-site reality. The `children` slot is appended unless the
       // lambda already declares its own `children` param (in which case
       // that param's type wins).
+      // Destructured params are skipped — when the user writes
+      // `({ title }: CardProps) =>`, the prop shape is already named
+      // (CardProps), so auto-emitting a duplicate `${Name}Props`
+      // interface would just create a redundant alias.
       if (
         this.tsMode &&
         decl.exported &&
         decl.value.kind === 'Lambda' &&
         decl.value.params.length >= 1 &&
         decl.value.params.every((p) => p.type !== undefined) &&
+        decl.value.params.every((p) => !p.destructureFields) &&
         !this.declaredTypeNames.has(`${decl.name}Props`)
       ) {
         const params = decl.value.params
@@ -1503,7 +1508,14 @@ class Codegen {
   }
 
   private emitLambda(node: Lambda): void {
-    const paramNames = node.params.map((p) => p.name)
+    // Destructured-param fields shadow module cells the same way a plain
+    // param ident does — `({ count }) => count` reads the destructured
+    // local, not a module cell named `count`.
+    const paramNames: string[] = []
+    for (const p of node.params) {
+      if (p.destructureFields) paramNames.push(...p.destructureFields)
+      else paramNames.push(p.name)
+    }
     this.shadowed.push(new Set(paramNames))
     try {
       if (node.async) this.write('async ')
@@ -1511,9 +1523,17 @@ class Codegen {
       for (let i = 0; i < node.params.length; i++) {
         if (i > 0) this.write(', ')
         const p = node.params[i]!
-        // Mark the param name so a TS error on the param identifier maps
-        // back to its source position.
-        this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
+        if (p.destructureFields) {
+          // M9 — TS-native object destructuring pattern. Mark the brace
+          // range so an error on the pattern lands on the source `{ … }`.
+          this.mark(p.nameStart, p.nameEnd, () =>
+            this.write(`{ ${p.destructureFields!.join(', ')} }`)
+          )
+        } else {
+          // Mark the param name so a TS error on the param identifier maps
+          // back to its source position.
+          this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
+        }
         // In TS mode, preserve `: type` annotations from the Tu source so
         // tsserver can drive IDE features and `.d.ts` generation. M9
         // Phase B: untyped params default to `unknown` (not TS's

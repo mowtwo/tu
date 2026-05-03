@@ -16,6 +16,6 @@ let variantClass = (v: string): string =>
   else if (v == "outline") { "bg-transparent text-[hsl(var(--tu-fg-muted))] border-[hsl(var(--tu-border))]" }
   else { "bg-[hsl(var(--tu-brand))]/15 text-[hsl(var(--tu-brand))] border-[hsl(var(--tu-brand))]/30" }
 
-export let Badge = (props: BadgeProps) => span(
-  class: "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border " + variantClass(props.variant ?? "brand"),
-) { props.children }
+export let Badge = ({ variant, children }: BadgeProps) => span(
+  class: "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border " + variantClass(variant ?? "brand"),
+) { children }
