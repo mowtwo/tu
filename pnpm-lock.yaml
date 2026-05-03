@@ -264,6 +264,9 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../std
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2

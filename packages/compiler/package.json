@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/std": "workspace:*",
     "@types/markdown-it": "^14.1.2",
     "jsdom": "^26.0.0"
   },

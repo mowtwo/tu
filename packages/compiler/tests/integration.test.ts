@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { renderToString } from '@tu-lang/runtime'
+import * as std from '@tu-lang/std'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../src/index.js'
 
@@ -389,5 +390,77 @@ describe('compile + render end-to-end', () => {
       }
     )
     expect(result).toBe('<p>inner</p>')
+  })
+
+  // ─── M8 + M9 — interface + type.as runtime end-to-end ──────────────
+
+  it('M8 + M9: `interface User { … }` + `type.as(value, User)` works at runtime', async () => {
+    const r = await compileAndRun(
+      `
+        interface User { id: number; name: string }
+        export let alice = type.as({ id: 1, name: "Alice" }, User)
+        export let userDescriptor = User
+      `,
+      (mod) => {
+        const cell = mod['alice'] as { get: () => unknown }
+        const alice = cell.get() as { id: number; name: string }
+        const User = (mod['userDescriptor'] as { get: () => unknown }).get() as Parameters<
+          typeof std.type.is
+        >[1]
+        return {
+          aliceShape: alice,
+          isMatchesUser: std.type.is(alice, User),
+        }
+      }
+    )
+    expect(r.aliceShape).toEqual({ id: 1, name: 'Alice' })
+    expect(r.isMatchesUser).toBe(true)
+  })
+
+  it('M8 + M9: `type.as` rejects shape mismatch at runtime, throwing TypeMismatchError', async () => {
+    let caught: { name: string; message: string } | null = null
+    try {
+      await compileAndRun(
+        `
+          interface User { id: number; name: string }
+          export let bad = type.as({ id: "wrong-type", name: "X" }, User)
+        `,
+        (mod) => {
+          // Force evaluation by reading the cell.
+          ;(mod['bad'] as { get: () => unknown }).get()
+        }
+      )
+    } catch (e) {
+      const err = e as { name: string; message: string }
+      caught = { name: err.name, message: err.message }
+    }
+    expect(caught).not.toBeNull()
+    expect(caught!.name).toBe('TypeMismatchError')
+    expect(caught!.message).toMatch(/expected User/i)
+  })
+
+  it('M8: typed-let tag injection — type.of recovers the User descriptor', async () => {
+    const r = await compileAndRun(
+      `
+        interface User { id: number; name: string }
+        let alice: User = { id: 1, name: "Alice" }
+        export let aliceCell = alice
+        export let userDescriptor = User
+      `,
+      (mod) => {
+        const alice = (mod['aliceCell'] as { get: () => unknown }).get() as object
+        const User = (mod['userDescriptor'] as { get: () => unknown }).get() as Parameters<
+          typeof std.type.is
+        >[1]
+        return {
+          // type.tag was injected at the typed-let site; type.of(alice)
+          // recovers User exactly (reference-equality).
+          ofIsUser: std.of(alice) === User,
+          isMatchesUser: std.type.is(alice, User),
+        }
+      }
+    )
+    expect(r.ofIsUser).toBe(true)
+    expect(r.isMatchesUser).toBe(true)
   })
 })

@@ -223,6 +223,7 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
           skipLibCheck: true,
           paths: {
             '@tu-lang/runtime': [resolve(repoRoot, 'packages/runtime/dist/index.d.ts')],
+            '@tu-lang/std': [resolve(repoRoot, 'packages/std/dist/index.d.ts')],
           },
         },
         include: ['Out.ts'],
@@ -267,6 +268,28 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       export let count = 0
       let inc = () => count = count + 1
       export let App = () => button(onClick: inc) { "+ " count }
+    `)
+  })
+
+  it('M8: typechecks `interface User { … }` + typed `let alice: User = {…}` end-to-end', () => {
+    check(`
+      interface User { id: number; name: string }
+      let alice: User = { id: 1, name: "Alice" }
+      export let App = () => p { alice.name }
+    `)
+  })
+
+  it('M8 + M9: typechecks `type.as(value, User)` against a user-declared interface', () => {
+    // The contextual annotation `let alice: Signal.State<User>` (auto-
+    // wrapped from `let alice: User = …`) should make TS infer the
+    // generic `T = User` for `type.as<T>(value, descriptor): T`. This
+    // verifies the M8 type-metadata system flows end-to-end with the
+    // M9 runtime-cast helper.
+    check(`
+      interface User { id: number; name: string }
+      let raw: unknown = { id: 1, name: "Alice" }
+      let alice: User = type.as(raw, User)
+      export let App = () => p { alice.name }
     `)
   })
 })
