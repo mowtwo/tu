@@ -1,3 +1,4 @@
+import { lineColAt } from '@tu-lang/compiler'
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { findImportSourceAt } from './import-source.js'
@@ -59,12 +60,36 @@ export function definitionAtTuPosition(
     line,
     col
   )
-  if (!mapped) return []
+  // M9 LSP — type-name goto-def. The cursor MIGHT be inside a type-
+  // annotation raw-text span the source map doesn't cover (e.g. on
+  // `User` in `let alice: User = …`); in that case `mapped` is null
+  // and the tsserver path can't run. Probe the cursor word against
+  // the shadow graph's interface decls before returning empty. Also
+  // serves as a fallback when tsserver returns 0 defs for a name
+  // that IS one of our interfaces.
+  const wordAtCursor = identifierAt(source, line, col)
+  const interfaceFallback: TuDefinition[] = []
+  if (wordAtCursor !== null) {
+    for (const shadow of session.shadows.values()) {
+      for (const stmt of shadow.ast.body) {
+        if (stmt.kind !== 'InterfaceDecl') continue
+        if (stmt.name !== wordAtCursor) continue
+        const lc = lineColAt(shadow.tuSource, stmt.nameStart)
+        interfaceFallback.push({
+          uri: pathToFileURL(shadow.tuPath).toString(),
+          line: lc.line - 1,
+          col: lc.col - 1,
+          length: stmt.nameEnd - stmt.nameStart,
+        })
+      }
+    }
+  }
+  if (!mapped) return interfaceFallback
   const defs = session.service.getDefinitionAtPosition(
     session.rootShadow.virtualPath,
     mapped.tsOffset
   )
-  if (!defs || defs.length === 0) return []
+  if (!defs || defs.length === 0) return interfaceFallback
 
   const out: TuDefinition[] = []
   for (const d of defs) {
@@ -85,5 +110,30 @@ export function definitionAtTuPosition(
       length: range.length,
     })
   }
+  // If tsserver had nothing AND we have an interface match, return it.
+  if (out.length === 0) return interfaceFallback
   return out
+}
+
+/**
+ * Extract the JS-style identifier at `(line, col)` from `source`. Returns
+ * the word if the cursor is inside / at the boundary of one, else null.
+ * Only used for the M9 type-name goto-def fallback.
+ */
+function identifierAt(source: string, line: number, col: number): string | null {
+  const lines = source.split('\n')
+  const text = lines[line]
+  if (text === undefined) return null
+  if (col < 0 || col > text.length) return null
+  // Scan left + right from the cursor to identify the identifier span.
+  const isPart = (ch: string) => /^[A-Za-z_$\w]$/.test(ch)
+  let s = col
+  let e = col
+  while (s > 0 && isPart(text[s - 1] ?? '')) s--
+  while (e < text.length && isPart(text[e] ?? '')) e++
+  if (s === e) return null
+  const word = text.slice(s, e)
+  // Reject pure-numeric runs (`123` shouldn't match).
+  if (/^\d/.test(word)) return null
+  return word
 }

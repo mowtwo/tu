@@ -1,4 +1,4 @@
-import { lineColAt, parse, tokenize } from '@tu-lang/compiler'
+import { lineColAt, parse, tokenize, type Program } from '@tu-lang/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import ts from 'typescript'
@@ -75,9 +75,18 @@ export function hoverAtTuPosition(
   if (!quickInfo) return null
 
   const contents = ts.displayPartsToString(quickInfo.displayParts)
-  const documentation = quickInfo.documentation && quickInfo.documentation.length > 0
+  let documentation = quickInfo.documentation && quickInfo.documentation.length > 0
     ? ts.displayPartsToString(quickInfo.documentation)
     : undefined
+  // M9 LSP — when the hovered symbol's TS type references one of our
+  // declared interfaces, append the interface's field list inline so
+  // the user sees the shape directly without jumping to its decl.
+  // Searches every shadow in the graph (cross-file interface refs
+  // included).
+  const expansions = expandInterfaceTypes(contents, session.shadows)
+  if (expansions !== null) {
+    documentation = documentation ? `${documentation}\n\n${expansions}` : expansions
+  }
   // Use the originating source token's range — see M3.3 design notes for why
   // we don't round-trip `quickInfo.textSpan` here.
   const startLC = lineColAt(session.rootShadow.tuSource, mapped.tokenSrcStart)
@@ -147,6 +156,68 @@ function maybeHtmlAttrHover(
 export function hoverAtTuFile(path: string, line: number, col: number): TuHover | null {
   const source = readFileSync(path, 'utf-8')
   return hoverAtTuPosition(source, path, line, col)
+}
+
+/**
+ * Scan `contents` (the TS-rendered hover text) for known user-declared
+ * interface names. For each match, append a "📋 InterfaceName { … }"
+ * block listing the interface's fields. Returns `null` when no
+ * interfaces reference the contents — the caller leaves the hover's
+ * documentation unchanged.
+ *
+ * Only renders an interface ONCE even if its name appears multiple
+ * times in the contents. Limit depth to 3 nested expansions to avoid
+ * unbounded output for cyclic shapes.
+ */
+function expandInterfaceTypes(
+  contents: string,
+  shadows: ReadonlyMap<string, { ast: Program; tuPath: string }> | Map<string, unknown>
+): string | null {
+  // Build an interface name → fields lookup from every shadow's AST.
+  const byName = new Map<string, { fields: string[]; sourceFile: string }>()
+  for (const shadow of (shadows as ReadonlyMap<string, { ast: Program; tuPath: string }>).values()) {
+    if (!shadow.ast) continue
+    for (const stmt of shadow.ast.body) {
+      if (stmt.kind !== 'InterfaceDecl') continue
+      // Don't shadow earlier wins — later files keep their distinct
+      // names; same name in two files shouldn't happen at a build
+      // root, but if it does we surface the FIRST one.
+      if (byName.has(stmt.name)) continue
+      const fields = stmt.fields.map((f) => {
+        const opt = f.optional ? '?' : ''
+        return `  ${f.name}${opt}: ${f.rawType.trim()}`
+      })
+      byName.set(stmt.name, {
+        fields,
+        sourceFile: shadow.tuPath.split('/').slice(-1)[0] ?? shadow.tuPath,
+      })
+    }
+  }
+  if (byName.size === 0) return null
+
+  // Match interface names that appear as TYPE refs in the contents.
+  // Heuristic: bare PascalCase identifiers anywhere as a whole word.
+  // Lazy filter via `byName.has(name)` so we don't pick up unrelated
+  // identifier-like words.
+  const seen = new Set<string>()
+  for (const m of contents.matchAll(/\b([A-Z][\w$]*)\b/g)) {
+    const name = m[1]
+    if (!name || seen.has(name)) continue
+    if (byName.has(name)) seen.add(name)
+  }
+  if (seen.size === 0) return null
+
+  const lines: string[] = []
+  for (const name of seen) {
+    const decl = byName.get(name)!
+    lines.push(`**${name}** \`(from ${decl.sourceFile})\``)
+    lines.push('```typescript')
+    lines.push(`interface ${name} {`)
+    for (const f of decl.fields) lines.push(f)
+    lines.push('}')
+    lines.push('```')
+  }
+  return lines.join('\n')
 }
 
 /**

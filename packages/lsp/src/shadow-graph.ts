@@ -121,6 +121,10 @@ export interface Shadow {
   mapPos: (genLine: number, genCol: number) => { line: number; col: number }
   /** Per-token spans — drives token-level diagnostic ranges. */
   tokenMappings: TokenMapping[]
+  /** The parsed AST — kept around for downstream LSP features that
+   *  need to inspect interface decls (M9 hover expansion + goto-def
+   *  for type names). Drops trivially small overhead vs. re-parsing. */
+  ast: Program
 }
 
 interface ParsedFile {
@@ -182,6 +186,7 @@ export function buildShadowGraph(
       mappings: decodeMappings(compiled.map.mappings),
       mapPos: buildSourceMapper(compiled.map),
       tokenMappings: compiled.tokenMappings,
+      ast: file.ast,
     })
   }
   return shadows

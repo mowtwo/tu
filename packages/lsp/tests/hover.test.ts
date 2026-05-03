@@ -169,4 +169,45 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
       expect(info!.contents).toContain('`<button>`')
     }
   })
+
+  // ─── M9 LSP — interface hover expansion ────────────────────────────
+
+  it('M9: hovering a binding typed as an interface expands the field list', () => {
+    const src = [
+      'interface User { id: number; name: string; email: string | null }',
+      'export let alice: User = { id: 1, name: "Alice", email: null }',
+    ].join('\n')
+    // Cursor on the `alice` ident (line 1, col 12).
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 1, 12)
+    expect(info).not.toBeNull()
+    // Documentation contains the expanded interface body.
+    expect(info!.documentation).toBeDefined()
+    expect(info!.documentation!).toContain('User')
+    expect(info!.documentation!).toContain('id: number')
+    expect(info!.documentation!).toContain('name: string')
+    expect(info!.documentation!).toContain('email: string | null')
+  })
+
+  it('M9: hovering a typed lambda param expands the param interface', () => {
+    const src = [
+      'interface Card { title: string; count: number }',
+      'export let render = (c: Card) => p { c.title }',
+    ].join('\n')
+    // Cursor on the `c` param read inside the lambda body
+    // (line 1 col 37 — the `c` in `c.title`).
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 1, 37)
+    expect(info).not.toBeNull()
+    expect(info!.documentation).toBeDefined()
+    expect(info!.documentation!).toContain('Card')
+    expect(info!.documentation!).toContain('title: string')
+    expect(info!.documentation!).toContain('count: number')
+  })
+
+  it('M9: non-interface type hover (primitive number) does NOT inject expansion', () => {
+    const src = ['export let count: number = 0'].join('\n')
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 0, 12)
+    expect(info).not.toBeNull()
+    // No interface block in documentation.
+    expect(info!.documentation ?? '').not.toContain('interface ')
+  })
 })

@@ -61,4 +61,33 @@ describe('definitionAtTuPosition — goto-definition at a .tu cursor', () => {
     const src = 'export let App = () => h1 { "unclosed'
     expect(definitionAtTuPosition(src, join(tmp, 'broken.tu'), 0, 12)).toEqual([])
   })
+
+  // ─── M9 LSP — type-name goto-def ──────────────────────────────────
+
+  it('M9: cursor on an interface name in a type annotation jumps to the interface decl', () => {
+    const src = [
+      'interface User { id: number; name: string }',
+      'export let alice: User = { id: 1, name: "x" }',
+    ].join('\n')
+    // Cursor on `User` in the annotation `: User` (line 1, col 19).
+    const defs = definitionAtTuPosition(src, join(tmp, 'a.tu'), 1, 19)
+    expect(defs.length).toBeGreaterThan(0)
+    // Defs should land on the interface decl line (line 0).
+    expect(defs.some((d) => d.line === 0)).toBe(true)
+  })
+
+  it('M9: cursor on imported interface name jumps cross-file', () => {
+    const userPath = join(tmp, 'user.tu')
+    writeFileSync(userPath, 'export interface User { id: number }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { User } from "./user.tu"',
+      'export let bob: User = { id: 2 }',
+    ].join('\n')
+    // Cursor on `User` in the type annotation `: User`.
+    const defs = definitionAtTuPosition(appSrc, appPath, 1, 17)
+    expect(defs.length).toBeGreaterThan(0)
+    // Accept any definition pointing at user.tu.
+    expect(defs.some((d) => d.uri.endsWith('user.tu'))).toBe(true)
+  })
 })
