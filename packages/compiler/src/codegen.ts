@@ -1121,8 +1121,11 @@ class Codegen {
       if (i > 0) this.write(', ')
       const p = node.params[i]!
       this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
-      if (this.tsMode && p.type !== undefined) {
-        this.write(`: ${p.type}`)
+      // M9 Phase B — untyped params default to `unknown` instead of
+      // TS's implicit `any`. Forces narrow / cast at use sites; pairs
+      // with the M8 `type.as` helper for typed runtime casts.
+      if (this.tsMode) {
+        this.write(`: ${p.type ?? 'unknown'}`)
       }
     }
     this.write(')')
@@ -1443,10 +1446,11 @@ class Codegen {
         // back to its source position.
         this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
         // In TS mode, preserve `: type` annotations from the Tu source so
-        // tsserver can drive IDE features and `.d.ts` generation. In JS mode
-        // (default), the names alone are emitted; types are erased.
-        if (this.tsMode && p.type !== undefined) {
-          this.write(`: ${p.type}`)
+        // tsserver can drive IDE features and `.d.ts` generation. M9
+        // Phase B: untyped params default to `unknown` (not TS's
+        // implicit `any`) — forces narrow at use sites.
+        if (this.tsMode) {
+          this.write(`: ${p.type ?? 'unknown'}`)
         }
       }
       this.write(')')

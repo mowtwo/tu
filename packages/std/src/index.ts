@@ -12,11 +12,13 @@ export {
   type,
   of,
   is,
+  as,
   tag,
   struct,
   native,
   Array_,
   Optional,
+  TypeMismatchError,
   preloadTemporal,
 } from './type.js'
 export type { TypeDescriptor, TypeKind, StructField } from './type.js'

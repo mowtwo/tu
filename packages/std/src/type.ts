@@ -384,8 +384,67 @@ export function is(value: unknown, descriptor: TypeDescriptor): boolean {
 }
 
 /**
+ * Thrown by `type.as` when the input value (after the optional
+ * `castFn`) doesn't match the target descriptor. Caller can `try { … }
+ * catch (e: TypeMismatchError) { … }` for a typed-failure path; or let
+ * it propagate for fail-fast strictness.
+ */
+export class TypeMismatchError extends Error {
+  override name = 'TypeMismatchError'
+  constructor(
+    message: string,
+    public readonly expected: TypeDescriptor,
+    public readonly actual: unknown
+  ) {
+    super(message)
+  }
+}
+
+/**
+ * Strict-cast helper (M9 Phase C). Validates `value` against `descriptor`
+ * and returns it typed as `T`. The optional `castFn` runs first to
+ * convert the raw input (e.g. parse a string to a number) before the
+ * shape check.
+ *
+ * Three forms:
+ *
+ *   ```tu
+ *   // 2-arg: assertion only — fail fast if shape doesn't match.
+ *   let user: User = type.as(json, User)
+ *
+ *   // 3-arg: convert then check — `castFn` produces the shape-eligible
+ *   // value from the raw input.
+ *   let n: number = type.as(input, type.Number, parseInt)
+ *
+ *   // The `targetType` parameter accepts BOTH primitive descriptors
+ *   // and user-defined interface descriptors — the M8 type-metadata
+ *   // system unifies them under TypeDescriptor.
+ *   ```
+ *
+ * The generic `T` is normally inferred from the destination annotation
+ * (`let user: User = …` makes T = User). Callers wanting an explicit
+ * widening / narrowing can pass `<T>` directly.
+ */
+export function as<T = unknown>(
+  value: unknown,
+  descriptor: TypeDescriptor,
+  castFn?: (v: unknown) => unknown
+): T {
+  const v = castFn ? castFn(value) : value
+  if (!is(v, descriptor)) {
+    const got = of(v)
+    throw new TypeMismatchError(
+      `type.as: expected ${descriptor.name}, got ${got.name}`,
+      descriptor,
+      v
+    )
+  }
+  return v as T
+}
+
+/**
  * Aggregate namespace export. Compiled Tu code will see this as `type` —
- * `type.of(v)`, `type.is(v, I)`, `type.Number`, etc.
+ * `type.of(v)`, `type.is(v, I)`, `type.as(v, T)`, `type.Number`, etc.
  *
  * The trailing-underscore in primitive names (`Number_`, `String_`)
  * dodges the JS-global collision; the namespace re-exports them under
@@ -394,6 +453,7 @@ export function is(value: unknown, descriptor: TypeDescriptor): boolean {
 export const type = {
   of,
   is,
+  as,
   tag,
   struct,
   native,

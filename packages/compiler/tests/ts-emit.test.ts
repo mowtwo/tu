@@ -20,9 +20,9 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('export const f = (a: number, b: string) =>')
   })
 
-  it('emits names alone for params with no `: type` annotation', () => {
+  it('M9 Phase B: untyped params default to `unknown` in TS shadow (was implicit any)', () => {
     const ts = compileToTS('export let f = (x) => p { x }')
-    expect(ts).toContain('export const f = (x) =>')
+    expect(ts).toContain('export const f = (x: unknown) =>')
   })
 
   it('M2.2: state-cell let with `: T` wraps the annotation as Signal.State<T>', () => {

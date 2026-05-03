@@ -159,6 +159,66 @@ describe('@tu-lang/std/type — JS-native built-ins', () => {
   })
 })
 
+describe('@tu-lang/std/type — type.as (M9 Phase C strict-cast)', () => {
+  it('2-arg form: returns the value when shape matches', () => {
+    const User = struct('User', [
+      { name: 'id', type: type.Number },
+      { name: 'name', type: type.String },
+    ])
+    const v = { id: 1, name: 'Alice' }
+    expect(type.as(v, User)).toBe(v)
+  })
+
+  it('2-arg form: throws TypeMismatchError on shape mismatch', async () => {
+    const { TypeMismatchError } = await import('../src/index.js')
+    const User = struct('User', [{ name: 'id', type: type.Number }])
+    expect(() => type.as({ id: 'not a number' }, User)).toThrow(TypeMismatchError)
+    expect(() => type.as({ id: 'not a number' }, User)).toThrow(/expected User/i)
+  })
+
+  it('3-arg form: castFn runs first, then the shape check', () => {
+    // parseInt the string then check it's a number.
+    const n = type.as<number>('42', type.Number, (v) => parseInt(String(v), 10))
+    expect(n).toBe(42)
+  })
+
+  it('3-arg form: castFn output failing the shape still throws', async () => {
+    const { TypeMismatchError } = await import('../src/index.js')
+    // parseInt('abc') is NaN — typeof NaN === 'number' so type.Number
+    // doesn't reject it. Use a string-target descriptor for a clean
+    // numeric-rejection test.
+    expect(() =>
+      type.as('not-a-number', type.String, (v) => Number(v))
+    ).toThrow(TypeMismatchError)
+  })
+
+  it('works with primitive descriptors', async () => {
+    const { TypeMismatchError } = await import('../src/index.js')
+    expect(type.as<string>('hi', type.String)).toBe('hi')
+    expect(type.as<number>(42, type.Number)).toBe(42)
+    expect(() => type.as(42, type.String)).toThrow(TypeMismatchError)
+  })
+
+  it('TypeMismatchError carries expected + actual for typed catches', () => {
+    try {
+      type.as(42, type.String)
+      throw new Error('should have thrown')
+    } catch (e) {
+      // The error is a TypeMismatchError instance.
+      const err = e as { name: string; expected: { name: string }; actual: unknown }
+      expect(err.name).toBe('TypeMismatchError')
+      expect(err.expected.name).toBe('string')
+      expect(err.actual).toBe(42)
+    }
+  })
+
+  it('preserves the input value (no defensive copy)', () => {
+    const User = struct('User', [{ name: 'id', type: type.Number }])
+    const v = { id: 1 }
+    expect(type.as(v, User)).toBe(v) // same reference
+  })
+})
+
 describe('@tu-lang/std/type — Any / Never edges', () => {
   it('Any matches anything', () => {
     expect(is(0, type.Any)).toBe(true)
