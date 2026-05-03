@@ -24,7 +24,13 @@
 // SSR (`renderToString`) and DOM (`mount`/`hydrate`) operate on the
 // same shape.
 
-import { Signal, type Child, type VNode } from '@tu-lang/runtime'
+import {
+  Signal,
+  normalizeClassValue,
+  normalizeStyleValue,
+  type Child,
+  type VNode,
+} from '@tu-lang/runtime'
 
 // ── DOM type re-exports (typed access for Tu user code) ────────────
 //
@@ -399,6 +405,12 @@ function materializeInstance(child: NormalizedChild): Instance {
     if (typeof v === 'function') continue
     if (PROPERTY_PROPS.has(k)) {
       ;(el as unknown as Record<string, unknown>)[k] = v
+    } else if (k === 'class') {
+      const s = normalizeClassValue(v)
+      if (s) el.setAttribute('class', s)
+    } else if (k === 'style') {
+      const s = normalizeStyleValue(v)
+      if (s) el.setAttribute('style', s)
     } else {
       el.setAttribute(k, String(v))
     }
@@ -847,6 +859,14 @@ function patchProps(inst: ElInstance, newProps: Record<string, unknown>): void {
     }
     if (PROPERTY_PROPS.has(k)) {
       ;(inst.el as unknown as Record<string, unknown>)[k] = v
+    } else if (k === 'class') {
+      const s = normalizeClassValue(v)
+      if (s) inst.el.setAttribute('class', s)
+      else inst.el.removeAttribute('class')
+    } else if (k === 'style') {
+      const s = normalizeStyleValue(v)
+      if (s) inst.el.setAttribute('style', s)
+      else inst.el.removeAttribute('style')
     } else {
       inst.el.setAttribute(k, String(v))
     }

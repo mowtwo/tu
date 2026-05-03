@@ -77,6 +77,87 @@ export function h(
   return { tag, props, children }
 }
 
+/**
+ * Recursive value shape accepted by `class:` props (M9 / Vue + clsx
+ * style). Strings concatenate space-joined; arrays flatten; objects
+ * include keys whose values are truthy.
+ */
+export type ClassValue =
+  | string
+  | number
+  | null
+  | undefined
+  | false
+  | ClassValue[]
+  | { [key: string]: unknown }
+
+/**
+ * Flatten a `class:` prop value to a single space-joined string. Falsy /
+ * null / `false` items are dropped (so conditional patterns like
+ * `["base", isActive && "active"]` and `{ active: isActive }` work). The
+ * runtime DOM prop-applier and the SSR renderer both go through this.
+ */
+export function normalizeClassValue(v: unknown): string {
+  if (v == null || v === false || v === '') return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'number') return String(v)
+  if (Array.isArray(v)) {
+    const parts: string[] = []
+    for (const item of v) {
+      const s = normalizeClassValue(item)
+      if (s) parts.push(s)
+    }
+    return parts.join(' ')
+  }
+  if (typeof v === 'object') {
+    const parts: string[] = []
+    for (const [k, cond] of Object.entries(v as Record<string, unknown>)) {
+      if (cond) parts.push(k)
+    }
+    return parts.join(' ')
+  }
+  return ''
+}
+
+/** Object form for `style:` — `{ color: "red", fontSize: "12px" }`. */
+export type StyleObject = { [key: string]: string | number | null | undefined | false }
+
+/**
+ * Flatten a `style:` prop value to a CSS declaration string. Strings
+ * pass through; objects are joined as `kebab-key: value` pairs separated
+ * by `; `. camelCase keys are converted to kebab-case at the boundary
+ * (so users can type `fontSize` while the DOM gets `font-size`). Numeric
+ * values pass through verbatim — users who want a unit write `"12px"`
+ * explicitly. (No auto-px: avoids the React/Vue corner case where
+ * unitless props like `lineHeight: 1.5` would silently get the wrong
+ * unit appended.)
+ */
+export function normalizeStyleValue(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  if (typeof v !== 'object') return String(v)
+  const parts: string[] = []
+  for (const [k, val] of Object.entries(v as StyleObject)) {
+    if (val == null || val === false) continue
+    const kebab = k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())
+    parts.push(`${kebab}: ${val}`)
+  }
+  return parts.join('; ')
+}
+
+/**
+ * Render a single (non-truthy-bool, non-falsy, non-function) prop value
+ * to its string form. Special-cases `class` and `style` so array/object
+ * forms flatten correctly; everything else falls through to `String(v)`.
+ * Empty results signal "skip this attr" to the caller (so a class array
+ * that resolves to nothing doesn't produce `class=""` noise).
+ */
+function renderPropValueToString(k: string, v: unknown): string {
+  if (k === 'class') return normalizeClassValue(v)
+  if (k === 'style') return normalizeStyleValue(v)
+  return String(v)
+}
+
 /** Tag sentinel used by the static-HTML optimization (M6.0). */
 const STATIC_TAG = '$static'
 
@@ -198,7 +279,9 @@ function renderVNode(node: VNode): string {
       propStr += ` ${k}`
       continue
     }
-    propStr += ` ${k}="${escapeAttr(String(v))}"`
+    const str = renderPropValueToString(k, v)
+    if (str === '') continue
+    propStr += ` ${k}="${escapeAttr(str)}"`
   }
   if (VOID_ELEMENTS.has(node.tag)) {
     return `<${node.tag}${propStr}>`
@@ -350,7 +433,9 @@ async function renderVNodeAsync(node: VNode): Promise<string> {
       propStr += ` ${k}`
       continue
     }
-    propStr += ` ${k}="${escapeAttr(String(v))}"`
+    const str = renderPropValueToString(k, v)
+    if (str === '') continue
+    propStr += ` ${k}="${escapeAttr(str)}"`
   }
   if (VOID_ELEMENTS.has(node.tag)) {
     return `<${node.tag}${propStr}>`
@@ -543,7 +628,9 @@ class ShellRenderer {
         propStr += ` ${k}`
         continue
       }
-      propStr += ` ${k}="${escapeAttr(String(v))}"`
+      const str = renderPropValueToString(k, v)
+      if (str === '') continue
+      propStr += ` ${k}="${escapeAttr(str)}"`
     }
     if (VOID_ELEMENTS.has(node.tag)) {
       return `<${node.tag}${propStr}>`

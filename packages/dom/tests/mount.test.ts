@@ -27,6 +27,36 @@ describe('mount()', () => {
     stop()
   })
 
+  it('M9: class accepts an array — flattens to a space-joined string', () => {
+    const root = dom.window.document.getElementById('root')!
+    const stop = mount(
+      () => h('button', { class: ['btn', 'primary', null, false, 'lg'] }, ['x']),
+      root
+    )
+    expect(root.innerHTML).toBe('<button class="btn primary lg">x</button>')
+    stop()
+  })
+
+  it('M9: class accepts an object — only truthy keys appear', () => {
+    const root = dom.window.document.getElementById('root')!
+    const stop = mount(
+      () => h('button', { class: { btn: true, active: false, primary: 1 } }, ['x']),
+      root
+    )
+    expect(root.innerHTML).toBe('<button class="btn primary">x</button>')
+    stop()
+  })
+
+  it('M9: style accepts an object — emits kebab-cased pairs', () => {
+    const root = dom.window.document.getElementById('root')!
+    const stop = mount(
+      () => h('div', { style: { color: 'red', fontSize: '12px' } }, ['x']),
+      root
+    )
+    expect(root.innerHTML).toBe('<div style="color: red; font-size: 12px">x</div>')
+    stop()
+  })
+
   it('re-renders when a Signal cell read by the thunk mutates', async () => {
     const root = dom.window.document.getElementById('root')!
     const count = new Signal.State(0)

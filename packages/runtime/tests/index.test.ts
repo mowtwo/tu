@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   Fragment,
   h,
+  normalizeClassValue,
+  normalizeStyleValue,
   renderPage,
   renderPageAsync,
   renderPageHtml,
@@ -109,6 +111,74 @@ describe('@tu-lang/runtime', () => {
   it('renderToString skips function-typed props (event handlers have no SSR rep)', () => {
     const v = h('button', { onClick: () => {}, class: 'b' }, ['+'])
     expect(renderToString(v)).toBe('<button class="b">+</button>')
+  })
+
+  // ─── M9 — class / style array + object normalization ────────────────
+
+  it('normalizeClassValue: string passes through, falsy → empty', () => {
+    expect(normalizeClassValue('a b')).toBe('a b')
+    expect(normalizeClassValue('')).toBe('')
+    expect(normalizeClassValue(null)).toBe('')
+    expect(normalizeClassValue(undefined)).toBe('')
+    expect(normalizeClassValue(false)).toBe('')
+  })
+
+  it('normalizeClassValue: array flattens, drops falsy entries', () => {
+    expect(normalizeClassValue(['a', 'b'])).toBe('a b')
+    expect(normalizeClassValue(['a', null, false, '', 'b'])).toBe('a b')
+    // Nested arrays flatten recursively.
+    expect(normalizeClassValue(['base', ['flex', ['gap-2']]])).toBe('base flex gap-2')
+    // Mixed-with-conditional pattern.
+    const isActive = true
+    const isOpen = false
+    expect(normalizeClassValue(['btn', isActive && 'active', isOpen && 'open'])).toBe('btn active')
+  })
+
+  it('normalizeClassValue: object includes truthy keys', () => {
+    expect(normalizeClassValue({ card: true, active: false, open: 1 })).toBe('card open')
+    expect(normalizeClassValue({})).toBe('')
+  })
+
+  it('normalizeClassValue: mixed array + object form', () => {
+    expect(normalizeClassValue(['btn', { active: true, disabled: false }])).toBe('btn active')
+  })
+
+  it('normalizeStyleValue: string passes through; null → empty', () => {
+    expect(normalizeStyleValue('color: red')).toBe('color: red')
+    expect(normalizeStyleValue(null)).toBe('')
+    expect(normalizeStyleValue(undefined)).toBe('')
+  })
+
+  it('normalizeStyleValue: object form joins as kebab-key: value pairs', () => {
+    expect(normalizeStyleValue({ color: 'red', fontSize: '12px' })).toBe(
+      'color: red; font-size: 12px'
+    )
+  })
+
+  it('normalizeStyleValue: drops null / false values; numeric pass through verbatim', () => {
+    expect(
+      normalizeStyleValue({ color: 'red', fontSize: null, opacity: false, lineHeight: 1.5 })
+    ).toBe('color: red; line-height: 1.5')
+  })
+
+  it('SSR: class array flattens to a space-joined string', () => {
+    const v = h('div', { class: ['btn', 'primary'] }, ['x'])
+    expect(renderToString(v)).toBe('<div class="btn primary">x</div>')
+  })
+
+  it('SSR: class object includes truthy keys only', () => {
+    const v = h('div', { class: { card: true, active: false } }, ['x'])
+    expect(renderToString(v)).toBe('<div class="card">x</div>')
+  })
+
+  it('SSR: empty class normalization omits the attribute entirely', () => {
+    const v = h('div', { class: [null, false, ''] }, ['x'])
+    expect(renderToString(v)).toBe('<div>x</div>')
+  })
+
+  it('SSR: style object form emits kebab-cased pairs', () => {
+    const v = h('div', { style: { color: 'red', fontSize: '12px' } }, ['x'])
+    expect(renderToString(v)).toBe('<div style="color: red; font-size: 12px">x</div>')
   })
 
   it('Fragment passes its children through; renderer flattens', () => {
