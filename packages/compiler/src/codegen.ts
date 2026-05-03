@@ -417,6 +417,17 @@ export interface CodegenOptions {
    * the M2.1 reactivity bug.
    */
   importedNameKinds?: ReadonlyMap<string, CellKind>
+  /**
+   * Names imported from other `.tu` files that are declared there as
+   * `interface X { … }` (so `X` carries a runtime descriptor const).
+   * Phase 3c hook (M8): when present, typed-let sites with annotation
+   * `: X` get the `type.tag(X, …)` wrapper, even though `X` itself
+   * isn't declared in this module. Set by the LSP's shadow-graph
+   * builder + the CLI / vite plugin once they walk imports. Without
+   * this set, codegen conservatively skips tag injection for imported
+   * names — sound but lossy.
+   */
+  importedInterfaceNames?: ReadonlySet<string>
 }
 
 function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): BuildResult {
@@ -438,6 +449,15 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
       // generated `${Name}Props` interface skips on collision (the
       // user's hand-written interface always wins).
       declaredTypeNames.add(stmt.name)
+    }
+  }
+  // Phase 3c (M8): merge cross-`.tu` imported interface names so typed-let
+  // sites with imported annotations also get the `type.tag(I, …)` wrapper.
+  // The LSP / CLI / vite plugin populates this from shadow-graph; without
+  // it we fall back to the conservative "locally-declared only" behavior.
+  if (opts?.importedInterfaceNames) {
+    for (const name of opts.importedInterfaceNames) {
+      declaredInterfaceNames.add(name)
     }
   }
   // M8 Phase 3 — pre-pass to synthesize anonymous-interface descriptors

@@ -156,14 +156,17 @@ export function buildShadowGraph(
 ): Map<string, Shadow> {
   const parsed = bfsParseGraph(rootSource, rootFilename, inMemorySources)
   const exportKinds = collectDirectExportKinds(parsed)
+  const exportedInterfaces = collectExportedInterfaceNames(parsed)
   const shadows = new Map<string, Shadow>()
   for (const file of parsed.values()) {
     const importedNameKinds = buildImportedNameKinds(file, exportKinds)
+    const importedInterfaceNames = buildImportedInterfaceNames(file, exportedInterfaces)
     let compiled
     try {
       compiled = compileToTSWithMap(file.source, {
         filename: file.filename,
         ...(importedNameKinds ? { importedNameKinds } : {}),
+        ...(importedInterfaceNames ? { importedInterfaceNames } : {}),
       })
     } catch {
       // Should not happen — bfsParseGraph already proved this file parses.
@@ -257,6 +260,54 @@ function collectDirectExportKinds(
     out.set(filename, exports)
   }
   return out
+}
+
+/**
+ * For each parsed file, collect the set of names declared via
+ * `export interface X { … }`. Used by Phase 3c (M8) so cross-`.tu`
+ * imported interface annotations also tag their typed-let sites.
+ */
+function collectExportedInterfaceNames(
+  parsed: Map<string, ParsedFile>
+): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  for (const [filename, file] of parsed) {
+    const interfaces = new Set<string>()
+    for (const stmt of file.ast.body) {
+      if (stmt.kind === 'InterfaceDecl' && stmt.exported) {
+        interfaces.add(stmt.name)
+      }
+    }
+    out.set(filename, interfaces)
+  }
+  return out
+}
+
+/**
+ * Build the `importedInterfaceNames` set for a single importing file by
+ * walking its `ImportDecl`s and looking each imported name up in the
+ * exporting file's interface set. Returns `undefined` if no imports
+ * resolve to interfaces — codegen's option-typing wants undefined for
+ * "skip this option" rather than an empty set.
+ */
+function buildImportedInterfaceNames(
+  file: ParsedFile,
+  exportedInterfaces: Map<string, Set<string>>
+): Set<string> | undefined {
+  let result: Set<string> | undefined
+  for (const stmt of file.ast.body) {
+    if (stmt.kind !== 'ImportDecl') continue
+    if (!stmt.source.endsWith('.tu') || !stmt.source.startsWith('.')) continue
+    const importPath = resolve(dirname(file.filename), stmt.source)
+    const targetInterfaces = exportedInterfaces.get(importPath)
+    if (!targetInterfaces) continue
+    for (const name of stmt.names) {
+      if (!targetInterfaces.has(name)) continue
+      if (!result) result = new Set()
+      result.add(name)
+    }
+  }
+  return result
 }
 
 /**

@@ -135,6 +135,44 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
 
   // ─── M6.12 — in-memory multi-doc edits ───────────────────────────────
 
+  // ─── M8 Phase 3c — cross-`.tu` imported interface tagging ────────────
+
+  it('imported interface name participates in typed-let tag injection', async () => {
+    // Compile App.tu through the SHADOW GRAPH (LSP path) so the
+    // importedInterfaceNames option flows. The compiler-only path
+    // wouldn't see this — that's why Phase 2.5 was conservative.
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const userPath = join(tmp, 'user.tu')
+    writeFileSync(userPath, 'export interface User { id: number; name: string }\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { User } from "./user.tu"',
+      'export let bob: User = { id: 2, name: "Bob" }',
+    ].join('\n')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const appShadow = shadows.get(tuPathToTs(appPath))!
+    expect(appShadow).toBeDefined()
+    // Phase 3c: typed `let bob: User = …` now wraps with `type.tag(User, …)`
+    // because the shadow-graph identified `User` as an imported interface.
+    expect(appShadow.ts).toContain('type.tag(User, { id: 2, name: "Bob" })')
+    // The `type` namespace auto-imports because of the tag injection.
+    expect(appShadow.ts).toContain(`from '@tu-lang/std'`)
+  })
+
+  it('imported NON-interface name (type alias) still skips tagging', async () => {
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const aliasPath = join(tmp, 'aliases.tu')
+    writeFileSync(aliasPath, 'export type Variant = "a" | "b"\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Variant } from "./aliases.tu"',
+      'export let v: Variant = "a"',
+    ].join('\n')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const appShadow = shadows.get(tuPathToTs(appPath))!
+    expect(appShadow.ts).not.toContain('type.tag(Variant')
+  })
+
   it('in-memory edits to a non-root file are seen by the root analysis', () => {
     // Disk version of Card.tu has the wrong signature.
     const cardPath = join(tmp, 'Card.tu')
