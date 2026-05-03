@@ -16,6 +16,10 @@ export type * from './ast.js'
 export { canonicalizeShapes } from './canonicalize.js'
 export type { CanonicalDescriptor, CanonicalizeResult } from './canonicalize.js'
 
+// M8 Phase 6b/6c — bundle-mode compile orchestrator.
+export { compileBundle } from './bundle.js'
+export type { BundleInput, BundleOptions, BundleResult } from './bundle.js'
+
 export interface CompileOptions extends CodegenOptions {
   /** Filename surfaced in compile errors and the source map's `sources` field. */
   filename?: string

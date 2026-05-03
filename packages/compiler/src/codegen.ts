@@ -122,6 +122,41 @@ interface AnonSynthResult {
   anonDecls: string[]
 }
 
+/**
+ * M8 Phase 6c — rewrite anon-interface decls to alias the canonical
+ * descriptor instead of constructing a fresh one. The `synth.anonDecls`
+ * lines (`const __tu_anon_N = type.struct(…)`) are replaced in-place
+ * with `const __tu_anon_N = T_HASH` references; tag-injection sites
+ * stay unchanged since they target the local name.
+ *
+ * The canonical map keys are letDecl-name-based (`__anon_<letName>`),
+ * not the `__tu_anon_N` indexed names — so we resolve the let-name →
+ * anon-index mapping via the synth result and rewrite by index.
+ */
+function rewriteAnonDeclsForCanonical(
+  synth: { letToAnon: Map<LetDecl, string>; anonDecls: string[] },
+  canonicalNames: ReadonlyMap<string, string>
+): void {
+  // Build anonName → canonicalName by walking letToAnon entries:
+  // canonical map is keyed by `__anon_<letName>`; letToAnon maps
+  // LetDecl→anonName.
+  const anonToCanonical = new Map<string, string>()
+  for (const [decl, anonName] of synth.letToAnon) {
+    const canon = canonicalNames.get(`__anon_${decl.name}`)
+    if (canon) anonToCanonical.set(anonName, canon)
+  }
+  for (let i = 0; i < synth.anonDecls.length; i++) {
+    const line = synth.anonDecls[i]!
+    const m = line.match(/^const (__tu_anon_\d+) = /)
+    if (!m) continue
+    const anonName = m[1]!
+    const canon = anonToCanonical.get(anonName)
+    if (canon) {
+      synth.anonDecls[i] = `const ${anonName} = ${canon}`
+    }
+  }
+}
+
 function synthesizeAnonInterfaces(
   program: Program,
   declaredInterfaceNames: Set<string>
@@ -428,6 +463,28 @@ export interface CodegenOptions {
    * names — sound but lossy.
    */
   importedInterfaceNames?: ReadonlySet<string>
+  /**
+   * M8 Phase 6b/6c — cross-module canonical-descriptor rewrite.
+   *
+   * When set, every interface declaration AND every anonymous-shape let
+   * in this file gets rewritten to import its descriptor from a shared
+   * canonical module instead of declaring it locally. The map keys are
+   * the original names as they appear in this file (e.g. `User`,
+   * `__anon_p`), and the values are the canonical export names in the
+   * shared module (e.g. `T_0_a4f2b8c1`).
+   *
+   * `canonicalImportPath` is the module specifier the imports use —
+   * typically a relative path to the generated `__tu_types.generated.ts`
+   * the build tool emits alongside the per-file outputs.
+   *
+   * Both fields are populated by the orchestrator (`compileBundle()`,
+   * the LSP's shadow-graph + canonicalize pre-pass, the CLI / vite
+   * plugin's bundle emit). The standalone `compile()` / `compileToTS()`
+   * paths leave them undefined and emit the local-descriptor form
+   * unchanged.
+   */
+  canonicalNamesForFile?: ReadonlyMap<string, string>
+  canonicalImportPath?: string
 }
 
 function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): BuildResult {
@@ -466,13 +523,20 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   // share via structural-hash interning so `let a = { x: 1 }` and
   // `let b = { x: 2 }` reuse one descriptor.
   const synth = synthesizeAnonInterfaces(program, declaredInterfaceNames)
+  // M8 Phase 6c — when the bundle orchestrator passes per-file canonical
+  // names, the anon decls are rewritten to reference the canonical
+  // descriptor from the shared module instead of declaring locally.
+  if (opts?.canonicalNamesForFile) {
+    rewriteAnonDeclsForCanonical(synth, opts.canonicalNamesForFile)
+  }
   const cg = new Codegen(
     cells,
     scopes,
     tsMode,
     declaredTypeNames,
     declaredInterfaceNames,
-    synth.letToAnon
+    synth.letToAnon,
+    opts?.canonicalNamesForFile
   )
   cg.write(`${runtimeImportLine(tsMode)}\n`)
   // Auto-import the M8 type API when this module:
@@ -495,6 +559,16 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
           declaredInterfaceNames.has(s.type.trim()))
     )
   if (needsTypeImport) cg.write(`${typeImportLine(tsMode)}\n`)
+  // M8 Phase 6c — when canonical mode is on, also import the
+  // canonical descriptors this file uses from the shared module.
+  if (opts?.canonicalNamesForFile && opts.canonicalImportPath) {
+    const usedCanonical = new Set<string>(opts.canonicalNamesForFile.values())
+    if (usedCanonical.size > 0) {
+      cg.write(
+        `import { ${[...usedCanonical].sort().join(', ')} } from ${JSON.stringify(opts.canonicalImportPath)}\n`
+      )
+    }
+  }
   cg.write('\n')
   // Anonymous-interface descriptors hoisted before user code so `type.tag`
   // sites can reference them.
@@ -651,7 +725,8 @@ class Codegen {
     private readonly tsMode: boolean = false,
     private readonly declaredTypeNames: ReadonlySet<string> = new Set(),
     private readonly declaredInterfaceNames: ReadonlySet<string> = new Set(),
-    private readonly anonInterfaceForLet: ReadonlyMap<LetDecl, string> = new Map()
+    private readonly anonInterfaceForLet: ReadonlyMap<LetDecl, string> = new Map(),
+    private readonly canonicalNamesForFile: ReadonlyMap<string, string> | undefined = undefined
   ) {}
 
   write(text: string): void {
@@ -1618,8 +1693,26 @@ class Codegen {
       }
       this.write(node.fields.length > 0 ? '\n}\n' : '}\n')
     }
-    // Runtime descriptor (BOTH modes — JS and TS get the const):
+    // M8 Phase 6c — when the bundle orchestrator passes a canonical
+    // name for THIS interface, emit an alias to the canonical descriptor
+    // imported from the shared module. Otherwise (compile-only path,
+    // or interface not in canonical map), emit the local descriptor as
+    // Phase 2 did.
+    const canonical = this.canonicalNamesForFile?.get(node.name)
     const exp = node.exported ? 'export ' : ''
+    if (canonical !== undefined) {
+      // Re-export the shared canonical descriptor under the user's
+      // local name. The shared module's import was already added by
+      // `buildBody` at the top of the file. Keeping the local name as
+      // a const aliasing the canonical preserves Phase 2.5's tag
+      // injection (`type.tag(Foo, …)`) without changes.
+      this.write(`${exp}const `)
+      this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+      if (this.tsMode) this.write(`: __tu_TypeDescriptor`)
+      this.write(` = ${canonical}`)
+      return
+    }
+    // Runtime descriptor (BOTH modes — JS and TS get the const):
     this.write(`${exp}const `)
     this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
     if (this.tsMode) {
