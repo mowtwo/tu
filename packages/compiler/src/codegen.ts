@@ -152,7 +152,7 @@ function rewriteAnonDeclsForCanonical(
     const anonName = m[1]!
     const canon = anonToCanonical.get(anonName)
     if (canon) {
-      synth.anonDecls[i] = `const ${anonName} = ${canon}`
+      synth.anonDecls[i] = `const ${anonName} = __tu_canon_${canon}`
     }
   }
 }
@@ -561,11 +561,18 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   if (needsTypeImport) cg.write(`${typeImportLine(tsMode)}\n`)
   // M8 Phase 6c — when canonical mode is on, also import the
   // canonical descriptors this file uses from the shared module.
+  // Imports are aliased through `__tu_canon_` prefix so a file
+  // declaring `interface User` (canonical also `User`) doesn't
+  // collide with its own re-export const.
   if (opts?.canonicalNamesForFile && opts.canonicalImportPath) {
     const usedCanonical = new Set<string>(opts.canonicalNamesForFile.values())
     if (usedCanonical.size > 0) {
+      const aliases = [...usedCanonical]
+        .sort()
+        .map((n) => `${n} as __tu_canon_${n}`)
+        .join(', ')
       cg.write(
-        `import { ${[...usedCanonical].sort().join(', ')} } from ${JSON.stringify(opts.canonicalImportPath)}\n`
+        `import { ${aliases} } from ${JSON.stringify(opts.canonicalImportPath)}\n`
       )
     }
   }
@@ -1705,15 +1712,14 @@ class Codegen {
     const canonical = this.canonicalNamesForFile?.get(node.name)
     const exp = node.exported ? 'export ' : ''
     if (canonical !== undefined) {
-      // Re-export the shared canonical descriptor under the user's
-      // local name. The shared module's import was already added by
-      // `buildBody` at the top of the file. Keeping the local name as
-      // a const aliasing the canonical preserves Phase 2.5's tag
-      // injection (`type.tag(Foo, …)`) without changes.
+      // The shared-module import is aliased with `__tu_canon_` prefix
+      // so it never collides with the local interface name. Emit a
+      // const that aliases through to the canonical (works whether or
+      // not local name matches canonical).
       this.write(`${exp}const `)
       this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
       if (this.tsMode) this.write(`: __tu_TypeDescriptor`)
-      this.write(` = ${canonical}`)
+      this.write(` = __tu_canon_${canonical}`)
       return
     }
     // Runtime descriptor (BOTH modes — JS and TS get the const):

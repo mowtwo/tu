@@ -6,7 +6,7 @@ describe('@tu-lang/cli', () => {
     expect(VERSION).toBe('0.0.0')
   })
 
-  it('lists planned commands', () => {
-    expect(COMMANDS).toEqual(['build', 'dev', 'check', 'fmt'])
+  it('lists known commands', () => {
+    expect(COMMANDS).toEqual(['build', 'bundle', 'dev', 'check', 'fmt'])
   })
 })

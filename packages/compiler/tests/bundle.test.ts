@@ -29,9 +29,11 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     const stripMap = (s: string) => s.split('//#')[0]!
     const aClean = stripMap(aOut)
     const bClean = stripMap(bOut)
-    // Both files alias to the SAME canonical name (User).
-    expect(aClean).toContain('User = User')
-    expect(bClean).toContain('Person = User')
+    // Both files alias to the SAME canonical name (User), via the
+    // `__tu_canon_` prefix to avoid name collision with the local
+    // interface declaration.
+    expect(aClean).toContain('User = __tu_canon_User')
+    expect(bClean).toContain('Person = __tu_canon_User')
     expect(bundle.canonical.descriptors).toHaveLength(1)
   })
 
@@ -58,9 +60,10 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     // Shared module exports User (no T_ entry).
     expect(bundle.sharedModule.code).toContain('export const User')
     expect(bundle.sharedModule.code).not.toMatch(/export const T_/)
-    // app.tu's anon let aliases to `User`.
+    // app.tu's anon let aliases to the canonical (via the
+    // `__tu_canon_` import prefix that avoids name collisions).
     const appOut = bundle.files.get('app.tu')!.code
-    expect(appOut).toMatch(/const __tu_anon_\d+ = User/)
+    expect(appOut).toMatch(/const __tu_anon_\d+ = __tu_canon_User/)
   })
 
   it('anonymous let shapes participate in cross-file merge', () => {
@@ -76,8 +79,8 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     const twoOut = bundle.files.get('two.tu')!.code
     expect(oneOut).toContain('./__tu_types.generated.ts')
     expect(twoOut).toContain('./__tu_types.generated.ts')
-    expect(oneOut).toMatch(/const __tu_anon_\d+ = T_\d+_[0-9a-f]+/)
-    expect(twoOut).toMatch(/const __tu_anon_\d+ = T_\d+_[0-9a-f]+/)
+    expect(oneOut).toMatch(/const __tu_anon_\d+ = __tu_canon_T_\d+_[0-9a-f]+/)
+    expect(twoOut).toMatch(/const __tu_anon_\d+ = __tu_canon_T_\d+_[0-9a-f]+/)
   })
 
   it('TS emit mode includes the type-side annotation in the shared module', () => {
