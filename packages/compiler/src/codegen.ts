@@ -1074,6 +1074,19 @@ class Codegen {
           this.emitExpr(expr.arg)
         }
         return
+      case 'AsExpr':
+        // TS mode: emit `(arg as Type)` so tsserver picks up the cast.
+        // JS mode: erase — cast has no runtime effect. The wrapping
+        // parens guard against precedence surprises when the cast sits
+        // inside a larger expression (e.g. `x as Foo + y`).
+        if (this.tsMode) {
+          this.write('(')
+          this.emitExpr(expr.arg)
+          this.write(` as ${expr.typeText})`)
+        } else {
+          this.emitExpr(expr.arg)
+        }
+        return
       case 'ThrowExpr':
         // Expression position: wrap in IIFE so the throw can sit
         // anywhere a value is expected. Block context emits a clean
@@ -2174,6 +2187,7 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       return
     case 'UnaryExpr':
     case 'NonNullAssertExpr':
+    case 'AsExpr':
       collectClassRefs(expr.arg, out)
       return
     case 'IndexExpr':
@@ -2278,6 +2292,7 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'UnaryExpr':
     case 'NonNullAssertExpr':
+    case 'AsExpr':
       collectStyleBlockBodies(expr.arg, out)
       return
     case 'IndexExpr':
@@ -2689,6 +2704,7 @@ function containsControlFlow(expr: Expr): boolean {
       return containsControlFlow(expr.left) || containsControlFlow(expr.right)
     case 'UnaryExpr':
     case 'NonNullAssertExpr':
+    case 'AsExpr':
       return containsControlFlow(expr.arg)
     case 'AssignExpr':
       return containsControlFlow(expr.value)

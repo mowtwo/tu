@@ -220,6 +220,7 @@ function visitStyleBlocks(
       return
     case 'UnaryExpr':
     case 'NonNullAssertExpr':
+    case 'AsExpr':
     case 'NewExpr':
     case 'UpdateExpr':
     case 'AwaitExpr':

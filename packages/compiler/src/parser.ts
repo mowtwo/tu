@@ -636,6 +636,51 @@ export class Parser {
     return { text: this.source.slice(start, end).trim(), start, end }
   }
 
+  /**
+   * Captures the type-text slice for an `as Type` cast. Recognizes:
+   *   - bare `Ident`
+   *   - `Ident<...>` generic args (depth-tracked across nested `<>`)
+   *   - trailing `[]` array suffix(es) — only when both brackets are
+   *     adjacent (an `[expr]` with content stays as IndexExpr on the
+   *     wrapped AsExpr in the next postfix iteration)
+   * Unions / namespaced types / function types aren't parsed — wrap in a
+   * named type alias if you need one.
+   */
+  private parseRawTypeForAsCast(): { text: string; start: number; end: number } {
+    const startTok = this.expect(TokenKind.Ident)
+    const start = startTok.start
+    let end = startTok.end
+    if (this.peek().kind === TokenKind.Lt) {
+      let depth = 0
+      while (true) {
+        const t = this.peek()
+        if (t.kind === TokenKind.Eof) {
+          throw this.error(`unexpected EOF in cast type`)
+        }
+        if (t.kind === TokenKind.Lt) depth++
+        else if (t.kind === TokenKind.Gt) {
+          depth--
+          end = t.end
+          this.pos++
+          if (depth === 0) break
+          continue
+        }
+        end = t.end
+        this.pos++
+      }
+    }
+    while (
+      this.peek().kind === TokenKind.LBracket &&
+      this.tokens[this.pos + 1]?.kind === TokenKind.RBracket
+    ) {
+      this.pos++ // [
+      const rb = this.peek()
+      end = rb.end
+      this.pos++ // ]
+    }
+    return { text: this.source.slice(start, end), start, end }
+  }
+
   // Pratt-style precedence climber for binary expressions, with a
   // top-level assignment hook: `Ident = expr` parses as AssignExpr. This is
   // the only way Tu source mutates a state cell — codegen rewrites
@@ -820,6 +865,31 @@ export class Parser {
           arg: expr,
           start: expr.start,
           end: bang.end,
+        }
+        continue
+      }
+      // TS-style cast `expr as Type` — contextual keyword `as` (Tu has no
+      // dedicated token for it) followed by an ident type-name. Gate: the
+      // next-next token must be an Ident, otherwise we leave `as` for
+      // sibling parsing inside tag-call children. Tu doesn't parse types;
+      // we capture a raw slice covering `Ident<...>?[]*` (no unions —
+      // users wrap in a type alias if they need one).
+      if (
+        this.peek().kind === TokenKind.Ident &&
+        this.peek().text === 'as' &&
+        this.tokens[this.pos + 1]?.kind === TokenKind.Ident &&
+        isMemberAccessibleExpr(expr)
+      ) {
+        this.pos++ // consume `as`
+        const typeSpan = this.parseRawTypeForAsCast()
+        expr = {
+          kind: 'AsExpr',
+          arg: expr,
+          typeText: typeSpan.text,
+          typeStart: typeSpan.start,
+          typeEnd: typeSpan.end,
+          start: expr.start,
+          end: typeSpan.end,
         }
         continue
       }
@@ -2332,6 +2402,8 @@ function isMemberAccessibleExpr(expr: Expr): boolean {
   // `x!.foo` / `x!()` — the non-null assertion preserves the underlying
   // expression's accessibility for chaining.
   if (expr.kind === 'NonNullAssertExpr') return true
+  // `(x as Foo).bar` — same logic; cast preserves accessibility.
+  if (expr.kind === 'AsExpr') return true
   if (expr.kind === 'CallExpr') {
     // A component invocation with a trailing children block yields a
     // vnode, not a plain value — exclude it. Plain function/component

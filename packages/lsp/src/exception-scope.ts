@@ -195,6 +195,7 @@ function walkExpr(
     }
     case 'UnaryExpr':
     case 'AwaitExpr':
+    case 'AsExpr':
       walkExpr(expr.arg, out, declaredExceptions, insideTry)
       return
     case 'Lambda':

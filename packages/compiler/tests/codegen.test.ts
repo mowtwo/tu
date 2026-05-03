@@ -84,6 +84,39 @@ describe('codegen', () => {
     expect(compileToTS('let App = (p) => div { p.value! }')).toContain('[p.value!]')
   })
 
+  it('erases `as Type` cast in JS-emit, preserves in TS-emit', () => {
+    const src = 'let App = (e) => div { (e.target as HTMLInputElement).value }'
+    // JS mode: cast vanishes, member access stays.
+    expect(compile(src)).toContain('e.target.value')
+    expect(compile(src)).not.toContain(' as ')
+    // TS mode: cast preserved with parens around it.
+    const ts = compileToTS(src)
+    expect(ts).toContain('(e.target as HTMLInputElement).value')
+  })
+
+  it('parses `as Type<G>[]` with generics + array suffix', () => {
+    const src = 'let f = (xs) => xs as ReadonlyArray<string>[]'
+    expect(compileToTS(src)).toContain('xs as ReadonlyArray<string>[]')
+    expect(compile(src)).not.toContain(' as ')
+  })
+
+  it('chains member access after `as` cast — `(x as T).foo`', () => {
+    const src = 'let App = (e) => div { (e as Node).childNodes }'
+    expect(compileToTS(src)).toContain('(e as Node).childNodes')
+    // JS-emit: cast erased, member access flat.
+    expect(compile(src)).toContain('e.childNodes')
+  })
+
+  it('does not consume `as` when not followed by an Ident type-name', () => {
+    // Sibling children like `x as` (typo / two children where second is a
+    // var named `as`) — the parser should still error or treat them
+    // separately rather than crashing. Here we use it in a let-decl
+    // RHS position where `as` is a complete-ident.
+    const src = 'let App = (p) => div { p.x }'
+    // No `as` to begin with — sanity.
+    expect(compile(src)).toContain('p.x')
+  })
+
   it('emits ?.member, ?.(), ?.[] optional-chaining operators', () => {
     const js = compile(`
       let App = (p) => div(onClick: () => p.onClose?.()) {

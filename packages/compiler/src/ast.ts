@@ -172,6 +172,7 @@ export type Expr =
   | MethodCallExpr
   | UnaryExpr
   | NonNullAssertExpr
+  | AsExpr
   | IndexExpr
   | ThrowExpr
   | ReturnExpr
@@ -297,6 +298,7 @@ export type Child =
   | MethodCallExpr
   | UnaryExpr
   | NonNullAssertExpr
+  | AsExpr
   | IndexExpr
   | ThrowExpr
   | ReturnExpr
@@ -365,6 +367,21 @@ export interface UnaryExpr extends Ranged {
 export interface NonNullAssertExpr extends Ranged {
   kind: 'NonNullAssertExpr'
   arg: Expr
+}
+
+/** `expr as Type` — TypeScript-style type assertion. Tu doesn't parse the
+ *  type; it captures the raw source slice between `as` and a terminator
+ *  (postfix-suffix boundary, end of expression). TS-emit mode preserves
+ *  the cast as `(arg as Type)`; JS-emit mode erases it. The escape hatch
+ *  for narrowing imprecise DOM types (EventTarget → HTMLInputElement)
+ *  without an external-JS bridge. */
+export interface AsExpr extends Ranged {
+  kind: 'AsExpr'
+  arg: Expr
+  /** Raw type-text slice — emitted verbatim in TS mode. */
+  typeText: string
+  typeStart: number
+  typeEnd: number
 }
 
 export interface StringLit extends Ranged {
