@@ -152,6 +152,17 @@ export class Parser {
     if (this.isInterfaceNext()) {
       return this.parseInterfaceDecl(start, exported)
     }
+    // M8 Phase 4 — if an unexpected `instanceof` ident lands here, it
+    // means a previous expression DIDN'T consume it (because Tu has no
+    // binary `instanceof` operator). Surface a directive error so the
+    // user sees a useful message instead of "expected 'let' or
+    // 'import'…".
+    const t = this.peek()
+    if (t.kind === TokenKind.Ident && t.text === 'instanceof') {
+      throw this.error(
+        `'instanceof' is banned in Tu source. Use \`type.is(value, Interface)\` from @tu-lang/std for structural duck-typing checks. For genuine JS-nominal types (Promise, Map, Error, …) use \`type.is(value, type.Promise)\` etc. — the runtime descriptor wraps the \`instanceof\` check.`
+      )
+    }
     throw this.error(
       `expected 'let', 'export let', 'type', 'export type', 'interface', 'export interface', 'import', or 'export {…} from …'`
     )
@@ -1771,6 +1782,21 @@ export class Parser {
       } satisfies NumberLit
     }
     if (t.kind === TokenKind.Ident) {
+      // M8 Phase 4 — `typeof` and `instanceof` are permanently banned in
+      // Tu source. They surface here as plain Ident tokens; throw with
+      // directive errors pointing at the M8 replacement API. Inside an
+      // `external JS { … }` body the lexer doesn't tokenize the body,
+      // so this rule never triggers there — escape hatch preserved.
+      if (t.text === 'typeof') {
+        throw this.error(
+          `'typeof' is banned in Tu source. Use \`type.of(value)\` from @tu-lang/std instead — it returns a runtime descriptor that distinguishes null, arrays, and structs (vs JS \`typeof\` which lumps them all under 'object').`
+        )
+      }
+      if (t.text === 'instanceof') {
+        throw this.error(
+          `'instanceof' is banned in Tu source. Use \`type.is(value, Interface)\` from @tu-lang/std for structural duck-typing checks. For genuine JS-nominal types (Promise, Map, Error, …) use \`type.is(value, type.Promise)\` etc. — the runtime descriptor wraps the \`instanceof\` check.`
+        )
+      }
       this.pos++
       return this.parseIdentTail(t)
     }

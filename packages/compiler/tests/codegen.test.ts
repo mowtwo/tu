@@ -1254,6 +1254,25 @@ describe('codegen', () => {
     expect(js).toContain('{ name: "label", type: type.String }')
   })
 
+  it('M8 Phase 4: `typeof v` is banned with a directive error pointing at type.of', () => {
+    expect(() => compile('let App = (v: any) => typeof v')).toThrow(/typeof.*banned.*type\.of/i)
+  })
+
+  it('M8 Phase 4: `v instanceof T` is banned with a directive error pointing at type.is', () => {
+    expect(() => compile('let App = (v: any) => v instanceof Promise')).toThrow(
+      /instanceof.*banned.*type\.is/i
+    )
+  })
+
+  it('M8 Phase 4: external JS body still allows `typeof` / `instanceof` (escape hatch)', () => {
+    // The body of `external JS { … }` is passed through verbatim — the
+    // ban rule keys on Tu-source tokens, not on JS bytes inside the
+    // escape hatch.
+    const js = compile('let isObj = external JS (v: any): boolean { return typeof v === "object" && v instanceof Object }')
+    expect(js).toContain('typeof v === "object"')
+    expect(js).toContain('v instanceof Object')
+  })
+
   it('M8 Phase 2.5: imported interface name does NOT trigger injection (Phase 3 work)', () => {
     // Cross-module classification of imports is a Phase 3 concern;
     // until then conservative codegen skips tag injection so we don't
