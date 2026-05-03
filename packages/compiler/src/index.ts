@@ -12,6 +12,10 @@ export { formatError, lineColAt } from './diagnostics.js'
 export type { CellKind, CodegenOptions, SourceMapV3, TokenMapping } from './codegen.js'
 export type * from './ast.js'
 
+// M8 Phase 6 — cross-module type canonicalizer (algorithm core).
+export { canonicalizeShapes } from './canonicalize.js'
+export type { CanonicalDescriptor, CanonicalizeResult } from './canonicalize.js'
+
 export interface CompileOptions extends CodegenOptions {
   /** Filename surfaced in compile errors and the source map's `sources` field. */
   filename?: string
