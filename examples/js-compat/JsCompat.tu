@@ -101,7 +101,7 @@ let shuffleAndTime = external JS (xs: any[]): { ms: number; out: any[] } {
 // Pretend-fetch a profile. We simulate latency and conditional failure
 // so the demo stays self-contained (no real network in `pnpm demo`).
 let fakeFetchUser = async (id: number): Promise<User> => {
-  await new Promise((resolve: any) => setTimeout(resolve, 0))
+  await new Promise((resolve: () => void) => setTimeout(resolve, 0))
   if (id < 0) {
     throw new Error(`bad user id: ${id}`)
   }

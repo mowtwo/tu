@@ -5,8 +5,8 @@
 //
 // Each case's `entry` file must `export let App = () => …`.
 
-interface CaseFile { path: string; content: string }
-interface CaseDefinition {
+export interface CaseFile { path: string; content: string }
+export interface CaseDefinition {
   id: string
   label: string
   blurb: string
@@ -446,7 +446,7 @@ let onClear = () => {
 
 // async / try / catch / finally with throw.
 let fakeFetch = async (id: number): Promise<User> => {
-  await new Promise((r: any) => setTimeout(r, 200))
+  await new Promise((r: () => void) => setTimeout(r, 200))
   if (id < 0) {
     throw new Error("bad id: " + id)
   }

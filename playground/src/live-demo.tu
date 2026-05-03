@@ -18,7 +18,7 @@ import {
   createWorkspaceModels,
   setCompileErrorOn,
 } from "./monaco-tu.tu"
-import { CASES } from "./live-cases.tu"
+import { CASES, CaseDefinition, CaseFile } from "./live-cases.tu"
 
 let liveStop = null
 let liveDebounceHandle = null
@@ -325,12 +325,12 @@ let setActiveFile = (path: string) => {
   refreshOutputViews()
 }
 
-let renderFileTabs = (caseDef: any) => {
+let renderFileTabs = (caseDef: CaseDefinition): void => {
   if (!liveSidebarEl) { return }
   let tabs = liveSidebarEl.querySelector(".live-file-tabs")
   if (!tabs) { return }
   tabs.innerHTML = ""
-  caseDef.files.forEach((file) => {
+  caseDef.files.forEach((file: CaseFile) => {
     let item = document.createElement("div")
     item.className = "live-file-tab"
     item.dataset.path = file.path

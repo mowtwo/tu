@@ -605,12 +605,12 @@ export let createTuEditor = (host: HTMLElement, initialValue: string) => {
 // regex grabs the first such span. If the regex doesn't match
 // (defensive fallback), we mark the first line so users still see
 // *something* go red.
-export let setCompileError = (editor: any, message: string) => {
-  let model = editor.getModel()
-  if (!model) { return }
-  let m = /at line (\d+), col (\d+)/.exec(message)
-  let line = m ? Number(m[1]) : 1
-  let col = m ? Number(m[2]) : 1
+export let setCompileError = external JS (editor: unknown, message: string): void {
+  const model = editor.getModel()
+  if (!model) return
+  const m = /at line (\d+), col (\d+)/.exec(message)
+  const line = m ? Number(m[1]) : 1
+  const col = m ? Number(m[2]) : 1
   monaco.editor.setModelMarkers(model, "tu-compile", [{
     severity: monaco.MarkerSeverity.Error,
     startLineNumber: line,
@@ -622,22 +622,22 @@ export let setCompileError = (editor: any, message: string) => {
   }])
 }
 
-export let clearCompileErrors = (editor: any) => {
-  let model = editor.getModel()
-  if (!model) { return }
+export let clearCompileErrors = external JS (editor: unknown): void {
+  const model = editor.getModel()
+  if (!model) return
   monaco.editor.setModelMarkers(model, "tu-compile", [])
 }
 
 // Create one Monaco model per file in a case. Disposes any pre-existing
 // model at the same URI so re-entering a case doesn't trip Monaco's
 // "model already exists" guard. Returns a `Map<path, ITextModel>`.
-export let createWorkspaceModels = (caseDef: any) => {
-  let models = new Map()
+export let createWorkspaceModels = external JS (caseDef: unknown): unknown {
+  const models = new Map()
   caseDef.files.forEach((file) => {
-    let uri = monaco.Uri.parse("tu:/" + caseDef.id + "/" + file.path)
-    let existing = monaco.editor.getModel(uri)
-    if (existing) { existing.dispose() }
-    let model = monaco.editor.createModel(file.content, "tu", uri)
+    const uri = monaco.Uri.parse("tu:/" + caseDef.id + "/" + file.path)
+    const existing = monaco.editor.getModel(uri)
+    if (existing) existing.dispose()
+    const model = monaco.editor.createModel(file.content, "tu", uri)
     models.set(file.path, model)
   })
   return models
@@ -647,7 +647,7 @@ export let createWorkspaceModels = (caseDef: any) => {
 // instead of just a message. Used by the live demo's multi-file
 // pipeline so an error in `Card.tu` lights up `Card.tu` (not the
 // active file).
-export let setCompileErrorOn = (model: any, message: string, line: number, col: number) => {
+export let setCompileErrorOn = external JS (model: unknown, message: string, line: number, col: number): void {
   monaco.editor.setModelMarkers(model, "tu-compile", [{
     severity: monaco.MarkerSeverity.Error,
     startLineNumber: line,
@@ -659,6 +659,6 @@ export let setCompileErrorOn = (model: any, message: string, line: number, col: 
   }])
 }
 
-export let clearCompileErrorsOn = (model: any) => {
+export let clearCompileErrorsOn = external JS (model: unknown): void {
   monaco.editor.setModelMarkers(model, "tu-compile", [])
 }
