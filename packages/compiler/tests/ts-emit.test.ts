@@ -107,12 +107,24 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('h("p", {}, [type])')
   })
 
-  it('M3.9: synthesizes a `${Name}Props` interface for exported typed-param lambdas', () => {
+  it('M3.9 + M9: synthesizes an all-optional `${Name}Props` interface with children slot', () => {
     const ts = compileToTS(
       'export let Card = (title: string, body: string) => p { title }'
     )
-    expect(ts).toContain('export interface CardProps { title: string; body: string }')
+    // M9 update: every prop is `?:` optional and `children?: Child[]` is
+    // appended — matches M6.1 named-arg call sites where any prop can be
+    // omitted (runtime gets `undefined` for missing keys).
+    expect(ts).toContain('export interface CardProps { title?: string; body?: string; children?: Child[] }')
     expect(ts).toContain('export const Card = (title: string, body: string) =>')
+  })
+
+  it('M9: auto-Props omits the children slot when the lambda already declares a `children` param', () => {
+    const ts = compileToTS(
+      'export let Wrap = (title: string, children: string) => div { title children }'
+    )
+    // The user's own `children: string` wins — we don't append a duplicate.
+    expect(ts).toContain('export interface WrapProps { title?: string; children?: string }')
+    expect(ts).not.toContain('children?: string; children?: Child[]')
   })
 
   it('M3.9: skips the interface for non-exported lambdas', () => {

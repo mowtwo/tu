@@ -831,13 +831,21 @@ class Codegen {
     const ctx = this.scopedComponents.get(decl.name)
     if (ctx) this.scopes.push(ctx)
     try {
-      // M3.9: for an exported lambda with all-typed params, emit a named
-      // `${Name}Props` interface BEFORE the const so downstream consumers
-      // (TS code reading the .d.ts) get a reusable shape. Lambdas with any
-      // untyped param are skipped — we don't want to invent `unknown` fields.
-      // If the user has hand-declared a `${Name}Props` type alias in this
-      // module, skip the auto-emit to avoid TS "Duplicate identifier" — the
-      // hand-written shape always wins.
+      // M3.9 + M9: for an exported lambda with all-typed params, emit a
+      // named `${Name}Props` interface BEFORE the const so downstream
+      // consumers (TS code reading the .d.ts) get a reusable shape.
+      // Lambdas with any untyped param are skipped — we don't want to
+      // invent `unknown` fields. If the user has hand-declared a
+      // `${Name}Props` type alias in this module, skip the auto-emit to
+      // avoid TS "Duplicate identifier" — the hand-written shape wins.
+      //
+      // M9 update: every prop is `?:` optional and we append a
+      // `children?: Child[]` slot. Rationale: M6.1's named-arg call form
+      // (`Card(title: "x")`) lets callers omit any prop — runtime gets
+      // `undefined` for missing keys — so the interface should match
+      // call-site reality. The `children` slot is appended unless the
+      // lambda already declares its own `children` param (in which case
+      // that param's type wins).
       if (
         this.tsMode &&
         decl.exported &&
@@ -846,12 +854,17 @@ class Codegen {
         decl.value.params.every((p) => p.type !== undefined) &&
         !this.declaredTypeNames.has(`${decl.name}Props`)
       ) {
+        const params = decl.value.params
+        const hasOwnChildren = params.some((p) => p.name === 'children')
         this.write(`export interface ${decl.name}Props { `)
-        for (let i = 0; i < decl.value.params.length; i++) {
+        for (let i = 0; i < params.length; i++) {
           if (i > 0) this.write('; ')
-          const p = decl.value.params[i]!
+          const p = params[i]!
           this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
-          this.write(`: ${p.type}`)
+          this.write(`?: ${p.type}`)
+        }
+        if (!hasOwnChildren) {
+          this.write('; children?: Child[]')
         }
         this.write(' }\n')
       }
