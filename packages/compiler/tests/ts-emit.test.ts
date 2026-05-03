@@ -162,7 +162,10 @@ describe('compileToTS — type-annotation preservation', () => {
 
   it('M5.6: object literal preserved verbatim in TS emit', () => {
     const ts = compileToTS('export let p = { x: 1, y: 2 }')
-    expect(ts).toContain('export const p = new Signal.State({ x: 1, y: 2 })')
+    // M8 Phase 3 wraps untyped object literals in `type.tag(__tu_anon_N, …)`.
+    // The literal text itself is still emitted verbatim — the wrapper is
+    // additive.
+    expect(ts).toMatch(/export const p = new Signal\.State\(type\.tag\(__tu_anon_\d+, \{ x: 1, y: 2 \}\)\)/)
   })
 
   it('M5.6: typed state-cell with object literal wraps as Signal.State<T>', () => {

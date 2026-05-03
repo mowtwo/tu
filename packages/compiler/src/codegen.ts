@@ -12,6 +12,7 @@ import type {
   IfExpr,
   InterfaceDecl,
   Lambda,
+  LetDecl,
   LocalLet,
   MarkdownBlock,
   MemberExpr,
@@ -102,6 +103,128 @@ function typeImportLine(tsMode: boolean): string {
   if (tsMode)
     return `import { type, type TypeDescriptor as __tu_TypeDescriptor } from '@tu-lang/std'`
   return `import { type } from '@tu-lang/std'`
+}
+
+// ── M8 Phase 3 — anonymous-interface synthesis + shape interning ────
+//
+// Every untyped `let X = { … }` triggers compiler-side synthesis of an
+// anonymous interface descriptor at module-level. The let's value is
+// then wrapped in `type.tag(__tu_anon_N, …)` so `type.of(X)` recovers
+// the synthesized shape instead of falling back to the runtime's
+// own structural-walk. Same-shape literals share one descriptor via
+// structural-hash interning — so the cost is paid once per unique
+// shape, not once per literal.
+
+interface AnonSynthResult {
+  /** Per-LetDecl: the anon descriptor name to wrap the value in (if any). */
+  letToAnon: Map<LetDecl, string>
+  /** Pre-rendered `const __tu_anon_N = type.struct(…)` lines, ordered. */
+  anonDecls: string[]
+}
+
+function synthesizeAnonInterfaces(
+  program: Program,
+  declaredInterfaceNames: Set<string>
+): AnonSynthResult {
+  const internCache = new Map<string, string>()
+  const letToAnon = new Map<LetDecl, string>()
+  const anonDecls: string[] = []
+  let counter = 0
+
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    if (stmt.type !== undefined) continue // typed lets — Phase 2.5 path
+    if (stmt.value.kind !== 'ObjectLit') continue
+
+    // Build per-prop descriptor expressions. Spread members force a
+    // soft skip (Phase 3d will resolve them by tracing the source's
+    // descriptor); for now an untyped `let X = {...a, extra}` gets no
+    // anon synthesis.
+    const fields: { name: string; descExpr: string }[] = []
+    let canSynth = true
+    for (const member of stmt.value.properties) {
+      if (member.kind === 'ObjectSpread') {
+        canSynth = false
+        break
+      }
+      const descExpr = exprToDescExpr(member.value, declaredInterfaceNames)
+      fields.push({ name: member.key, descExpr })
+    }
+    if (!canSynth) continue
+    if (fields.length === 0) continue // empty object — no shape to capture
+
+    // Hash for interning — sort by name so order-of-keys variations
+    // share descriptors. (Tu emits keys in source order, but two
+    // equivalent shapes shouldn't allocate twice.)
+    const sorted = [...fields].sort((a, b) => a.name.localeCompare(b.name))
+    const hash = sorted.map((f) => `${f.name}:${f.descExpr}`).join('|')
+
+    let anonName = internCache.get(hash)
+    if (anonName === undefined) {
+      anonName = `__tu_anon_${counter++}`
+      internCache.set(hash, anonName)
+      const fieldsJs = fields
+        .map(
+          (f) => `{ name: ${JSON.stringify(f.name)}, type: ${f.descExpr} }`
+        )
+        .join(', ')
+      anonDecls.push(`const ${anonName} = type.struct("__anon", [${fieldsJs}])`)
+    }
+    letToAnon.set(stmt, anonName)
+  }
+
+  return { letToAnon, anonDecls }
+}
+
+/**
+ * Map a Tu expression's static shape to the JS expression that builds
+ * its runtime descriptor. Used inside `synthesizeAnonInterfaces` to
+ * walk an ObjectLit and infer per-prop types.
+ *
+ * Conservative: anything we can't statically classify falls back to
+ * `type.Object`, which matches any object — sound but lossy. Idents
+ * resolve to either a known interface (if declared in the same module)
+ * or the fallback. Phase 3c will widen this to imported interfaces.
+ */
+function exprToDescExpr(e: Expr, knownInterfaces: Set<string>): string {
+  switch (e.kind) {
+    case 'StringLit':
+    case 'TemplateLit':
+      return 'type.String'
+    case 'NumberLit':
+      return 'type.Number'
+    case 'RegexLit':
+      return 'type.RegExp'
+    case 'Lambda':
+      return 'type.Function'
+    case 'Ident': {
+      const n = e.name
+      if (n === 'true' || n === 'false') return 'type.Boolean'
+      if (n === 'null' || n === 'undefined') return 'type.Null'
+      if (knownInterfaces.has(n)) return n
+      return 'type.Object'
+    }
+    case 'ArrayLit': {
+      if (e.elements.length === 0) return 'type.Array(type.Object)'
+      // Sample the first element. Mixed-element arrays fall back to
+      // the first element's type — same trade tsc makes for inference.
+      return `type.Array(${exprToDescExpr(e.elements[0]!, knownInterfaces)})`
+    }
+    case 'ObjectLit': {
+      // Inline nested struct (no separate hoist for the inner one;
+      // the outer descriptor inlines it). Spread members → fallback.
+      const fields: string[] = []
+      for (const m of e.properties) {
+        if (m.kind === 'ObjectSpread') return 'type.Object'
+        fields.push(
+          `{ name: ${JSON.stringify(m.key)}, type: ${exprToDescExpr(m.value, knownInterfaces)} }`
+        )
+      }
+      return `type.struct("__anon", [${fields.join(', ')}])`
+    }
+    default:
+      return 'type.Object'
+  }
 }
 
 /**
@@ -317,25 +440,48 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
       declaredTypeNames.add(stmt.name)
     }
   }
-  const cg = new Codegen(cells, scopes, tsMode, declaredTypeNames, declaredInterfaceNames)
+  // M8 Phase 3 — pre-pass to synthesize anonymous-interface descriptors
+  // for untyped `let X = { … }` sites. Each ObjectLit-initialized untyped
+  // let gets a runtime descriptor matching its inferred shape; same shapes
+  // share via structural-hash interning so `let a = { x: 1 }` and
+  // `let b = { x: 2 }` reuse one descriptor.
+  const synth = synthesizeAnonInterfaces(program, declaredInterfaceNames)
+  const cg = new Codegen(
+    cells,
+    scopes,
+    tsMode,
+    declaredTypeNames,
+    declaredInterfaceNames,
+    synth.letToAnon
+  )
   cg.write(`${runtimeImportLine(tsMode)}\n`)
   // Auto-import the M8 type API when this module:
   // (a) declares an `interface` (compiles to `type.struct(…)`), or
   // (b) has a typed `let X: I = { … }` site where `I` is a LOCALLY-
-  //     declared interface — those get wrapped in `type.tag(I, …)`.
-  // Cross-module imports we conservatively skip in Phase 2.5; Phase 3
-  // will classify imported names so their typed-let sites tag too.
-  const needsTypeImport = program.body.some(
-    (s) =>
-      s.kind === 'InterfaceDecl' ||
-      (s.kind === 'LetDecl' &&
-        s.type !== undefined &&
-        /^[A-Z]\w*$/.test(s.type.trim()) &&
-        s.value.kind === 'ObjectLit' &&
-        declaredInterfaceNames.has(s.type.trim()))
-  )
+  //     declared interface — those get wrapped in `type.tag(I, …)`, or
+  // (c) has any anonymous-interface synthesis (Phase 3) — those need
+  //     `type.struct` + `type.tag` both at module level.
+  // Cross-module imports we conservatively skip in Phase 2.5; Phase 3c
+  // (LSP-driven) will classify imported names too.
+  const needsTypeImport =
+    synth.anonDecls.length > 0 ||
+    program.body.some(
+      (s) =>
+        s.kind === 'InterfaceDecl' ||
+        (s.kind === 'LetDecl' &&
+          s.type !== undefined &&
+          /^[A-Z]\w*$/.test(s.type.trim()) &&
+          s.value.kind === 'ObjectLit' &&
+          declaredInterfaceNames.has(s.type.trim()))
+    )
   if (needsTypeImport) cg.write(`${typeImportLine(tsMode)}\n`)
   cg.write('\n')
+  // Anonymous-interface descriptors hoisted before user code so `type.tag`
+  // sites can reference them.
+  for (const line of synth.anonDecls) {
+    cg.write(line + '\n')
+  }
+  if (synth.anonDecls.length > 0) cg.write('\n')
   for (const stmt of program.body) {
     // Type aliases erase entirely in JS mode — they have no runtime presence.
     if (stmt.kind === 'TypeAlias' && !tsMode) continue
@@ -484,7 +630,8 @@ class Codegen {
     private readonly scopedComponents: Map<string, ScopeCtx>,
     private readonly tsMode: boolean = false,
     private readonly declaredTypeNames: ReadonlySet<string> = new Set(),
-    private readonly declaredInterfaceNames: ReadonlySet<string> = new Set()
+    private readonly declaredInterfaceNames: ReadonlySet<string> = new Set(),
+    private readonly anonInterfaceForLet: ReadonlyMap<LetDecl, string> = new Map()
   ) {}
 
   write(text: string): void {
@@ -637,22 +784,27 @@ class Codegen {
       this.write(widenEmpty ? 'new Signal.State<any[]>(' : 'new Signal.State(')
       // M8 Phase 2.5 — `let X: I = { … }` wraps the object in
       // `type.tag(I, …)` so `type.of(value)` recovers the user's
-      // interface descriptor. Triggers ONLY when:
-      //   - value is an ObjectLit (genuine new-object site)
-      //   - annotation is a bare PascalCase identifier
-      //   - that identifier is locally-declared as `interface` (NOT as
-      //     `type X = …` alias — those have no runtime descriptor)
-      // Cross-module imports (where we don't know the kind) don't
-      // inject — Phase 3 will add classification through the import
-      // graph so imported interfaces also tag correctly.
+      // interface descriptor.
+      //
+      // M8 Phase 3 — same wrapping for UNTYPED `let X = { … }`, using
+      // a synthesized anonymous descriptor (see `synthesizeAnonInterfaces`).
+      // Either path: pick the descriptor name first, then emit one
+      // `type.tag(<name>, …)` wrapper around the ObjectLit.
       const annot = decl.type?.trim()
-      const wrapInTag =
+      const explicitTag =
         decl.value.kind === 'ObjectLit' &&
         annot !== undefined &&
         /^[A-Z]\w*$/.test(annot) &&
         this.declaredInterfaceNames.has(annot)
-      if (wrapInTag) {
-        this.write(`type.tag(${annot}, `)
+          ? annot
+          : null
+      const anonTag =
+        decl.value.kind === 'ObjectLit'
+          ? this.anonInterfaceForLet.get(decl) ?? null
+          : null
+      const tagName = explicitTag ?? anonTag
+      if (tagName !== null) {
+        this.write(`type.tag(${tagName}, `)
         this.emitExpr(decl.value)
         this.write(')')
       } else {

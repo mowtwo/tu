@@ -625,8 +625,11 @@ describe('codegen', () => {
   })
 
   it('M5.6: object literal as a let-decl value emits the matching JS object', () => {
+    // M8 Phase 3 wraps the value in `type.tag(__tu_anon_N, …)` so
+    // `type.of(p)` recovers the synthesized `{x: number, y: number}` shape.
     const js = compile('let p = { x: 1, y: 2 }')
-    expect(js).toContain('const p = new Signal.State({ x: 1, y: 2 })')
+    expect(js).toContain('const p = new Signal.State(type.tag(__tu_anon_0, { x: 1, y: 2 }))')
+    expect(js).toContain('__tu_anon_0 = type.struct("__anon", [{ name: "x", type: type.Number }, { name: "y", type: type.Number }])')
   })
 
   it('M5.6: empty object literal emits as `{}`', () => {
@@ -649,12 +652,15 @@ describe('codegen', () => {
 
   it('M5.6: string keys are emitted quoted', () => {
     const js = compile('let p = { "data-id": 7 }')
-    expect(js).toContain('const p = new Signal.State({ "data-id": 7 })')
+    // The literal preserves its quoted key; the M8 anon tag wraps the value.
+    expect(js).toMatch(/new Signal\.State\(type\.tag\(__tu_anon_\d+, \{ "data-id": 7 \}\)\)/)
   })
 
   it('M5.6: nested object literal round-trips', () => {
     const js = compile('let p = { outer: { inner: 1 } }')
-    expect(js).toContain('const p = new Signal.State({ outer: { inner: 1 } })')
+    // Outer anon descriptor is hoisted; inner object stays inline (Phase 3
+    // emits inline `type.struct` for nested shapes inside an outer descriptor).
+    expect(js).toMatch(/new Signal\.State\(type\.tag\(__tu_anon_\d+, \{ outer: \{ inner: 1 \} \}\)\)/)
   })
 
   it('M5.6: object literal as positional arg to a function call', () => {
@@ -704,12 +710,13 @@ describe('codegen', () => {
   it('M6.10.1: cell-backed object compound assign unwraps via .get() on both reads', () => {
     // Top-level `let counts = { a: 0 }` is a Signal.State cell. The
     // compound desugar produces `counts.get().a = counts.get().a + 5`
-    // — both the read and the target's host go through `.get()`.
+    // — both the read and the target's host go through `.get()`. The
+    // value itself is wrapped in M8's Phase 3 anon-tag.
     const js = compile(`
       let counts = { a: 0 }
       let bump = () => counts.a += 5
     `)
-    expect(js).toContain('counts = new Signal.State({ a: 0 })')
+    expect(js).toMatch(/counts = new Signal\.State\(type\.tag\(__tu_anon_\d+, \{ a: 0 \}\)\)/)
     expect(js).toContain('(counts.get().a = (counts.get().a + 5))')
   })
 
@@ -1151,6 +1158,100 @@ describe('codegen', () => {
     expect(js).not.toContain('type.tag')
     // No interface in the file → no @tu-lang/std import either.
     expect(js).not.toContain('@tu-lang/std')
+  })
+
+  it('M8 Phase 3: untyped `let X = { … }` synthesizes anon descriptor + wraps with type.tag', () => {
+    const js = compile('let p = { x: 1, y: 2 }')
+    expect(js).toContain(`import { type } from '@tu-lang/std'`)
+    expect(js).toContain(
+      'const __tu_anon_0 = type.struct("__anon", [{ name: "x", type: type.Number }, { name: "y", type: type.Number }])'
+    )
+    expect(js).toContain('new Signal.State(type.tag(__tu_anon_0, { x: 1, y: 2 }))')
+  })
+
+  it('M8 Phase 3: same-shape untyped lets share ONE descriptor (interning)', () => {
+    const js = compile([
+      'let p1 = { x: 1, y: 2 }',
+      'let p2 = { x: 10, y: 20 }',
+    ].join('\n'))
+    // Only ONE __tu_anon_N decl — both lets reuse it.
+    const anonDecls = js.match(/const __tu_anon_\d+ = type\.struct/g) ?? []
+    expect(anonDecls).toHaveLength(1)
+    expect(js).toContain('p1 = new Signal.State(type.tag(__tu_anon_0, { x: 1, y: 2 }))')
+    expect(js).toContain('p2 = new Signal.State(type.tag(__tu_anon_0, { x: 10, y: 20 }))')
+  })
+
+  it('M8 Phase 3: different shapes get fresh descriptors', () => {
+    const js = compile([
+      'let p = { x: 1, y: 2 }',
+      'let q = { title: "hi", count: 3 }',
+    ].join('\n'))
+    expect(js).toContain('__tu_anon_0 = type.struct')
+    expect(js).toContain('__tu_anon_1 = type.struct')
+  })
+
+  it('M8 Phase 3: shape interning is order-insensitive', () => {
+    // `{x:1,y:2}` and `{y:2,x:1}` are the same shape — share one descriptor.
+    const js = compile([
+      'let a = { x: 1, y: 2 }',
+      'let b = { y: 20, x: 10 }',
+    ].join('\n'))
+    const anonDecls = js.match(/const __tu_anon_\d+ = type\.struct/g) ?? []
+    expect(anonDecls).toHaveLength(1)
+  })
+
+  it('M8 Phase 3: nested object types compile inline inside the outer descriptor', () => {
+    const js = compile('let p = { outer: { inner: 1 } }')
+    // Outer is hoisted; inner is inline as `type.struct(...)`.
+    expect(js).toContain(
+      `const __tu_anon_0 = type.struct("__anon", [{ name: "outer", type: type.struct("__anon", [{ name: "inner", type: type.Number }]) }])`
+    )
+  })
+
+  it('M8 Phase 3: array literal in field maps to type.Array(<elem>)', () => {
+    const js = compile('let p = { tags: ["a", "b"] }')
+    expect(js).toContain(
+      'const __tu_anon_0 = type.struct("__anon", [{ name: "tags", type: type.Array(type.String) }])'
+    )
+  })
+
+  it('M8 Phase 3: bool / null / lambda field shapes detected', () => {
+    const js = compile('let card = { active: true, hint: null, click: () => 0 }')
+    expect(js).toContain('{ name: "active", type: type.Boolean }')
+    expect(js).toContain('{ name: "hint", type: type.Null }')
+    expect(js).toContain('{ name: "click", type: type.Function }')
+  })
+
+  it('M8 Phase 3: spread in object literal disables synthesis (Phase 3d work)', () => {
+    const js = compile([
+      'let base = { x: 1 }',
+      'let merged = { ...base, y: 2 }',
+    ].join('\n'))
+    // `base` synthesizes; `merged` does NOT (spread is unhandled).
+    expect(js).toContain('const __tu_anon_0 = type.struct')
+    // No tag wrapper around merged — falls back to bare object.
+    expect(js).toMatch(/const merged = new Signal\.State\(\{[\s\S]*?\.\.\.base/)
+  })
+
+  it('M8 Phase 3: empty object literal does NOT trigger synthesis', () => {
+    const js = compile('let empty = {}')
+    expect(js).not.toContain('__tu_anon_')
+    expect(js).not.toContain('type.tag')
+  })
+
+  it('M8 Phase 3: known interface ident in field resolves to that interface', () => {
+    const js = compile([
+      'interface User { id: number }',
+      'let alice: User = { id: 1 }',
+      'let box = { user: alice, label: "wrap" }',
+    ].join('\n'))
+    // The `user` field references `alice`, which is an Ident; the synth
+    // pass detects `alice` is NOT a known interface (it's a let cell),
+    // so falls back to type.Object. `User` IS known but the field's
+    // type is determined by the value expression, not by `alice`'s
+    // declaration. This is conservative — Phase 3 polish can widen it.
+    expect(js).toContain('{ name: "user", type: type.Object }')
+    expect(js).toContain('{ name: "label", type: type.String }')
   })
 
   it('M8 Phase 2.5: imported interface name does NOT trigger injection (Phase 3 work)', () => {
