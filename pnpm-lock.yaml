@@ -246,6 +246,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/std
 
+  examples/types:
+    dependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../../packages/std
+
   packages/cli:
     dependencies:
       '@tu-lang/compiler':

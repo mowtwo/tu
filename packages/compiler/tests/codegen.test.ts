@@ -1280,9 +1280,10 @@ describe('codegen', () => {
     expect(js).toContain('const OopsError =')
     expect(js).toContain('e.name = "OopsError"')
     expect(js).toContain('Error.captureStackTrace')
-    // Native descriptor merged via Object.assign.
+    // Native descriptor merged via property loop (Object.assign would
+    // collide with Function.name being read-only).
     expect(js).toContain('type.native("OopsError",')
-    expect(js).toContain('Object.assign(factory, descriptor)')
+    expect(js).toContain('Object.defineProperty(factory, k')
   })
 
   it('Exception decl factory copies optional fields when present', () => {

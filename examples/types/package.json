@@ -1,0 +1,17 @@
+{
+  "name": "@tu-examples/types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M8 + M9 demo — interface as runtime descriptor + Exception with stack trace + throws clauses + type.of / type.is / type.as.",
+  "scripts": {
+    "build": "node run.mjs",
+    "test": "node run.mjs",
+    "check": "echo 'no checks'"
+  },
+  "dependencies": {
+    "@tu-lang/compiler": "workspace:*",
+    "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/std": "workspace:*"
+  }
+}

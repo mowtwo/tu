@@ -575,7 +575,17 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
           s.value.kind === 'ObjectLit' &&
           declaredInterfaceNames.has(s.type.trim()))
     )
-  if (needsTypeImport) cg.write(`${typeImportLine(tsMode)}\n`)
+  // Skip the auto-import if the user already wrote `import { type }
+  // from "@tu-lang/std"` explicitly — duplicate `type` bindings
+  // collide at module load.
+  const hasExplicitTypeImport = program.body.some(
+    (s) =>
+      s.kind === 'ImportDecl' &&
+      s.source === '@tu-lang/std' &&
+      s.names.includes('type')
+  )
+  if (needsTypeImport && !hasExplicitTypeImport)
+    cg.write(`${typeImportLine(tsMode)}\n`)
   // M8 Phase 6c — when canonical mode is on, also import the
   // canonical descriptors this file uses from the shared module.
   // Imports are aliased through `__tu_canon_` prefix so a file
@@ -1780,9 +1790,16 @@ class Codegen {
     this.write(`    return e\n`)
     this.write(`  }\n`)
     // Attach M8 native descriptor so `type.is(e, XxxError)` works.
+    // Function objects have read-only built-in `name` / `length`
+    // properties, so `Object.assign(factory, descriptor)` would throw
+    // in strict mode. Manually copy each descriptor field via
+    // `Object.defineProperty` to override the built-in.
     this.write(`  const descriptor = type.native(${JSON.stringify(node.name)}, (v) => `)
     this.write(`v != null && typeof v === "object" && v.name === ${JSON.stringify(node.name)})\n`)
-    this.write(`  return Object.assign(factory, descriptor)\n`)
+    this.write(`  for (const k of Object.keys(descriptor)) {\n`)
+    this.write(`    Object.defineProperty(factory, k, { value: descriptor[k], writable: true, configurable: true, enumerable: true })\n`)
+    this.write(`  }\n`)
+    this.write(`  return factory\n`)
     this.write(`})()`)
   }
 

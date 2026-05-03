@@ -584,6 +584,137 @@ export let App = () => div(class: "panel") {
   ],
 })
 
+// M8 + M9 — interface, type.of, type.is, type.as, Exception, throws clause.
+// Showcases the type-metadata system end-to-end: interfaces double as
+// runtime descriptors; type.as validates untrusted JSON input; Exception
+// carries fields + stack trace; throws clauses make functions explicit
+// about their failure modes.
+let typesCase = (): CaseDefinition => ({
+  id: "types",
+  label: "Types + Exceptions",
+  blurb: "interface as runtime descriptor, type.as for runtime cast, Exception for structured errors with stack trace + per-function throws clauses.",
+  entry: "App.tu",
+  files: [
+    {
+      path: "App.tu",
+      content: `// M8: interface declares both the TS type AND a runtime descriptor.
+// M9 Exception: carries fields, stack trace, type.is participation.
+interface User { id: number; name: string }
+Exception ValidationError { field: string }
+
+// type.as validates a raw object against the User shape — fails with
+// TypeMismatchError if mismatched. Runtime cast that doubles as a
+// type guard for tsserver via destination annotation.
+let parseUser = (raw: unknown): User ? ValidationError => {
+  if (type.is(raw, type.Object)) {
+    return type.as(raw, User)
+  }
+  throw ValidationError("not a user shape", { field: "(root)" })
+}
+
+// Reactive cell — type.tag is auto-injected at the typed-let site so
+// type.of(alice) === User (reference equality, not duck-typing).
+let alice: User = { id: 1, name: "Alice" }
+
+let raw = '{"id": 2, "name": "Bob"}'
+let parsed = ""
+let bob: User | null = null
+let lastError = ""
+
+let runParse = () => {
+  lastError = ""
+  bob = null
+  try {
+    let obj = JSON.parse(raw)
+    let u = parseUser(obj)
+    bob = u
+    parsed = "parsed: " + u.name + " (id " + u.id + ")"
+  } catch (e: ValidationError | unknown) {
+    if (type.is(e, ValidationError)) {
+      lastError = "ValidationError on field '" + (e?.field ?? "?") + "': " + (e?.message ?? "")
+    } else {
+      lastError = "Error: " + (e?.message ?? String(e))
+    }
+  }
+}
+
+export let App = () => div(class: "demo") {
+  h1 { "Types + Exceptions" }
+  p(class: "blurb") {
+    "Edit the JSON below. Valid input parses through type.as(raw, User) and tags the result. Invalid input throws ValidationError or TypeMismatchError."
+  }
+  div(class: "row") {
+    label { "raw JSON: " }
+    input(value: raw, onInput: (e: Event) => raw = (() => {
+      let t = e.target
+      if (t != null && type.is(t, type.Object)) {
+        return t.value ?? ""
+      }
+      return ""
+    })())
+    button(onClick: runParse) { "parse" }
+  }
+  div(class: "info") {
+    p { "alice: type.of == User: " (type.of(alice) == User) }
+  }
+  if (parsed != "") { p(class: "ok") { parsed } }
+  if (lastError != "") { p(class: "err") { lastError } }
+  if (bob != null) {
+    div(class: "card") {
+      p { "bob.id = " bob.id }
+      p { "bob.name = " bob.name }
+      p { "type.is(bob, User) = " type.is(bob, User) }
+    }
+  }
+
+  style {
+    .demo { max-width: 32rem; padding: 1.5rem; font-family: system-ui, sans-serif; }
+    .demo > h1 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+    .blurb { margin: 0 0 1rem; color: hsl(var(--tu-fg-muted)); font-size: 0.9rem; line-height: 1.5; }
+    .row { display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
+    .row > input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid hsl(var(--tu-border));
+      border-radius: 4px;
+      background: hsl(var(--tu-surface));
+      color: hsl(var(--tu-fg));
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+    .row > button {
+      padding: 0.5rem 1rem;
+      background: hsl(var(--tu-brand));
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .info {
+      margin: 1rem 0;
+      padding: 0.75rem;
+      background: hsl(var(--tu-surface-elevated));
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: monospace;
+    }
+    .ok { color: hsl(var(--tu-success, 142 71% 45%)); margin: 0.5rem 0; }
+    .err { color: hsl(var(--tu-danger, 0 72% 50%)); margin: 0.5rem 0; }
+    .card {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: hsl(var(--tu-surface-elevated));
+      border-left: 3px solid hsl(var(--tu-brand));
+      border-radius: 4px;
+    }
+    .card > p { margin: 0.25rem 0; font-size: 0.9rem; }
+  }
+}
+`,
+    },
+  ],
+})
+
 // Lambda-factory export — Tu cell-wraps non-lambda module values, so a
 // namespace-imported `m.CASES` would otherwise be a Signal.State
 // instance instead of the array.
@@ -594,4 +725,5 @@ export let CASES = () => [
   asyncFetchCase(),
   formCase(),
   jsCompatCase(),
+  typesCase(),
 ]
