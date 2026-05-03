@@ -11,6 +11,7 @@
 
 import { compile, compileToTS } from "@tu-lang/compiler"
 import { mount } from "@tu-lang/dom"
+import { type } from "@tu-lang/std"
 
 import {
   clearCompileErrorsOn,
@@ -112,8 +113,19 @@ let buildWorkspace = external JS (compile: any, files: any[], entry: string): an
       e.__tuFile = file.path
       throw e
     }
+    // Rewrite the M1 runtime import to read from the global runtime
+    // bag — the blob URL the compiled JS lives in can't resolve
+    // bare specifiers itself.
     js = js.replace(
       /^import\s+\{([^}]*)\}\s+from\s+["']@tu-lang\/runtime["']\s*;?\s*/m,
+      "const {$1} = globalThis.__tuRuntime;\n"
+    )
+    // M8/M9 — `import { type } from '@tu-lang/std'` is auto-injected
+    // whenever a Tu source declares `interface` / `Exception` / a
+    // typed-let with an interface annotation. Rewrite the same way:
+    // pull from `__tuRuntime` (which carries `type` alongside h/Signal/mount).
+    js = js.replace(
+      /^import\s+\{([^}]*)\}\s+from\s+["']@tu-lang\/std["']\s*;?\s*/m,
       "const {$1} = globalThis.__tuRuntime;\n"
     )
     js = js.replace(/\/\/#\s*sourceMappingURL=[^\n]*\n?/g, "")
@@ -137,8 +149,11 @@ let buildWorkspace = external JS (compile: any, files: any[], entry: string): an
   return { entryUrl, allUrls }
 }
 
-let ensureRuntime = external JS (h: any, Signal: any, mount: any): void {
-  globalThis.__tuRuntime = globalThis.__tuRuntime ?? { h, Signal, mount }
+let ensureRuntime = external JS (h: unknown, Signal: unknown, mount: unknown, type: unknown): void {
+  // Globals consumed by the rewriter in `buildWorkspace`. M8/M9 added
+  // `type` (`@tu-lang/std`'s namespace) — cells in the live demo that
+  // declare `interface` or `Exception` rely on it being present.
+  globalThis.__tuRuntime = globalThis.__tuRuntime ?? { h, Signal, mount, type }
 }
 
 let parseLineCol = external JS (message: string): any {
@@ -240,7 +255,7 @@ let recompileLive = async (): Promise<void> => {
   try {
     revokeBlobs(liveBlobUrls)
     liveBlobUrls = []
-    ensureRuntime(h, Signal, mount)
+    ensureRuntime(h, Signal, mount, type)
     let built = buildWorkspace(compile, files, caseDef.entry)
     liveBlobUrls = built.allUrls
     let mod = await import(built.entryUrl)

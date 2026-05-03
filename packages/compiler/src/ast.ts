@@ -14,7 +14,13 @@ interface Ranged {
   end: number
 }
 
-export type Stmt = LetDecl | ImportDecl | ReExportDecl | TypeAlias | InterfaceDecl
+export type Stmt =
+  | LetDecl
+  | ImportDecl
+  | ReExportDecl
+  | TypeAlias
+  | InterfaceDecl
+  | ExceptionDecl
 
 /**
  * `interface Name { field1: T; field2: U }` — Tu's M8 declaration form for
@@ -32,6 +38,27 @@ export interface InterfaceDecl extends Ranged {
   exported: boolean
   name: string
   /** Source byte range of the interface name (drives LSP rename / hover). */
+  nameStart: number
+  nameEnd: number
+  fields: InterfaceField[]
+}
+
+/**
+ * `Exception XxxError { customAttr?: string }` — Tu's structured-error
+ * declaration form. Cousins of `InterfaceDecl` but the runtime emit
+ * also produces a callable factory that constructs a tagged Error
+ * subclass with stack-trace capture. Construction is fixed-form:
+ * `XxxError(message, { customAttr: "x" })`.
+ *
+ * Reuses `InterfaceField[]` for the field list — the shape is
+ * identical (name, optional, type expression) and the codegen just
+ * routes through different emit logic.
+ */
+export interface ExceptionDecl extends Ranged {
+  kind: 'ExceptionDecl'
+  exported: boolean
+  name: string
+  /** Source byte range of the exception name (drives LSP rename / hover). */
   nameStart: number
   nameEnd: number
   fields: InterfaceField[]
@@ -174,6 +201,16 @@ export interface Lambda extends Ranged {
   returnType?: string
   returnTypeStart?: number
   returnTypeEnd?: number
+  /**
+   * Throws-clause type expression — `(): R ? AError|BError => …`.
+   * Captured as raw text, same shape as `returnType`. Codegen emits it
+   * as a JSDoc `@throws` comment in TS mode and otherwise erases. The
+   * exception-scope checker (M9 polish) consumes this when computing
+   * the function's allowed throws set.
+   */
+  throwsType?: string
+  throwsTypeStart?: number
+  throwsTypeEnd?: number
   /** True for `async (args) => …`. Codegen emits `async (…) => …`; the
    *  body may contain `await` expressions. */
   async?: boolean

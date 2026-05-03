@@ -13,6 +13,7 @@ import type {
   ForExpr,
   Ident,
   IfExpr,
+  ExceptionDecl,
   ImportDecl,
   InterfaceDecl,
   InterfaceField,
@@ -41,6 +42,44 @@ import type {
 } from './ast.js'
 import { formatError } from './diagnostics.js'
 import { TokenKind, type Token } from './tokens.js'
+
+/**
+ * Split a raw type-expression text on the first DEPTH-0 `?` token —
+ * Tu's M9 throws-clause separator. Returns `null` when no top-level
+ * `?` exists (the whole text is the return type). Tracks `()` / `{}`
+ * / `[]` / `<…>` so optional-modifier `?` inside generic args (`Map<K
+ * | undefined, V>`) and optional fields inside inline object types
+ * (`{ x?: number }`) don't trigger a split.
+ *
+ * This is regex-friendly enough to live here: Tu type texts are
+ * already source slices Tu's lexer captured. We char-walk to keep
+ * the depth-tracking honest.
+ */
+function splitOnTopLevelQuestion(
+  text: string
+): { before: string; after: string; questionOffset: number } | null {
+  let depth = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charAt(i)
+    if (c === '(' || c === '[' || c === '{' || c === '<') depth++
+    else if (c === ')' || c === ']' || c === '}' || c === '>') depth--
+    else if (depth === 0 && c === '?') {
+      // Skip optional-chaining `?.` (shouldn't appear at type-level
+      // but defensive).
+      if (text.charAt(i + 1) === '.') continue
+      // The throws-clause separator has whitespace OR identifier on
+      // the right immediately. If the next non-space char is `:` it's
+      // a TS optional-property in an inline object literal — but those
+      // are already inside `{}` so depth>0 here. Safe to split.
+      return {
+        before: text.slice(0, i).trim(),
+        after: text.slice(i + 1).trim(),
+        questionOffset: i,
+      }
+    }
+  }
+  return null
+}
 
 /** Tokens whose presence immediately before a `{` (inside a TS-style
  *  type span) means the `{` opens a TYPE LITERAL, not the body of a
@@ -142,6 +181,10 @@ export class Parser {
       if (this.isInterfaceNext()) {
         return this.parseInterfaceDecl(start, true)
       }
+      // `export Exception X { … }` — structured error decl.
+      if (this.isExceptionNext()) {
+        return this.parseExceptionDecl(start, true)
+      }
     }
     if (this.peek().kind === TokenKind.Let) {
       return this.parseLetDecl(start, exported)
@@ -151,6 +194,9 @@ export class Parser {
     }
     if (this.isInterfaceNext()) {
       return this.parseInterfaceDecl(start, exported)
+    }
+    if (this.isExceptionNext()) {
+      return this.parseExceptionDecl(start, exported)
     }
     // M8 Phase 4 — if an unexpected `instanceof` ident lands here, it
     // means a previous expression DIDN'T consume it (because Tu has no
@@ -164,7 +210,7 @@ export class Parser {
       )
     }
     throw this.error(
-      `expected 'let', 'export let', 'type', 'export type', 'interface', 'export interface', 'import', or 'export {…} from …'`
+      `expected 'let', 'export let', 'type', 'export type', 'interface', 'export interface', 'Exception', 'export Exception', 'import', or 'export {…} from …'`
     )
   }
 
@@ -181,6 +227,39 @@ export class Parser {
     if (t2?.kind !== TokenKind.Ident) return false
     const t3 = this.tokens[this.pos + 2]
     return t3?.kind === TokenKind.Equals
+  }
+
+  /**
+   * `Exception` is contextual: only an introducer when followed by
+   * `Ident {`. Distinct from `interface` by the capital `E` (intentional —
+   * mirrors how Tu treats `Component` declarations vs. lowercase tags).
+   * Reuses `parseInterfaceFields` since the field shape is identical.
+   */
+  private isExceptionNext(): boolean {
+    const t1 = this.peek()
+    if (t1.kind !== TokenKind.Ident || t1.text !== 'Exception') return false
+    const t2 = this.tokens[this.pos + 1]
+    if (t2?.kind !== TokenKind.Ident) return false
+    const t3 = this.tokens[this.pos + 2]
+    return t3?.kind === TokenKind.LBrace
+  }
+
+  private parseExceptionDecl(start: number, exported: boolean): ExceptionDecl {
+    this.pos++ // consume the `Exception` ident
+    const nameTok = this.expect(TokenKind.Ident)
+    this.expect(TokenKind.LBrace)
+    const fields = this.parseInterfaceFields()
+    const closeBrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'ExceptionDecl',
+      exported,
+      name: nameTok.text,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+      fields,
+      start,
+      end: closeBrace.end,
+    }
   }
 
   /**
@@ -208,12 +287,32 @@ export class Parser {
     this.pos++ // consume the `interface` ident
     const nameTok = this.expect(TokenKind.Ident)
     this.expect(TokenKind.LBrace)
+    const fields = this.parseInterfaceFields()
+    const closeBrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'InterfaceDecl',
+      exported,
+      name: nameTok.text,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+      fields,
+      start,
+      end: closeBrace.end,
+    }
+  }
+
+  /**
+   * Parse the body of an `interface` or `Exception` declaration —
+   * `{ f1: T1; f2?: T2 }`. Field separator is `;`, `,`, or a newline
+   * (the latter via `parseRawTypeUntilFieldBoundary`'s lookahead).
+   * Caller is responsible for the surrounding `{` / `}`.
+   */
+  private parseInterfaceFields(): InterfaceField[] {
     const fields: InterfaceField[] = []
     while (this.peek().kind !== TokenKind.RBrace) {
       if (this.peek().kind === TokenKind.Eof) {
-        throw this.error(`unterminated interface body — expected '}' before EOF`)
+        throw this.error(`unterminated body — expected '}' before EOF`)
       }
-      // Skip optional separators between fields.
       if (
         this.peek().kind === TokenKind.Semi ||
         this.peek().kind === TokenKind.Comma
@@ -239,17 +338,7 @@ export class Parser {
         typeEnd: typeSpan.end,
       })
     }
-    const closeBrace = this.expect(TokenKind.RBrace)
-    return {
-      kind: 'InterfaceDecl',
-      exported,
-      name: nameTok.text,
-      nameStart: nameTok.start,
-      nameEnd: nameTok.end,
-      fields,
-      start,
-      end: closeBrace.end,
-    }
+    return fields
   }
 
   /**
@@ -367,6 +456,12 @@ export class Parser {
         // M8: contextual `interface X { …` starts a new top-level decl
         // and terminates the current type-alias span.
         if (t.kind === TokenKind.Ident && t.text === 'interface') {
+          const t2 = this.tokens[this.pos + 1]
+          const t3 = this.tokens[this.pos + 2]
+          if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.LBrace) break
+        }
+        // M9+: contextual `Exception X { …` — same treatment.
+        if (t.kind === TokenKind.Ident && t.text === 'Exception') {
           const t2 = this.tokens[this.pos + 1]
           const t3 = this.tokens[this.pos + 2]
           if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.LBrace) break
@@ -1513,12 +1608,31 @@ export class Parser {
     let returnType: string | undefined
     let returnTypeStart: number | undefined
     let returnTypeEnd: number | undefined
+    let throwsType: string | undefined
+    let throwsTypeStart: number | undefined
+    let throwsTypeEnd: number | undefined
     if (this.peek().kind === TokenKind.Colon) {
       this.pos++
       const span = this.parseRawTypeUntilFatArrow()
-      returnType = span.text
-      returnTypeStart = span.start
-      returnTypeEnd = span.end
+      // Split the captured raw text on a top-level `?` — Tu's M9
+      // exception system: `(…): R ? AError|BError => …` annotates a
+      // function's throws clause. The first depth-0 `?` separates
+      // return type from throws-type expression.
+      const split = splitOnTopLevelQuestion(span.text)
+      if (split !== null) {
+        returnType = split.before
+        // We don't have separate byte offsets for the split — Tu source
+        // bytes are continuous, so derive from the local offset.
+        returnTypeStart = span.start
+        returnTypeEnd = span.start + split.questionOffset
+        throwsType = split.after
+        throwsTypeStart = span.start + split.questionOffset + 1
+        throwsTypeEnd = span.end
+      } else {
+        returnType = span.text
+        returnTypeStart = span.start
+        returnTypeEnd = span.end
+      }
     }
     this.expect(TokenKind.FatArrow)
     const body = this.parseExpr()
@@ -1533,6 +1647,11 @@ export class Parser {
       lambda.returnType = returnType
       lambda.returnTypeStart = returnTypeStart!
       lambda.returnTypeEnd = returnTypeEnd!
+    }
+    if (throwsType !== undefined) {
+      lambda.throwsType = throwsType
+      lambda.throwsTypeStart = throwsTypeStart!
+      lambda.throwsTypeEnd = throwsTypeEnd!
     }
     return lambda
   }

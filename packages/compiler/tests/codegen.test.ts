@@ -1264,6 +1264,122 @@ describe('codegen', () => {
     )
   })
 
+  // ─── Exception system Phase 1 — `Exception X { … }` declaration ──
+
+  it('Exception decl emits a TS interface extending Error + a callable factory', () => {
+    const ts = compileToTS('Exception NotFoundError { resource?: string }')
+    expect(ts).toContain('interface NotFoundError extends Error {')
+    expect(ts).toContain('resource?: string')
+    expect(ts).toContain(
+      'const NotFoundError: ((message: string, props?: { resource?: string }) => NotFoundError) & __tu_TypeDescriptor'
+    )
+  })
+
+  it('Exception decl JS-mode emits a factory function with stack-trace capture', () => {
+    const js = compile('Exception OopsError { code: number }')
+    expect(js).toContain('const OopsError =')
+    expect(js).toContain('e.name = "OopsError"')
+    expect(js).toContain('Error.captureStackTrace')
+    // Native descriptor merged via Object.assign.
+    expect(js).toContain('type.native("OopsError",')
+    expect(js).toContain('Object.assign(factory, descriptor)')
+  })
+
+  it('Exception decl factory copies optional fields when present', () => {
+    const js = compile('Exception E { code?: number; reason?: string }')
+    expect(js).toContain('if (props["code"] !== undefined)')
+    expect(js).toContain('if (props["reason"] !== undefined)')
+  })
+
+  it('Exception decl auto-imports type from @tu-lang/std', () => {
+    const js = compile('Exception E { resource: string }')
+    expect(js).toContain(`import { type } from '@tu-lang/std'`)
+  })
+
+  it('Exception decl supports export modifier', () => {
+    const ts = compileToTS('export Exception PublicError { code: number }')
+    expect(ts).toContain('export interface PublicError extends Error {')
+    expect(ts).toContain('export const PublicError:')
+  })
+
+  it('Exception construction (no `new` keyword) compiles to a regular call', () => {
+    const js = compile([
+      'Exception NotFoundError { resource: string }',
+      'let raise = () => throw NotFoundError("missing", { resource: "user" })',
+    ].join('\n'))
+    expect(js).toContain('throw NotFoundError("missing", { resource: "user" })')
+  })
+
+  // ─── Exception system Phase 2 — throws clause `(): R ? E1|E2` ──
+
+  it('Phase 2: throws clause splits on top-level `?` (return type kept; throws erased)', () => {
+    const ts = compileToTS([
+      'Exception NotFoundError { resource: string }',
+      'let lookup = (id: string): string ? NotFoundError => "fallback"',
+    ].join('\n'))
+    expect(ts).toContain('const lookup = (id: string): string =>')
+    // `? NotFoundError` is NOT in the TS shadow (TS has no throws clauses).
+    expect(ts).not.toContain('? NotFoundError')
+  })
+
+  it('Phase 2: multi-error throws clause `R1|R2 ? E1|E2`', () => {
+    const ts = compileToTS('let f = (): string|number ? AError|BError => 0')
+    expect(ts).toContain('const f = (): string|number =>')
+    expect(ts).not.toContain('? AError')
+  })
+
+  it('Phase 2: question-marks INSIDE generic args do NOT split', () => {
+    // `Map<string, V?>` — the `?` is inside `<…>` so depth > 0; the
+    // top-level split skips it. (TS doesn't have `V?` standalone but
+    // the splitter must be conservative around generic args.)
+    const ts = compileToTS('let f = (): Map<string, number> => new Map()')
+    expect(ts).toContain('const f = (): Map<string, number> =>')
+  })
+
+  it('Phase 2: throws clause omitted compiles like before (no regression)', () => {
+    const ts = compileToTS('let f = (): string => "x"')
+    expect(ts).toContain('const f = (): string => "x"')
+  })
+
+  // ─── Exception system Phase 3 — typed catch ───────────────────────
+
+  it('Phase 3: typed catch param emits `: unknown` in TS shadow (TS rule)', () => {
+    const ts = compileToTS([
+      'Exception AError { code: number }',
+      'let safe = () => try { throw AError("x", { code: 1 }) } catch (e: AError) { 0 }',
+    ].join('\n'))
+    // TS rejects `catch (e: AError)` — codegen rewrites to `: unknown`.
+    expect(ts).toContain('catch (e: unknown)')
+    expect(ts).not.toContain('catch (e: AError)')
+  })
+
+  it('Phase 3: union-typed catch + type.is dispatch in body works', () => {
+    const js = compile([
+      'Exception AError { code: number }',
+      'Exception BError { msg: string }',
+      'let safe = () => try {',
+      '  throw AError("x", { code: 1 })',
+      '} catch (e: AError | BError) {',
+      '  if (type.is(e, AError)) { "a" } else { "b" }',
+      '}',
+    ].join('\n'))
+    // Both error decls + descriptors emitted.
+    expect(js).toContain('const AError =')
+    expect(js).toContain('const BError =')
+    // Catch dispatch via type.is in the body.
+    expect(js).toContain('type.is(e, AError)')
+  })
+
+  it('Exception decl coexists with interface decl in the same file', () => {
+    const js = compile([
+      'interface User { id: number }',
+      'Exception NotFoundError { resource: string }',
+    ].join('\n'))
+    expect(js).toContain('const User = type.struct')
+    expect(js).toContain('const NotFoundError =')
+    expect(js).toContain('type.native("NotFoundError"')
+  })
+
   it('M8 Phase 4: external JS body still allows `typeof` / `instanceof` (escape hatch)', () => {
     // The body of `external JS { … }` is passed through verbatim — the
     // ban rule keys on Tu-source tokens, not on JS bytes inside the

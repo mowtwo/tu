@@ -9,6 +9,7 @@ import type {
   ClassRef,
   Expr,
   ForExpr,
+  ExceptionDecl,
   IfExpr,
   InterfaceDecl,
   Lambda,
@@ -260,6 +261,20 @@ function exprToDescExpr(e: Expr, knownInterfaces: Set<string>): string {
     default:
       return 'type.Object'
   }
+}
+
+/**
+ * Render the TS type text for an Exception's optional `props` argument
+ * — `{ customAttr?: string; foo: number }`. Used by `emitExceptionDecl`
+ * when emitting the factory function signature in TS mode.
+ */
+function renderPropsTypeText(fields: ReadonlyArray<{ name: string; rawType: string; optional: boolean }>): string {
+  if (fields.length === 0) return '{}'
+  const parts = fields.map((f) => {
+    const opt = f.optional ? '?' : ''
+    return `${f.name}${opt}: ${f.rawType.trim()}`
+  })
+  return `{ ${parts.join('; ')} }`
 }
 
 /**
@@ -541,9 +556,10 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   cg.write(`${runtimeImportLine(tsMode)}\n`)
   // Auto-import the M8 type API when this module:
   // (a) declares an `interface` (compiles to `type.struct(…)`), or
-  // (b) has a typed `let X: I = { … }` site where `I` is a LOCALLY-
+  // (b) declares an `Exception` (compiles to `type.native(…)`), or
+  // (c) has a typed `let X: I = { … }` site where `I` is a LOCALLY-
   //     declared interface — those get wrapped in `type.tag(I, …)`, or
-  // (c) has any anonymous-interface synthesis (Phase 3) — those need
+  // (d) has any anonymous-interface synthesis (Phase 3) — those need
   //     `type.struct` + `type.tag` both at module level.
   // Cross-module imports we conservatively skip in Phase 2.5; Phase 3c
   // (LSP-driven) will classify imported names too.
@@ -552,6 +568,7 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     program.body.some(
       (s) =>
         s.kind === 'InterfaceDecl' ||
+        s.kind === 'ExceptionDecl' ||
         (s.kind === 'LetDecl' &&
           s.type !== undefined &&
           /^[A-Z]\w*$/.test(s.type.trim()) &&
@@ -792,6 +809,10 @@ class Codegen {
     }
     if (stmt.kind === 'InterfaceDecl') {
       this.emitInterfaceDecl(stmt)
+      return
+    }
+    if (stmt.kind === 'ExceptionDecl') {
+      this.emitExceptionDecl(stmt)
       return
     }
     const decl = stmt
@@ -1198,7 +1219,12 @@ class Codegen {
       if (c.param) {
         this.write(' catch (')
         this.mark(c.paramStart, c.paramEnd, () => this.write(c.param))
-        if (this.tsMode && c.type) this.write(`: ${c.type}`)
+        // TS only allows `unknown` (or `any`) on catch params since 4.0.
+        // Tu's M9 type-aware catch annotation (`catch (e: AError | BError)`)
+        // is consumed by the exception-scope checker; the TS shadow
+        // always emits `: unknown` so tsserver doesn't reject. The body's
+        // `type.is(e, AError)` narrowing produces the right inferred type.
+        if (this.tsMode && c.type) this.write(`: unknown`)
         this.write(') ')
       } else {
         this.write(' catch ')
@@ -1689,6 +1715,77 @@ class Codegen {
    * other than `T | null`, function types, generics) falls back to
    * `type.Object` — sound but lossy until M9 generics + unions land.
    */
+  /**
+   * `Exception XxxError { customAttr?: string }` (M9+):
+   *
+   * Emits a triple-purpose identifier `XxxError`:
+   *   1. TS `interface XxxError extends Error { customAttr?: string }` —
+   *      drives type checking when users annotate `(): R ? XxxError`
+   *      throws-clauses or catch-typed bindings.
+   *   2. A callable factory function: `XxxError(message, props?)` that
+   *      constructs a tagged `Error` instance with `e.name === "XxxError"`,
+   *      stack-trace capture, and the user's custom fields applied.
+   *   3. A native `TypeDescriptor` (M8) merged onto the function so
+   *      `type.is(e, XxxError)` works alongside primitive descriptor
+   *      checks. Discrimination uses `e.name === "XxxError"` (a Tu
+   *      convention) which survives `instanceof` brittleness across
+   *      ES module realm boundaries.
+   *
+   * Construction pattern is FIXED-FORM (no `new` keyword):
+   *   `let err = XxxError("oops", { customAttr: "x" })`
+   * Throwing flows naturally through `throw XxxError(…)`.
+   */
+  private emitExceptionDecl(node: ExceptionDecl): void {
+    if (this.tsMode) {
+      const exp = node.exported ? 'export ' : ''
+      this.write(`${exp}interface `)
+      this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+      this.write(' extends Error {')
+      for (const f of node.fields) {
+        this.write('\n  ')
+        this.mark(f.nameStart, f.nameEnd, () => this.write(f.name))
+        if (f.optional) this.write('?')
+        this.write(': ')
+        this.mark(f.typeStart, f.typeEnd, () => this.write(f.rawType.trim()))
+      }
+      this.write(node.fields.length > 0 ? '\n}\n' : '}\n')
+    }
+    // Runtime: factory function + native descriptor merged via Object.assign.
+    const exp = node.exported ? 'export ' : ''
+    this.write(`${exp}const `)
+    this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    if (this.tsMode) {
+      // The const is callable AND carries the descriptor. Type as the
+      // intersection of a factory signature + TypeDescriptor.
+      const propsType = renderPropsTypeText(node.fields)
+      this.write(`: ((message: string, props?: ${propsType}) => ${node.name}) & __tu_TypeDescriptor`)
+    }
+    // Body: build the factory + descriptor, attach descriptor fields
+    // onto the function so `type.is(e, XxxError)` reaches them.
+    this.write(' = (() => {\n')
+    this.write(`  const factory = (message, props) => {\n`)
+    this.write(`    const e = new Error(message)\n`)
+    this.write(`    e.name = ${JSON.stringify(node.name)}\n`)
+    if (node.fields.length > 0) {
+      this.write(`    if (props) {\n`)
+      for (const f of node.fields) {
+        this.write(`      if (props[${JSON.stringify(f.name)}] !== undefined) `)
+        this.write(`e[${JSON.stringify(f.name)}] = props[${JSON.stringify(f.name)}]\n`)
+      }
+      this.write(`    }\n`)
+    }
+    // Capture stack — `Error.captureStackTrace` is V8-only, optional
+    // chain handles environments lacking it (Bun + Safari).
+    this.write(`    if (Error.captureStackTrace) Error.captureStackTrace(e, factory)\n`)
+    this.write(`    return e\n`)
+    this.write(`  }\n`)
+    // Attach M8 native descriptor so `type.is(e, XxxError)` works.
+    this.write(`  const descriptor = type.native(${JSON.stringify(node.name)}, (v) => `)
+    this.write(`v != null && typeof v === "object" && v.name === ${JSON.stringify(node.name)})\n`)
+    this.write(`  return Object.assign(factory, descriptor)\n`)
+    this.write(`})()`)
+  }
+
   private emitInterfaceDecl(node: InterfaceDecl): void {
     if (this.tsMode) {
       const exp = node.exported ? 'export ' : ''
