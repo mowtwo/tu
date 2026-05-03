@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import ts from 'typescript'
 import { validateCssBlocks } from './css-lsp.js'
+import { checkExceptionScope } from './exception-scope.js'
 import { mapTSRangeToSource } from './source-map.js'
 import {
   buildShadowGraph,
@@ -121,6 +122,11 @@ export function checkTuSource(
         // so the LSP layer can suppress the `[code]` tag in its output.
         code: -1,
       })
+    }
+    // M9 Exception scope (Phase 4) — detect throws not declared in
+    // the function's `(): R ? E1 | E2 => …` clause.
+    for (const exDiag of checkExceptionScope(ast, source)) {
+      tuDiags.push(exDiag)
     }
   } catch {
     // Already covered by the buildShadowGraph compile-error path above.
