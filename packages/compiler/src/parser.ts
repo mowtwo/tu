@@ -1038,7 +1038,16 @@ export class Parser {
       return this.peekObjectLitShape() ? this.parseObjectLit() : this.parseBlock()
     }
     if (k === TokenKind.LBracket) return this.parseArrayLit()
-    if (k === TokenKind.If) return this.parseIfExpr()
+    if (k === TokenKind.If) {
+      // `if let a = expr { … }` — bind-and-test sugar (M9 / Rust-style).
+      // Strict non-null guard (`a !== null && a !== undefined`); the
+      // binding is scoped to the `then` branch by virtue of the wrapping
+      // Block so TS narrows `a` to `NonNullable<T>` inside.
+      if (this.tokens[this.pos + 1]?.kind === TokenKind.Let) {
+        return this.parseIfLetSugar()
+      }
+      return this.parseIfExpr()
+    }
     if (k === TokenKind.For) return this.parseForExpr()
     if (k === TokenKind.Try) return this.parseTryExpr()
     if (k === TokenKind.Throw) return this.parseThrowExpr()
@@ -1943,6 +1952,151 @@ export class Parser {
     return elseBranch === undefined
       ? { kind: 'IfExpr', cond, then, start: ifTok.start, end }
       : { kind: 'IfExpr', cond, then, else: elseBranch, start: ifTok.start, end }
+  }
+
+  /**
+   * `if let a = expr { body } [else { … }]` — bind-and-test sugar.
+   * Desugars at parse-time to an IIFE wrapping a Block so we don't need
+   * a new AST shape (or walker / codegen fanout) AND so we can place
+   * the result anywhere a value-expr is allowed (tag-call children
+   * disallow bare Block):
+   *
+   *   (() => {
+   *     let a = expr
+   *     if ((a !== null) && (a !== undefined)) { body } [else { … }]
+   *   })()
+   *
+   * The double-strict cond is the only way to get nullish narrowing
+   * under Tu's `==` → `===` rewrite, and it's exactly the predicate
+   * tsserver recognizes for `NonNullable<T>` narrowing inside the
+   * `then` branch. RHS is parsed under `noBraceBlock` so the `{` of
+   * the body block doesn't get eaten as a tag-call children block —
+   * mirrors the same trick `parseForExpr` uses for its iter slot.
+   */
+  private parseIfLetSugar(): Expr {
+    const ifTok = this.expect(TokenKind.If)
+    this.expect(TokenKind.Let)
+    const nameTok = this.expect(TokenKind.Ident)
+    let typeText: string | undefined
+    let typeStart: number | undefined
+    let typeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilEquals()
+      typeText = span.text
+      typeStart = span.start
+      typeEnd = span.end
+    }
+    this.expect(TokenKind.Equals)
+    const prev = this.noBraceBlock
+    this.noBraceBlock = true
+    let rhs: Expr
+    try {
+      rhs = this.parseExpr()
+    } finally {
+      this.noBraceBlock = prev
+    }
+    const thenBlock = this.parseBlock()
+    let elseBranch: Block | IfExpr | undefined
+    if (this.peek().kind === TokenKind.Else) {
+      this.pos++
+      if (this.peek().kind === TokenKind.If) {
+        elseBranch = this.parseIfExpr()
+      } else {
+        elseBranch = this.parseBlock()
+      }
+    }
+    const localLet: LocalLet = {
+      kind: 'LocalLet',
+      name: nameTok.text,
+      value: rhs,
+      start: nameTok.start,
+      end: rhs.end,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+    }
+    if (typeText !== undefined) {
+      localLet.type = typeText
+      localLet.typeStart = typeStart!
+      localLet.typeEnd = typeEnd!
+    }
+    const aIdent = (): Ident => ({
+      kind: 'Ident',
+      name: nameTok.text,
+      start: nameTok.start,
+      end: nameTok.end,
+    })
+    const nullIdent = (): Ident => ({
+      kind: 'Ident',
+      name: 'null',
+      start: nameTok.start,
+      end: nameTok.end,
+    })
+    const undefinedIdent = (): Ident => ({
+      kind: 'Ident',
+      name: 'undefined',
+      start: nameTok.start,
+      end: nameTok.end,
+    })
+    const cond: BinaryExpr = {
+      kind: 'BinaryExpr',
+      op: '&&',
+      left: {
+        kind: 'BinaryExpr',
+        op: '!=',
+        left: aIdent(),
+        right: nullIdent(),
+        start: nameTok.start,
+        end: nameTok.end,
+      },
+      right: {
+        kind: 'BinaryExpr',
+        op: '!=',
+        left: aIdent(),
+        right: undefinedIdent(),
+        start: nameTok.start,
+        end: nameTok.end,
+      },
+      start: nameTok.start,
+      end: nameTok.end,
+    }
+    const ifExpr: IfExpr =
+      elseBranch === undefined
+        ? {
+            kind: 'IfExpr',
+            cond,
+            then: thenBlock,
+            start: ifTok.start,
+            end: thenBlock.end,
+          }
+        : {
+            kind: 'IfExpr',
+            cond,
+            then: thenBlock,
+            else: elseBranch,
+            start: ifTok.start,
+            end: elseBranch.end,
+          }
+    const block: Block = {
+      kind: 'Block',
+      body: [localLet, ifExpr],
+      start: ifTok.start,
+      end: ifExpr.end,
+    }
+    const lambda: Lambda = {
+      kind: 'Lambda',
+      params: [],
+      body: block,
+      start: ifTok.start,
+      end: block.end,
+    }
+    return {
+      kind: 'InvokeExpr',
+      callee: lambda,
+      args: [],
+      start: ifTok.start,
+      end: block.end,
+    }
   }
 
   private parseForExpr(): ForExpr {

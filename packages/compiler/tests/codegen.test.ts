@@ -163,6 +163,62 @@ describe('codegen', () => {
     expect(js).toContain('(1 ? (2) : undefined)')
   })
 
+  it('M9 if-let: `if let a = expr { … }` desugars to bind + non-null narrow', () => {
+    const js = compile(`
+      let App = (p) => div {
+        if let user = p.currentUser {
+          "Hi " user.name
+        }
+      }
+    `)
+    // The binding lives as a const inside an IIFE-wrapped block.
+    expect(js).toContain('let user = p.currentUser')
+    // Strict double-null cond — Tu's `==` rewrite means `!=` becomes `!==`,
+    // so we get `(user !== null) && (user !== undefined)` which TS narrows.
+    expect(js).toContain('(user !== null) && (user !== undefined)')
+  })
+
+  it('M9 if-let: TS-emit narrows `a` to NonNullable<T> in the then branch', () => {
+    const ts = compileToTS(`
+      export let App = (p: { currentUser: { name: string } | null }) => div {
+        if let user = p.currentUser {
+          user.name
+        }
+      }
+    `)
+    expect(ts).toContain('let user = p.currentUser')
+    expect(ts).toContain('(user !== null) && (user !== undefined)')
+    // The ts shadow should compile clean — i.e. tsserver narrows `user`
+    // to `{ name: string }` inside the then branch and accepts `.name`.
+    // We rely on compileToTS not throwing as the implicit assertion.
+  })
+
+  it('M9 if-let: optional else branch parses', () => {
+    const js = compile(`
+      let App = (p) => div {
+        if let user = p.user {
+          "logged in: " user.name
+        } else {
+          "anon"
+        }
+      }
+    `)
+    expect(js).toContain('let user = p.user')
+    expect(js).toContain('"logged in: "')
+    expect(js).toContain('"anon"')
+  })
+
+  it('M9 if-let: type annotation on the binder passes through to TS shadow', () => {
+    const ts = compileToTS(`
+      export let App = (p: { user: { name: string } | null }) => div {
+        if let user: { name: string } | null = p.user {
+          user.name
+        }
+      }
+    `)
+    expect(ts).toContain('let user: { name: string } | null = p.user')
+  })
+
   it('emits a for expression as Array.from with shadowed binder', () => {
     const js = compile(`
       let items = 0
