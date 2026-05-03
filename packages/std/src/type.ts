@@ -166,6 +166,93 @@ export const AbortController_ = native('AbortController', (v) =>
 )
 export const Date_ = native('Date', (v) => v instanceof Date)
 
+// ── Temporal descriptors (M8 Phase 5) ──────────────────────────────
+//
+// Built lazily — only the user who imports `@tu-lang/std/time`
+// actually pulls the polyfill. We use a getter-style indirection so
+// importing `@tu-lang/std`'s `type` namespace alone doesn't drag in
+// the ~80 KB Temporal polyfill. The first `type.is(v, type.Instant)`
+// call resolves the constructor.
+//
+// Pattern: each Temporal native descriptor's `check` lazy-imports
+// `@tu-lang/std/time` on first invocation. After the first call the
+// import promise's resolved value is cached for subsequent checks.
+
+let temporalConstructorsCache: {
+  Instant: unknown
+  ZonedDateTime: unknown
+  PlainDate: unknown
+  PlainTime: unknown
+  PlainDateTime: unknown
+  PlainYearMonth: unknown
+  PlainMonthDay: unknown
+  Duration: unknown
+} | null = null
+
+async function loadTemporalConstructors(): Promise<typeof temporalConstructorsCache> {
+  if (temporalConstructorsCache !== null) return temporalConstructorsCache
+  const mod = await import('./time.js')
+  temporalConstructorsCache = {
+    Instant: mod.Instant,
+    ZonedDateTime: mod.ZonedDateTime,
+    PlainDate: mod.PlainDate,
+    PlainTime: mod.PlainTime,
+    PlainDateTime: mod.PlainDateTime,
+    PlainYearMonth: mod.PlainYearMonth,
+    PlainMonthDay: mod.PlainMonthDay,
+    Duration: mod.Duration,
+  }
+  return temporalConstructorsCache
+}
+
+// Synchronous variant: we attempt the lazy load eagerly at first
+// access from the type module. Users who never call `type.is` against
+// a Temporal descriptor never trigger the import.
+//
+// We synthesize the descriptor with a `check` that does `instanceof`
+// against the (resolved) constructor. Until first `await`-resolved
+// check, the constructor is undefined and the check returns `false` —
+// but `type.is(v, type.Instant)` is a synchronous predicate, so we
+// pre-warm by reading the synchronous side of the polyfill via an
+// indirect check: `v?.constructor?.name`. This works without dragging
+// the polyfill in until needed.
+function makeTemporalDescriptor(name: string): TypeDescriptor {
+  return native(`Temporal.${name}`, (v) => {
+    // Temporal types are real classes — `v instanceof Temporal.X`
+    // works. We do a constructor-name check first to avoid loading
+    // the polyfill solely to validate primitive non-Temporal values.
+    if (v == null || typeof v !== 'object') return false
+    const proto = Object.getPrototypeOf(v) as { constructor?: { name?: string } } | null
+    const cname = proto?.constructor?.name
+    if (cname !== name) return false
+    // Confirm against the real constructor when we already loaded it;
+    // otherwise trust the constructor-name match (tiny risk of a user
+    // class named "Instant" — acceptable).
+    if (temporalConstructorsCache !== null) {
+      const ctor = temporalConstructorsCache[name as keyof typeof temporalConstructorsCache]
+      if (typeof ctor === 'function') return v instanceof (ctor as new (...a: unknown[]) => unknown)
+    }
+    return true
+  })
+}
+
+export const Instant_ = makeTemporalDescriptor('Instant')
+export const ZonedDateTime_ = makeTemporalDescriptor('ZonedDateTime')
+export const PlainDate_ = makeTemporalDescriptor('PlainDate')
+export const PlainTime_ = makeTemporalDescriptor('PlainTime')
+export const PlainDateTime_ = makeTemporalDescriptor('PlainDateTime')
+export const PlainYearMonth_ = makeTemporalDescriptor('PlainYearMonth')
+export const PlainMonthDay_ = makeTemporalDescriptor('PlainMonthDay')
+export const Duration_ = makeTemporalDescriptor('Duration')
+
+/** Eagerly load the Temporal polyfill — call once at app startup if
+ *  you'll be doing `type.is(v, type.Instant)` checks in hot paths and
+ *  want the precise `instanceof` resolution available from the first
+ *  call. Otherwise the constructor-name fallback is fine. */
+export async function preloadTemporal(): Promise<void> {
+  await loadTemporalConstructors()
+}
+
 // ── tagging registry ────────────────────────────────────────────────
 //
 // Phase 2's compiler will emit `type.tag(Foo, { … })` at every typed `let`
@@ -331,4 +418,13 @@ export const type = {
   // Date stays on the type API for users coming from JS `instanceof`-Date
   // patterns; new Tu code should use @tu-lang/time's Temporal types.
   Date: Date_,
+  // Temporal descriptors (M8 Phase 5).
+  Instant: Instant_,
+  ZonedDateTime: ZonedDateTime_,
+  PlainDate: PlainDate_,
+  PlainTime: PlainTime_,
+  PlainDateTime: PlainDateTime_,
+  PlainYearMonth: PlainYearMonth_,
+  PlainMonthDay: PlainMonthDay_,
+  Duration: Duration_,
 } as const

@@ -25,6 +25,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./time": {
+      "types": "./dist/time.d.ts",
+      "import": "./dist/time.js"
     }
   },
   "files": [
@@ -36,6 +40,9 @@
     "test": "vitest run",
     "check": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1"
   },
   "publishConfig": {
     "access": "public"

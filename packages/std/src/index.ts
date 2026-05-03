@@ -8,5 +8,15 @@ export const VERSION = '0.0.0'
  */
 export const STD_NAME = '@tu-lang/std'
 
-export { type, of, is, tag, struct, native, Array_, Optional } from './type.js'
+export {
+  type,
+  of,
+  is,
+  tag,
+  struct,
+  native,
+  Array_,
+  Optional,
+  preloadTemporal,
+} from './type.js'
 export type { TypeDescriptor, TypeKind, StructField } from './type.js'
