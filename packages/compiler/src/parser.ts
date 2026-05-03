@@ -1934,6 +1934,48 @@ export class Parser {
 
   private parseLocalLet(): LocalLet {
     const letTok = this.expect(TokenKind.Let)
+    // M9 — destructure pattern `let { a, b } = expr`. RHS provides the
+    // type info via TS inference, so the type annotation slot stays
+    // optional here (unlike param destructuring where the M9-default
+    // `unknown` would otherwise land on the param).
+    if (this.peek().kind === TokenKind.LBrace) {
+      const lbrace = this.expect(TokenKind.LBrace)
+      const fields: string[] = []
+      while (this.peek().kind !== TokenKind.RBrace) {
+        const fieldTok = this.expect(TokenKind.Ident)
+        fields.push(fieldTok.text)
+        if (this.peek().kind === TokenKind.Comma) this.pos++
+      }
+      const rbrace = this.expect(TokenKind.RBrace)
+      let type: string | undefined
+      let typeStart: number | undefined
+      let typeEnd: number | undefined
+      if (this.peek().kind === TokenKind.Colon) {
+        this.pos++
+        const span = this.parseRawTypeUntilEquals()
+        type = span.text
+        typeStart = span.start
+        typeEnd = span.end
+      }
+      this.expect(TokenKind.Equals)
+      const value = this.parseExpr()
+      const out: LocalLet = {
+        kind: 'LocalLet',
+        name: `__tu_destruct_${lbrace.start}`,
+        destructureFields: fields,
+        value,
+        start: letTok.start,
+        end: value.end,
+        nameStart: lbrace.start,
+        nameEnd: rbrace.end,
+      }
+      if (type !== undefined) {
+        out.type = type
+        out.typeStart = typeStart!
+        out.typeEnd = typeEnd!
+      }
+      return out
+    }
     const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
     let typeStart: number | undefined

@@ -275,6 +275,16 @@ export interface LocalLet extends Ranged {
   type?: string
   typeStart?: number
   typeEnd?: number
+  /**
+   * Object-destructure pattern — `let { a, b } = expr`. When present,
+   * codegen emits `let { a, b } = expr` instead of using `name`. The
+   * destructured field names are added to the enclosing block's local
+   * scope so module cells of the same name don't get auto-`.get()`-
+   * wrapped. Mirrors the same shape on `Param.destructureFields`.
+   *
+   * MVP scope: flat object pattern only. No nesting / defaults / rename.
+   */
+  destructureFields?: string[]
 }
 
 export interface TagCall extends Ranged {

@@ -1611,7 +1611,13 @@ class Codegen {
     // trailing expression escapes via `return`.
     const localNames = new Set<string>()
     for (const item of node.body) {
-      if (item.kind === 'LocalLet') localNames.add(item.name)
+      if (item.kind === 'LocalLet') {
+        if (item.destructureFields) {
+          for (const f of item.destructureFields) localNames.add(f)
+        } else {
+          localNames.add(item.name)
+        }
+      }
     }
     if (localNames.size > 0) this.shadowed.push(localNames)
     try {
@@ -1632,7 +1638,13 @@ class Codegen {
     // honor it.
     const localNames = new Set<string>()
     for (const item of node.body) {
-      if (item.kind === 'LocalLet') localNames.add(item.name)
+      if (item.kind === 'LocalLet') {
+        if (item.destructureFields) {
+          for (const f of item.destructureFields) localNames.add(f)
+        } else {
+          localNames.add(item.name)
+        }
+      }
     }
     if (localNames.size > 0) this.shadowed.push(localNames)
     try {
@@ -1729,7 +1741,15 @@ class Codegen {
     // for early-init / late-bind variables and Tu shouldn't make it a
     // const-only language at the local scope.
     this.write('let ')
-    this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    if (node.destructureFields) {
+      // M9 — TS-native object destructuring; emits `{ a, b, c }` so
+      // tsserver narrows each binding from RHS's inferred shape.
+      this.mark(node.nameStart, node.nameEnd, () =>
+        this.write(`{ ${node.destructureFields!.join(', ')} }`)
+      )
+    } else {
+      this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    }
     if (this.tsMode && node.type !== undefined) {
       this.write(`: ${node.type}`)
     }

@@ -150,6 +150,36 @@ describe('compileToTS — type-annotation preservation', () => {
     )
   })
 
+  it('M9: local-let destructuring `let { a, b } = obj` emits TS-native pattern', () => {
+    const ts = compileToTS(`
+      export let f = (obj: { a: number; b: number }) => {
+        let { a, b } = obj
+        a + b
+      }
+    `)
+    // The destructure pattern emits verbatim — TS infers `a` and `b`
+    // from the RHS shape so no annotation is needed.
+    expect(ts).toContain('let { a, b } = obj')
+    // Body refs `a` and `b` as bare idents (no `.get()` since they're
+    // local destructured bindings, not module cells).
+    expect(ts).toContain('a + b')
+  })
+
+  it('M9: local-let destructure shadows module cell of the same name', () => {
+    const ts = compileToTS(`
+      export let count = 0
+      export let f = (obj: { count: number }) => {
+        let { count } = obj
+        count
+      }
+    `)
+    // Inside f, `count` refers to the destructured local — NOT the
+    // top-level cell. Shadow set must include destructure fields.
+    expect(ts).toContain('let { count } = obj')
+    // The function body reads `count` directly without `.get()`.
+    expect(ts).toMatch(/return.*count.*;/)
+  })
+
   it('M9: auto-Props omits the children slot when the lambda already declares a `children` param', () => {
     const ts = compileToTS(
       'export let Wrap = (title: string, children: string) => div { title children }'
