@@ -22,6 +22,15 @@ const demoRoutes = [
   'diff',
   'live',
 ]
+const liveCaseRoutes = [
+  'counter',
+  'composition',
+  'todo',
+  'async-fetch',
+  'form',
+  'js-compat',
+  'types',
+].map((route) => `live/${route}`)
 
 function spaFallback(): Plugin {
   return {
@@ -29,7 +38,7 @@ function spaFallback(): Plugin {
     closeBundle() {
       const index = join(here, 'dist', 'index.html')
       copyFileSync(index, join(here, 'dist', '404.html'))
-      for (const route of demoRoutes) {
+      for (const route of [...demoRoutes, ...liveCaseRoutes]) {
         const dir = join(here, 'dist', route)
         mkdirSync(dir, { recursive: true })
         copyFileSync(index, join(dir, 'index.html'))

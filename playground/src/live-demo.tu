@@ -45,9 +45,25 @@ let liveJsEditor = null
 let liveJsEditorDispose = null
 let liveDtsEditor = null
 let liveDtsEditorDispose = null
+let livePopstateDispose = null
 
 let playgroundBase = external JS (): string {
   return import.meta.env.BASE_URL.replace(/\/$/, "")
+}
+
+let liveCaseHref = (caseId: string): string => (playgroundBase() || "") + "/live/" + caseId
+
+let routeCaseId = external JS (): string | null {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "")
+  let path = window.location.pathname
+  if (base && path.startsWith(base)) path = path.slice(base.length) || "/"
+  const match = /^\/live\/([^/]+)/.exec(path)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+let setCasePickerValue = external JS (caseId: string): void {
+  const picker = document.querySelector(".live-case-picker")
+  if (picker) picker.value = caseId
 }
 
 let revokeBlobs = external JS (urls: string[]): void {
@@ -61,6 +77,7 @@ let stopLivePreview = () => {
   if (liveEditorDispose) { liveEditorDispose(); liveEditorDispose = null }
   if (liveJsEditorDispose) { liveJsEditorDispose(); liveJsEditorDispose = null }
   if (liveDtsEditorDispose) { liveDtsEditorDispose(); liveDtsEditorDispose = null }
+  if (livePopstateDispose) { livePopstateDispose(); livePopstateDispose = null }
   liveEditor = null
   liveJsEditor = null
   liveDtsEditor = null
@@ -359,12 +376,24 @@ let renderFileTabs = (caseDef: CaseDefinition): void => {
   })
 }
 
+let setActiveCaseFromRoute = () => {
+  let fallback = CASES()[0]
+  let requested = routeCaseId()
+  let next = CASES().find((c) => c.id == requested) ?? fallback
+  if (next.id != requested) {
+    history.replaceState(null, "", liveCaseHref(next.id))
+  }
+  setActiveCase(next.id)
+}
+
 let setActiveCase = (caseId: string) => {
   let caseDef = CASES().find((c) => c.id == caseId)
   if (!caseDef) { return }
+  if (liveCurrentCaseId == caseId) { return }
   if (liveModels) { liveModels.forEach((m) => m.dispose()) }
   liveModels = createWorkspaceModels(caseDef)
   liveCurrentCaseId = caseId
+  setCasePickerValue(caseId)
   renderFileTabs(caseDef)
   setActiveFile(caseDef.entry)
   recompileLive()
@@ -432,7 +461,10 @@ let attachLiveCompiler = (): void => {
     opt.textContent = c.label
     caseSelect.appendChild(opt)
   })
-  caseSelect.addEventListener("change", () => setActiveCase(caseSelect.value))
+  caseSelect.addEventListener("change", () => {
+    history.pushState(null, "", liveCaseHref(caseSelect.value))
+    setActiveCase(caseSelect.value)
+  })
 
   let fileTabs = document.createElement("div")
   fileTabs.className = "live-file-tabs"
@@ -543,9 +575,10 @@ let attachLiveCompiler = (): void => {
     }, 250)
   })
 
-  let initial = CASES()[0]
-  caseSelect.value = initial.id
-  setActiveCase(initial.id)
+  let onPopstate = () => setActiveCaseFromRoute()
+  window.addEventListener("popstate", onPopstate)
+  livePopstateDispose = () => window.removeEventListener("popstate", onPopstate)
+  setActiveCaseFromRoute()
   setActiveTab("preview")
 }
 

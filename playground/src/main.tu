@@ -263,6 +263,7 @@ let playgroundRoutes = () => {
     handler: () => demo.id,
   }))
   routes.push({ path: "/live", handler: () => "live" })
+  routes.push({ path: "/live/:caseId", handler: () => "live" })
   return createRouter(routes, { base: routeBase || "/" })
 }
 
@@ -281,7 +282,7 @@ let isPlaygroundHref = (href: string): boolean => {
   if (routeBase) {
     return href == routeBase || href.startsWith(routeBase + "/")
   }
-  return href == "/live" || demos().some((demo) => href == "/" + demo.id)
+  return href == "/live" || href.startsWith("/live/") || demos().some((demo) => href == "/" + demo.id)
 }
 
 let currentRouteId = (): string => {
