@@ -593,6 +593,9 @@ interface BuildResult {
 }
 
 type InferredParamTypes = Map<Lambda, Map<number, string>>
+interface InferredObjectShape {
+  children: Map<string, InferredObjectShape>
+}
 
 /**
  * Per-emit options that the rest of the toolchain (LSP, CLI, vite plugin)
@@ -966,49 +969,85 @@ function inferBodyFirstUseParamTypes(lambda: Lambda): Map<number, string> {
   }
   if (paramNames.size === 0) return new Map()
 
-  const fieldsByParam = new Map<number, Set<string>>()
-  collectParamMemberReads(lambda.body, paramNames, fieldsByParam, new Set())
+  const shapesByParam = new Map<number, InferredObjectShape>()
+  collectParamMemberReads(lambda.body, paramNames, shapesByParam, new Set())
 
   const out = new Map<number, string>()
-  for (const [idx, fields] of fieldsByParam) {
-    if (fields.size === 0) continue
-    const body = [...fields]
-      .sort()
-      .map((field) => `${renderObjectTypeKey(field)}: unknown`)
-      .join('; ')
-    out.set(idx, `{ ${body} }`)
+  for (const [idx, shape] of shapesByParam) {
+    if (shape.children.size === 0) continue
+    out.set(idx, renderInferredObjectShape(shape))
   }
   return out
+}
+
+function emptyInferredObjectShape(): InferredObjectShape {
+  return { children: new Map() }
+}
+
+function addInferredPath(root: InferredObjectShape, path: string[]): void {
+  let cursor = root
+  for (const field of path) {
+    let child = cursor.children.get(field)
+    if (!child) {
+      child = emptyInferredObjectShape()
+      cursor.children.set(field, child)
+    }
+    cursor = child
+  }
+}
+
+function renderInferredObjectShape(shape: InferredObjectShape): string {
+  const fields = [...shape.children.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([field, child]) => {
+      const value = child.children.size > 0 ? renderInferredObjectShape(child) : 'unknown'
+      return `${renderObjectTypeKey(field)}: ${value}`
+    })
+  return `{ ${fields.join('; ')} }`
+}
+
+function memberPathFromParam(expr: Expr, paramNames: ReadonlyMap<string, number>): { idx: number; path: string[] } | undefined {
+  const path: string[] = []
+  let cursor: Expr = expr
+  while (cursor.kind === 'MemberExpr') {
+    path.unshift(cursor.property)
+    cursor = cursor.object
+  }
+  if (cursor.kind !== 'Ident') return undefined
+  const idx = paramNames.get(cursor.name)
+  if (idx === undefined) return undefined
+  if (path.length === 0) return undefined
+  return { idx, path }
 }
 
 function collectParamMemberReads(
   expr: Expr,
   paramNames: ReadonlyMap<string, number>,
-  fieldsByParam: Map<number, Set<string>>,
+  shapesByParam: Map<number, InferredObjectShape>,
   shadowed: ReadonlySet<string>
 ): void {
-  const recordMember = (object: Expr, property: string): void => {
-    if (object.kind !== 'Ident') return
-    if (shadowed.has(object.name)) return
-    const idx = paramNames.get(object.name)
-    if (idx === undefined) return
-    let fields = fieldsByParam.get(idx)
-    if (!fields) {
-      fields = new Set()
-      fieldsByParam.set(idx, fields)
+  const recordMember = (member: MemberExpr): void => {
+    const found = memberPathFromParam(member, paramNames)
+    if (!found) return
+    let root: Expr = member
+    while (root.kind === 'MemberExpr') root = root.object
+    if (root.kind === 'Ident' && shadowed.has(root.name)) return
+    let shape = shapesByParam.get(found.idx)
+    if (!shape) {
+      shape = emptyInferredObjectShape()
+      shapesByParam.set(found.idx, shape)
     }
-    fields.add(property)
+    addInferredPath(shape, found.path)
   }
 
   switch (expr.kind) {
     case 'MemberExpr':
-      recordMember(expr.object, expr.property)
-      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
+      recordMember(expr)
+      collectParamMemberReads(expr.object, paramNames, shapesByParam, shadowed)
       return
     case 'MethodCallExpr':
-      if (expr.property !== '') recordMember(expr.object, expr.property)
-      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
-      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.object, paramNames, shapesByParam, shadowed)
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, shapesByParam, shadowed)
       return
     case 'Lambda': {
       const nextShadowed = new Set(shadowed)
@@ -1019,114 +1058,114 @@ function collectParamMemberReads(
           nextShadowed.add(p.name)
         }
       }
-      collectParamMemberReads(expr.body, paramNames, fieldsByParam, nextShadowed)
+      collectParamMemberReads(expr.body, paramNames, shapesByParam, nextShadowed)
       return
     }
     case 'Block': {
       const nextShadowed = new Set(shadowed)
       for (const item of expr.body) {
         if (item.kind === 'LocalLet') {
-          collectParamMemberReads(item.value, paramNames, fieldsByParam, nextShadowed)
+          collectParamMemberReads(item.value, paramNames, shapesByParam, nextShadowed)
           if (item.destructureFields) {
             for (const f of item.destructureFields) nextShadowed.add(f)
           } else {
             nextShadowed.add(item.name)
           }
         } else {
-          collectParamMemberReads(item, paramNames, fieldsByParam, nextShadowed)
+          collectParamMemberReads(item, paramNames, shapesByParam, nextShadowed)
         }
       }
       return
     }
     case 'CallExpr':
-      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
-      for (const arg of expr.namedArgs ?? []) collectParamMemberReads(arg.value, paramNames, fieldsByParam, shadowed)
-      for (const child of expr.children ?? []) collectParamMemberReadsFromChild(child, paramNames, fieldsByParam, shadowed)
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, shapesByParam, shadowed)
+      for (const arg of expr.namedArgs ?? []) collectParamMemberReads(arg.value, paramNames, shapesByParam, shadowed)
+      for (const child of expr.children ?? []) collectParamMemberReadsFromChild(child, paramNames, shapesByParam, shadowed)
       return
     case 'TagCall':
-      for (const prop of expr.props) collectParamMemberReads(prop.value, paramNames, fieldsByParam, shadowed)
-      for (const child of expr.children) collectParamMemberReadsFromChild(child, paramNames, fieldsByParam, shadowed)
+      for (const prop of expr.props) collectParamMemberReads(prop.value, paramNames, shapesByParam, shadowed)
+      for (const child of expr.children) collectParamMemberReadsFromChild(child, paramNames, shapesByParam, shadowed)
       return
     case 'ArrayLit':
-      for (const item of expr.elements) collectParamMemberReads(item, paramNames, fieldsByParam, shadowed)
+      for (const item of expr.elements) collectParamMemberReads(item, paramNames, shapesByParam, shadowed)
       return
     case 'ObjectLit':
       for (const prop of expr.properties) {
-        if (prop.kind === 'ObjectSpread') collectParamMemberReads(prop.arg, paramNames, fieldsByParam, shadowed)
-        else collectParamMemberReads(prop.value, paramNames, fieldsByParam, shadowed)
+        if (prop.kind === 'ObjectSpread') collectParamMemberReads(prop.arg, paramNames, shapesByParam, shadowed)
+        else collectParamMemberReads(prop.value, paramNames, shapesByParam, shadowed)
       }
       return
     case 'IndexExpr':
-      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.index, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.object, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.index, paramNames, shapesByParam, shadowed)
       return
     case 'MemberAssignExpr':
-      collectParamMemberReads(expr.target, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.target, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.value, paramNames, shapesByParam, shadowed)
       return
     case 'InvokeExpr':
-      collectParamMemberReads(expr.callee, paramNames, fieldsByParam, shadowed)
-      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.callee, paramNames, shapesByParam, shadowed)
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, shapesByParam, shadowed)
       return
     case 'AssignExpr':
-      collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.value, paramNames, shapesByParam, shadowed)
       return
     case 'BinaryExpr':
-      collectParamMemberReads(expr.left, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.right, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.left, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.right, paramNames, shapesByParam, shadowed)
       return
     case 'UnaryExpr':
     case 'NonNullAssertExpr':
     case 'AsExpr':
     case 'AwaitExpr':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'IfExpr':
-      collectParamMemberReads(expr.cond, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.then, paramNames, fieldsByParam, shadowed)
-      if (expr.else) collectParamMemberReads(expr.else, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.cond, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.then, paramNames, shapesByParam, shadowed)
+      if (expr.else) collectParamMemberReads(expr.else, paramNames, shapesByParam, shadowed)
       return
     case 'ForExpr': {
-      collectParamMemberReads(expr.iter, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.iter, paramNames, shapesByParam, shadowed)
       const nextShadowed = new Set(shadowed)
       nextShadowed.add(expr.item)
-      collectParamMemberReads(expr.body, paramNames, fieldsByParam, nextShadowed)
+      collectParamMemberReads(expr.body, paramNames, shapesByParam, nextShadowed)
       return
     }
     case 'TryExpr':
-      collectParamMemberReads(expr.body, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.body, paramNames, shapesByParam, shadowed)
       if (expr.catchClause) {
         const nextShadowed = new Set(shadowed)
         if (expr.catchClause.param) nextShadowed.add(expr.catchClause.param)
-        collectParamMemberReads(expr.catchClause.body, paramNames, fieldsByParam, nextShadowed)
+        collectParamMemberReads(expr.catchClause.body, paramNames, shapesByParam, nextShadowed)
       }
-      if (expr.finallyClause) collectParamMemberReads(expr.finallyClause, paramNames, fieldsByParam, shadowed)
+      if (expr.finallyClause) collectParamMemberReads(expr.finallyClause, paramNames, shapesByParam, shadowed)
       return
     case 'TernaryExpr':
-      collectParamMemberReads(expr.cond, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.then, paramNames, fieldsByParam, shadowed)
-      collectParamMemberReads(expr.else, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.cond, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.then, paramNames, shapesByParam, shadowed)
+      collectParamMemberReads(expr.else, paramNames, shapesByParam, shadowed)
       return
     case 'NewExpr':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'UpdateExpr':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'TemplateLit':
-      for (const part of expr.expressions) collectParamMemberReads(part, paramNames, fieldsByParam, shadowed)
+      for (const part of expr.expressions) collectParamMemberReads(part, paramNames, shapesByParam, shadowed)
       return
     case 'SpreadElement':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'ThrowExpr':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'ReturnExpr':
-      if (expr.value) collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      if (expr.value) collectParamMemberReads(expr.value, paramNames, shapesByParam, shadowed)
       return
     case 'ImportExpr':
-      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.arg, paramNames, shapesByParam, shadowed)
       return
     case 'ExternalLambda':
     case 'StringLit':
@@ -1143,11 +1182,11 @@ function collectParamMemberReads(
 function collectParamMemberReadsFromChild(
   child: Child,
   paramNames: ReadonlyMap<string, number>,
-  fieldsByParam: Map<number, Set<string>>,
+  shapesByParam: Map<number, InferredObjectShape>,
   shadowed: ReadonlySet<string>
 ): void {
   if (child === null || typeof child !== 'object') return
-  collectParamMemberReads(child, paramNames, fieldsByParam, shadowed)
+  collectParamMemberReads(child, paramNames, shapesByParam, shadowed)
 }
 
 function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): string | undefined {

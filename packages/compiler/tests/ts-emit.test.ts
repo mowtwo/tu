@@ -66,6 +66,20 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const label = (card: { title: unknown }) =>')
   })
 
+  it('M9 Phase D: body-use inference handles nested member chains', () => {
+    const ts = compileToTS(`
+      let label = (user) => user.profile.name
+    `)
+    expect(ts).toContain('const label = (user: { profile: { name: unknown } }) =>')
+  })
+
+  it('M9 Phase D: body-use inference merges nested sibling fields', () => {
+    const ts = compileToTS(`
+      let label = (user) => [user.profile.name, user.profile.age]
+    `)
+    expect(ts).toContain('const label = (user: { profile: { age: unknown; name: unknown } }) =>')
+  })
+
   it('M9 Phase D: callsite inference wins over body-use fallback', () => {
     const ts = compileToTS(`
       let label = (card) => card.title
