@@ -1,6 +1,7 @@
 import {
   classifyTopLevel,
-  compileToTSWithMap,
+  generateTSWithMap,
+  inferBundleParamTypes,
   parse,
   tokenize,
   type CellKind,
@@ -161,16 +162,21 @@ export function buildShadowGraph(
   const parsed = bfsParseGraph(rootSource, rootFilename, inMemorySources)
   const exportKinds = collectDirectExportKinds(parsed)
   const exportedInterfaces = collectExportedInterfaceNames(parsed)
+  const programs = new Map<string, Program>()
+  for (const [filename, file] of parsed) programs.set(filename, file.ast)
+  const inferredParamTypesByFile = inferBundleParamTypes(programs)
   const shadows = new Map<string, Shadow>()
   for (const file of parsed.values()) {
     const importedNameKinds = buildImportedNameKinds(file, exportKinds)
     const importedInterfaceNames = buildImportedInterfaceNames(file, exportedInterfaces)
     let compiled
     try {
-      compiled = compileToTSWithMap(file.source, {
-        filename: file.filename,
+      compiled = generateTSWithMap(file.ast, file.source, file.filename, {
         ...(importedNameKinds ? { importedNameKinds } : {}),
         ...(importedInterfaceNames ? { importedInterfaceNames } : {}),
+        ...(inferredParamTypesByFile.get(file.filename)
+          ? { inferredParamTypes: inferredParamTypesByFile.get(file.filename) }
+          : {}),
       })
     } catch {
       // Should not happen — bfsParseGraph already proved this file parses.

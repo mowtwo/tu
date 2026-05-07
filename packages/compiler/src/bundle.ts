@@ -17,7 +17,7 @@
 // in scope.
 
 import { canonicalizeShapes, type CanonicalDescriptor } from './canonicalize.js'
-import { generateTSWithMap, generateWithMap } from './codegen.js'
+import { generateTSWithMap, generateWithMap, inferBundleParamTypes } from './codegen.js'
 import { tokenize } from './lexer.js'
 import { parse } from './parser.js'
 import type { CompileResult } from './index.js'
@@ -93,6 +93,7 @@ export function compileBundle(
 
   // Phase 2 — canonicalize across the whole bundle.
   const canonical = canonicalizeShapes(programs)
+  const inferredParamTypesByFile = inferBundleParamTypes(programs)
 
   // Phase 3 — emit each file with the per-file canonical map injected.
   const files = new Map<string, CompileResult>()
@@ -103,6 +104,7 @@ export function compileBundle(
       filename: input.filename,
       canonicalNamesForFile,
       canonicalImportPath: sharedImportPath,
+      inferredParamTypes: inferredParamTypesByFile.get(input.filename),
     }
     const result = emitTS
       ? generateTSWithMap(ast, input.source, input.filename, compileOptions)

@@ -99,6 +99,68 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     expect(aOut).toContain('export const User: __tu_TypeDescriptor =')
   })
 
+  it('M9 Phase D: TS bundle infers exported lambda params from direct cross-file callsites', () => {
+    const inputs: BundleInput[] = [
+      {
+        filename: 'components/Card.tu',
+        source: 'export let Card = (props) => props.title',
+      },
+      {
+        filename: 'app/App.tu',
+        source: [
+          'import { Card } from "../components/Card.tu"',
+          'export let App = () => Card({ title: "Tu", count: 1 })',
+        ].join('\n'),
+      },
+    ]
+    const bundle = compileBundle(inputs, { emitTS: true })
+    const cardOut = bundle.files.get('components/Card.tu')!.code
+    expect(cardOut).toContain('export const Card = (props: { title: string; count: number }) =>')
+  })
+
+  it('M9 Phase D: TS bundle widens exported lambda params across files', () => {
+    const inputs: BundleInput[] = [
+      {
+        filename: 'lib/echo.tu',
+        source: 'export let echo = (value) => value',
+      },
+      {
+        filename: 'a.tu',
+        source: 'import { echo } from "./lib/echo.tu"\nlet a = echo(1)',
+      },
+      {
+        filename: 'b.tu',
+        source: 'import { echo } from "./lib/echo.tu"\nlet b = echo("two")',
+      },
+    ]
+    const bundle = compileBundle(inputs, { emitTS: true })
+    const echoOut = bundle.files.get('lib/echo.tu')!.code
+    expect(echoOut).toContain('export const echo = (value: number | string) =>')
+  })
+
+  it('M9 Phase D: TS bundle follows re-exported cross-file callsites', () => {
+    const inputs: BundleInput[] = [
+      {
+        filename: 'components/Card.tu',
+        source: 'export let Card = (props) => props.title',
+      },
+      {
+        filename: 'components/index.tu',
+        source: 'export { Card } from "./Card.tu"',
+      },
+      {
+        filename: 'app/App.tu',
+        source: [
+          'import { Card } from "../components/index.tu"',
+          'export let App = () => Card({ title: "Tu" })',
+        ].join('\n'),
+      },
+    ]
+    const bundle = compileBundle(inputs, { emitTS: true })
+    const cardOut = bundle.files.get('components/Card.tu')!.code
+    expect(cardOut).toContain('export const Card = (props: { title: string }) =>')
+  })
+
   it('respects sharedImportPath / sharedOutputPath options', () => {
     const inputs: BundleInput[] = [
       { filename: 'a.tu', source: 'export interface X { a: number }' },

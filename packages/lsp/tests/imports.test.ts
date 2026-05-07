@@ -104,6 +104,35 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     expect(appShadow.ts).not.toMatch(/\[count\]/) // no bare-ident read
   })
 
+  it('M9 Phase D: imported untyped lambdas infer params from cross-file callsites', async () => {
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (props) => props.title\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./Card.tu"',
+      'export let App = () => Card({ title: "Tu", count: 1 })',
+    ].join('\n')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const cardShadow = shadows.get(tuPathToTs(cardPath))!
+    expect(cardShadow.ts).toContain('export const Card = (props: { title: string; count: number }) =>')
+  })
+
+  it('M9 Phase D: re-exported untyped lambdas infer params from cross-file callsites', async () => {
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const cardPath = join(tmp, 'Card.tu')
+    writeFileSync(cardPath, 'export let Card = (props) => props.title\n')
+    writeFileSync(join(tmp, 'index.tu'), 'export { Card } from "./Card.tu"\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import { Card } from "./index.tu"',
+      'export let App = () => Card({ title: "Tu" })',
+    ].join('\n')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const cardShadow = shadows.get(tuPathToTs(cardPath))!
+    expect(cardShadow.ts).toContain('export const Card = (props: { title: string }) =>')
+  })
+
   it('cycles are tolerated (a imports b imports a)', () => {
     // Slightly contrived but valid: two .tu files each export something the
     // other imports. The BFS should terminate via the seen-set.

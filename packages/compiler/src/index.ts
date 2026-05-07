@@ -6,10 +6,10 @@ export const VERSION = '0.0.0'
 
 export { Lexer, tokenize } from './lexer.js'
 export { Parser, parse } from './parser.js'
-export { classifyTopLevel, generate, generateTSWithMap, generateWithMap, getScopedClassMap, setMarkdownHighlight } from './codegen.js'
+export { classifyTopLevel, generate, generateTSWithMap, generateWithMap, getScopedClassMap, inferBundleParamTypes, setMarkdownHighlight } from './codegen.js'
 export { TokenKind, type Token } from './tokens.js'
 export { formatError, lineColAt } from './diagnostics.js'
-export type { CellKind, CodegenOptions, SourceMapV3, TokenMapping } from './codegen.js'
+export type { CellKind, CodegenOptions, InferredParamTypes, SourceMapV3, TokenMapping } from './codegen.js'
 export type * from './ast.js'
 
 // M8 Phase 6 — cross-module type canonicalizer (algorithm core).

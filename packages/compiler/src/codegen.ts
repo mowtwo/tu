@@ -592,7 +592,7 @@ interface BuildResult {
   tokenMappings: TokenMapping[]
 }
 
-type InferredParamTypes = Map<Lambda, Map<number, string>>
+export type InferredParamTypes = Map<Lambda, Map<number, string>>
 interface InferredObjectShape {
   children: Map<string, InferredObjectShape>
 }
@@ -646,6 +646,13 @@ export interface CodegenOptions {
    */
   canonicalNamesForFile?: ReadonlyMap<string, string>
   canonicalImportPath?: string
+  /**
+   * Extra parameter inference supplied by a graph-aware caller. Standalone
+   * codegen can infer same-file callsites on its own; bundle/LSP callers can
+   * add cross-file callsite evidence keyed by the actual Lambda nodes parsed
+   * for this file.
+   */
+  inferredParamTypes?: InferredParamTypes
 }
 
 function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): BuildResult {
@@ -698,7 +705,7 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   if (opts?.canonicalNamesForFile) {
     rewriteAnonDeclsForCanonical(synth, opts.canonicalNamesForFile)
   }
-  const inferredParamTypes = inferTopLevelParamTypes(program)
+  const inferredParamTypes = inferTopLevelParamTypes(program, opts?.inferredParamTypes)
   const cg = new Codegen(
     cells,
     scopes,
@@ -898,7 +905,10 @@ function analyzeScopedComponents(program: Program): Map<string, ScopeCtx> {
   return out
 }
 
-function inferTopLevelParamTypes(program: Program): InferredParamTypes {
+function inferTopLevelParamTypes(
+  program: Program,
+  extraCallsiteParamTypes?: ReadonlyMap<Lambda, ReadonlyMap<number, string>>
+): InferredParamTypes {
   const functions = new Map<string, Lambda>()
   const valueTypes = new Map<string, string>()
   for (const stmt of program.body) {
@@ -915,6 +925,7 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
 
   const inferred: InferredParamTypes = new Map()
   collectCallsiteParamTypes(program, functions, valueTypes, inferred)
+  mergeInferredParamTypeMaps(inferred, extraCallsiteParamTypes)
 
   const returnTypes = inferTopLevelFunctionReturnTypes(functions, inferred, valueTypes)
   for (const stmt of program.body) {
@@ -925,6 +936,7 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
   }
 
   collectCallsiteParamTypes(program, functions, valueTypes, inferred)
+  mergeInferredParamTypeMaps(inferred, extraCallsiteParamTypes)
 
   for (const lambda of functions.values()) {
     const bodyShapes = inferBodyFirstUseParamTypes(lambda)
@@ -942,6 +954,173 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
     }
   }
   return inferred
+}
+
+export function inferBundleParamTypes(programs: ReadonlyMap<string, Program>): Map<string, InferredParamTypes> {
+  const exportedFunctions = collectExportedFunctions(programs)
+
+  const out = new Map<string, InferredParamTypes>()
+  for (const [filename, program] of programs) {
+    const valueTypes = collectTopLevelValueTypes(program)
+    const importedFunctions = collectImportedFunctions(filename, program, programs, exportedFunctions)
+    if (importedFunctions.size === 0) continue
+
+    for (const stmt of program.body) {
+      collectCallsFromStmt(stmt, (call) => {
+        const target = importedFunctions.get(call.callee)
+        if (!target) return
+        if (call.namedArgs && call.namedArgs.length > 0) return
+        const lambda = target.lambda
+        for (let i = 0; i < call.args.length && i < lambda.params.length; i++) {
+          const p = lambda.params[i]!
+          if (p.type !== undefined || p.destructureFields) continue
+          const t = inferExprTsType(call.args[i]!, valueTypes)
+          if (!t) continue
+          let byFile = out.get(target.filename)
+          if (!byFile) {
+            byFile = new Map()
+            out.set(target.filename, byFile)
+          }
+          let byParam = byFile.get(lambda)
+          if (!byParam) {
+            byParam = new Map()
+            byFile.set(lambda, byParam)
+          }
+          byParam.set(i, mergeInferredTypes(byParam.get(i), t))
+        }
+      })
+    }
+  }
+
+  return out
+}
+
+type ExportedFunctionTarget = { filename: string; lambda: Lambda }
+
+function collectExportedFunctions(programs: ReadonlyMap<string, Program>): Map<string, Map<string, ExportedFunctionTarget>> {
+  const out = new Map<string, Map<string, ExportedFunctionTarget>>()
+  for (const [filename, program] of programs) {
+    const exports = new Map<string, ExportedFunctionTarget>()
+    for (const stmt of program.body) {
+      if (stmt.kind !== 'LetDecl') continue
+      if (!stmt.exported || stmt.value.kind !== 'Lambda') continue
+      exports.set(stmt.name, { filename, lambda: stmt.value })
+    }
+    out.set(filename, exports)
+  }
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [filename, program] of programs) {
+      const exports = out.get(filename)!
+      for (const stmt of program.body) {
+        if (stmt.kind !== 'ReExportDecl') continue
+        const targetFilename = resolveTuImport(filename, stmt.source, programs)
+        if (!targetFilename) continue
+        const targetExports = out.get(targetFilename)
+        if (!targetExports) continue
+        for (const name of stmt.names) {
+          if (exports.has(name)) continue
+          const target = targetExports.get(name)
+          if (!target) continue
+          exports.set(name, target)
+          changed = true
+        }
+      }
+    }
+  }
+
+  return out
+}
+
+function collectTopLevelValueTypes(program: Program): Map<string, string> {
+  const valueTypes = new Map<string, string>()
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    if (stmt.type !== undefined) {
+      valueTypes.set(stmt.name, stmt.type.trim())
+      continue
+    }
+    if (stmt.value.kind === 'Lambda') continue
+    const inferredValueType = inferExprTsType(stmt.value, valueTypes)
+    if (inferredValueType) valueTypes.set(stmt.name, inferredValueType)
+  }
+  return valueTypes
+}
+
+function collectImportedFunctions(
+  filename: string,
+  program: Program,
+  programs: ReadonlyMap<string, Program>,
+  exportedFunctions: ReadonlyMap<string, ReadonlyMap<string, ExportedFunctionTarget>>
+): Map<string, ExportedFunctionTarget> {
+  const out = new Map<string, ExportedFunctionTarget>()
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'ImportDecl') continue
+    const targetFilename = resolveTuImport(filename, stmt.source, programs)
+    if (!targetFilename) continue
+    const exports = exportedFunctions.get(targetFilename)
+    if (!exports) continue
+    for (const name of stmt.names) {
+      const target = exports.get(name)
+      if (target) out.set(name, target)
+    }
+  }
+  return out
+}
+
+function resolveTuImport(
+  fromFilename: string,
+  source: string,
+  programs: ReadonlyMap<string, Program>
+): string | undefined {
+  if (!source.endsWith('.tu')) return undefined
+  const candidates = source.startsWith('.')
+    ? [normalizeTuPath(`${dirnameOfTuPath(fromFilename)}/${source}`), normalizeTuPath(source)]
+    : [normalizeTuPath(source)]
+  for (const candidate of candidates) {
+    if (programs.has(candidate)) return candidate
+  }
+  return undefined
+}
+
+function dirnameOfTuPath(filename: string): string {
+  const normalized = normalizeTuPath(filename)
+  const idx = normalized.lastIndexOf('/')
+  return idx >= 0 ? normalized.slice(0, idx) : '.'
+}
+
+function normalizeTuPath(path: string): string {
+  const absolute = path.startsWith('/')
+  const parts: string[] = []
+  for (const raw of path.split('/')) {
+    if (!raw || raw === '.') continue
+    if (raw === '..') {
+      parts.pop()
+      continue
+    }
+    parts.push(raw)
+  }
+  return `${absolute ? '/' : ''}${parts.join('/')}`
+}
+
+function mergeInferredParamTypeMaps(
+  base: InferredParamTypes,
+  extra: ReadonlyMap<Lambda, ReadonlyMap<number, string>> | undefined
+): InferredParamTypes {
+  if (!extra) return base
+  for (const [lambda, byParamExtra] of extra) {
+    let byParam = base.get(lambda)
+    if (!byParam) {
+      byParam = new Map()
+      base.set(lambda, byParam)
+    }
+    for (const [idx, typeText] of byParamExtra) {
+      byParam.set(idx, mergeInferredTypes(byParam.get(idx), typeText))
+    }
+  }
+  return base
 }
 
 function collectCallsiteParamTypes(
