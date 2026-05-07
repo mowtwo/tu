@@ -53,6 +53,26 @@ describe('runCheck — `tu check` integration', () => {
     expect(stdout).toMatch(/\^\^/)
   })
 
+  it('exits 0 and counts warnings for deprecated positional component calls', () => {
+    const file = join(tmp, 'warn.tu')
+    writeFileSync(
+      file,
+      'let Card = (label: string) => p { label }\nexport let App = () => Card("hi")\n'
+    )
+    let stdout = ''
+    const result = runCheck([file], {
+      cwd: tmp,
+      writeOut: (s) => (stdout += s),
+      writeErr: () => {},
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.errorCount).toBe(0)
+    expect(result.warningCount).toBe(1)
+    expect(stdout).toMatch(/warn\.tu:2:\d+: WARNING/)
+    expect(stdout).toContain('positional component call')
+    expect(stdout).toMatch(/1 file OK \(1 warning\)/)
+  })
+
   it('exits 1 with a clear error when no files are passed', () => {
     let stderr = ''
     const result = runCheck([], {

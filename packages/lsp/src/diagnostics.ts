@@ -1,4 +1,4 @@
-import { compileToTSWithMap, parse, tokenize } from '@tu-lang/compiler'
+import { compileToTSWithMap, lineColAt, parse, tokenize, type Child, type Expr, type Program, type Stmt } from '@tu-lang/compiler'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import ts from 'typescript'
@@ -128,6 +128,9 @@ export function checkTuSource(
     for (const exDiag of checkExceptionScope(ast, source)) {
       tuDiags.push(exDiag)
     }
+    for (const deprecationDiag of checkDeprecatedPositionalComponentCalls(ast, source)) {
+      tuDiags.push(deprecationDiag)
+    }
   } catch {
     // Already covered by the buildShadowGraph compile-error path above.
   }
@@ -170,4 +173,150 @@ function translateDiagnostic(d: ts.Diagnostic, shadow: Shadow): TuDiagnostic {
 export function checkTuFile(path: string): TuDiagnostic[] {
   const source = readFileSync(path, 'utf-8')
   return checkTuSource(source, path)
+}
+
+function checkDeprecatedPositionalComponentCalls(program: Program, source: string): TuDiagnostic[] {
+  const out: TuDiagnostic[] = []
+  const visit = (expr: Expr): void => {
+    switch (expr.kind) {
+      case 'CallExpr':
+        if (isDeprecatedPositionalComponentCall(expr)) {
+          const lc = lineColAt(source, expr.calleeStart)
+          out.push({
+            line: lc.line - 1,
+            col: lc.col - 1,
+            length: Math.max(1, expr.calleeEnd - expr.calleeStart),
+            severity: 'warning',
+            message:
+              `positional component call '${expr.callee}(...)' is deprecated; ` +
+              `use named props such as '${expr.callee}(prop: value)' and pass children with a trailing block.`,
+            code: -1,
+          })
+        }
+        for (const arg of expr.args) visit(arg)
+        for (const arg of expr.namedArgs ?? []) visit(arg.value)
+        for (const child of expr.children ?? []) visitChild(child)
+        return
+      case 'TagCall':
+        for (const prop of expr.props) visit(prop.value)
+        for (const child of expr.children) visitChild(child)
+        return
+      case 'Lambda':
+        visit(expr.body)
+        return
+      case 'Block':
+        for (const item of expr.body) {
+          if (item.kind === 'LocalLet') visit(item.value)
+          else visit(item)
+        }
+        return
+      case 'ArrayLit':
+        for (const item of expr.elements) visit(item)
+        return
+      case 'ObjectLit':
+        for (const prop of expr.properties) {
+          if (prop.kind === 'ObjectSpread') visit(prop.arg)
+          else {
+            if (prop.computedKey) visit(prop.computedKey)
+            visit(prop.value)
+          }
+        }
+        return
+      case 'MemberExpr':
+        visit(expr.object)
+        return
+      case 'IndexExpr':
+        visit(expr.object)
+        visit(expr.index)
+        return
+      case 'MethodCallExpr':
+        visit(expr.object)
+        for (const arg of expr.args) visit(arg)
+        return
+      case 'InvokeExpr':
+        visit(expr.callee)
+        for (const arg of expr.args) visit(arg)
+        return
+      case 'AssignExpr':
+        visit(expr.value)
+        return
+      case 'MemberAssignExpr':
+        visit(expr.target)
+        visit(expr.value)
+        return
+      case 'BinaryExpr':
+        visit(expr.left)
+        visit(expr.right)
+        return
+      case 'UnaryExpr':
+      case 'NonNullAssertExpr':
+      case 'AsExpr':
+      case 'AwaitExpr':
+      case 'SpreadElement':
+      case 'ThrowExpr':
+      case 'NewExpr':
+      case 'ImportExpr':
+      case 'UpdateExpr':
+        visit(expr.arg)
+        return
+      case 'IfExpr':
+        visit(expr.cond)
+        visit(expr.then)
+        if (expr.else) visit(expr.else)
+        return
+      case 'ForExpr':
+        visit(expr.iter)
+        visit(expr.body)
+        return
+      case 'TryExpr':
+        visit(expr.body)
+        if (expr.catchClause) visit(expr.catchClause.body)
+        if (expr.finallyClause) visit(expr.finallyClause)
+        return
+      case 'TernaryExpr':
+        visit(expr.cond)
+        visit(expr.then)
+        visit(expr.else)
+        return
+      case 'TemplateLit':
+        for (const part of expr.expressions) visit(part)
+        return
+      case 'ReturnExpr':
+        if (expr.value) visit(expr.value)
+        return
+      case 'ExternalLambda':
+      case 'StringLit':
+      case 'NumberLit':
+      case 'Ident':
+      case 'ClassRef':
+      case 'StyleBlock':
+      case 'MarkdownBlock':
+      case 'RegexLit':
+        return
+    }
+  }
+  const visitStmt = (stmt: Stmt): void => {
+    switch (stmt.kind) {
+      case 'LetDecl':
+        visit(stmt.value)
+        return
+      case 'InterfaceDecl':
+      case 'TypeAlias':
+      case 'ExceptionDecl':
+      case 'ImportDecl':
+      case 'ReExportDecl':
+        return
+    }
+  }
+  const visitChild = (child: Child): void => {
+    if (child !== null && typeof child === 'object') visit(child)
+  }
+  for (const stmt of program.body) visitStmt(stmt)
+  return out
+}
+
+function isDeprecatedPositionalComponentCall(expr: Extract<Expr, { kind: 'CallExpr' }>): boolean {
+  if (expr.namedArgs !== undefined) return false
+  if (!/^[A-Z]/.test(expr.callee)) return false
+  return expr.args.length > 0 || expr.children !== undefined
 }

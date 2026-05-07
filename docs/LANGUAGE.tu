@@ -253,9 +253,9 @@ export let Page = () => div {
     convention):
 
     - **Lowercase** identifier → `h("tag", props, children)` (HTML element)
-    - **Uppercase** identifier → `Callee(args, [children])` (component
-      function call). tsserver sees the call as a real function — hover,
-      goto-definition, and completion all work on the component name.
+    - **Uppercase** identifier → `Callee(props)` (component function call).
+      tsserver sees the call as a real function — hover, goto-definition,
+      and completion all work on the component name.
 
     ### Bare tag with children
 
@@ -280,7 +280,9 @@ export let Page = () => div {
 
     ### Component invocation
 
-    Components support **two calling conventions** (M6.1):
+    Components use named props. Legacy positional calls still compile during
+    the alpha cycle, but the LSP and `tu check` warn so code can migrate
+    before removal.
 
     **1. Named-arg form** — props delivered as a single object, like HTML:
 
@@ -304,7 +306,7 @@ export let Page = () => div {
     All props are optional by construction — call `Card()`, `Card(title:
     "x")`, or `Card(title: "x") { p { "body" } }` all work.
 
-    **2. Positional form** — legacy M5.x shape, kept for backward compat:
+    **Legacy positional form** — deprecated M5.x shape:
 
     ```tu
     let Card = (name: string, children: Child[]) => .card() {
@@ -314,8 +316,10 @@ export let Page = () => div {
     let App = () => Card("Alice") { p { "Body content" } }
     ```
 
-    The parser disambiguates by peeking the first token after `(`: an
-    `Ident :` opener triggers named-arg; anything else stays positional.
+    This still emits unchanged for backward compatibility, but editor and
+    `tu check` diagnostics point at `Card` and ask for named props. The parser
+    disambiguates by peeking the first token after `(`: an `Ident :` opener
+    triggers named-arg; anything else stays positional.
 
     `children` is an array of children that the runtime's flatten step
     splices into the parent's children list at render time. **Use `Child[]`

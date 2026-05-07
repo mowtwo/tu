@@ -20,26 +20,26 @@ afterEach(() => {
 describe('checkTuSource — cross-`.tu` import resolution', () => {
   it('clean cross-file composition produces zero diagnostics', () => {
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
     expect(checkTuSource(appSrc, appPath)).toEqual([])
   })
 
   it('passing the wrong arg type to an imported component errors at the call site', () => {
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card(42)',
+      'export let App = () => Card(label: 42)',
     ].join('\n')
     const diags = checkTuSource(appSrc, appPath)
     expect(diags.length).toBeGreaterThan(0)
-    // Error lands on the App line (1, 0-based) — where Card(42) is called.
+    // Error lands on the App line (1, 0-based) — where Card(label: 42) is called.
     expect(diags[0]?.line).toBe(1)
     expect(diags[0]?.message.toLowerCase()).toMatch(/number|string/)
   })
@@ -61,7 +61,7 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
 
   it('re-exports pass through types correctly', () => {
     // Card.tu: source of truth
-    writeFileSync(join(tmp, 'Card.tu'), 'export let Card = (label: string) => p { label }\n')
+    writeFileSync(join(tmp, 'Card.tu'), 'export let Card = (props: { label?: string }) => p { props.label }\n')
     // index.tu: re-exports Card
     writeFileSync(
       join(tmp, 'index.tu'),
@@ -71,13 +71,13 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     const appPath = join(tmp, 'App.tu')
     const goodSrc = [
       'import { Card } from "./index.tu"',
-      'export let App = () => Card("hello")',
+      'export let App = () => Card(label: "hello")',
     ].join('\n')
     expect(checkTuSource(goodSrc, appPath)).toEqual([])
     // Same scenario with a wrong arg type — should still error at App's call site.
     const badSrc = [
       'import { Card } from "./index.tu"',
-      'export let App = () => Card(42)',
+      'export let App = () => Card(label: 42)',
     ].join('\n')
     const diags = checkTuSource(badSrc, appPath)
     expect(diags.length).toBeGreaterThan(0)
@@ -219,11 +219,11 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
   it('in-memory edits to a non-root file are seen by the root analysis', () => {
     // Disk version of Card.tu has the wrong signature.
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (count: number) => p { count }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { count?: number }) => p { props.count }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
     // Without an in-memory override, the disk Card expects a number — App
     // passing "hi" is a type error.
@@ -232,7 +232,7 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     // Now override Card.tu in-memory with a string-accepting version. The
     // analysis should pick up the in-memory text and pass clean.
     const inMem = new Map<string, string>([
-      [cardPath, 'export let Card = (label: string) => p { label }\n'],
+      [cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n'],
     ])
     expect(checkTuSource(appSrc, appPath, inMem)).toEqual([])
   })
@@ -244,14 +244,14 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     writeFileSync(
       cardPath,
       [
-        'export let Card = (label: string) => p { label }',
+        'export let Card = (props: { label?: string }) => p { props.label }',
         'export let helper = (n: number) => n + 1',
       ].join('\n')
     )
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
     // Cursor inside the quoted source on line 0.
     // `import { Card } from "./Card.tu"` — `"` starts at col 21, path runs
@@ -267,11 +267,11 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
 
   it('goto-definition on the source string of an import jumps to the resolved file', () => {
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
     // Cursor mid-path of the import string on line 0.
     const defs = definitionAtTuPosition(appSrc, appPath, 0, 25)
@@ -297,13 +297,13 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
 
   it('hover on identifier in import statement is NOT shadowed by the import-source helper', () => {
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (label: string) => p { label }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
-    // Cursor on the call site `Card("hi")` on line 1, col 23. Should
+    // Cursor on the call site `Card(label: "hi")` on line 1, col 23. Should
     // produce a TS-shaped hover (signature), not the path-module hover.
     const hover = hoverAtTuPosition(appSrc, appPath, 1, 24)
     expect(hover).not.toBeNull()
@@ -318,15 +318,15 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     // First check uses disk version. Second check uses in-memory override
     // for the SAME root source — the cache must rebuild.
     const cardPath = join(tmp, 'Card.tu')
-    writeFileSync(cardPath, 'export let Card = (count: number) => p { count }\n')
+    writeFileSync(cardPath, 'export let Card = (props: { count?: number }) => p { props.count }\n')
     const appPath = join(tmp, 'App.tu')
     const appSrc = [
       'import { Card } from "./Card.tu"',
-      'export let App = () => Card("hi")',
+      'export let App = () => Card(label: "hi")',
     ].join('\n')
     expect(checkTuSource(appSrc, appPath).length).toBeGreaterThan(0)
     const inMem = new Map<string, string>([
-      [cardPath, 'export let Card = (label: string) => p { label }\n'],
+      [cardPath, 'export let Card = (props: { label?: string }) => p { props.label }\n'],
     ])
     expect(checkTuSource(appSrc, appPath, inMem)).toEqual([])
     // And going back to disk-only should resurface the error (cache must

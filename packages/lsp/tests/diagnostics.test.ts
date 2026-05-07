@@ -98,6 +98,28 @@ describe('checkTuSource — diagnostic round-trip', () => {
     expect(classDiag!.col).toBe(25)
   })
 
+  it('M9: warns on deprecated positional component calls', () => {
+    const src = [
+      'let Card = (props: { title?: string }) => p { props.title }',
+      'export let App = () => Card("hi")',
+    ].join('\n')
+    const diags = checkTuSource(src, 'positional-component.tu')
+    const warning = diags.find((d) => d.message.includes('positional component call'))
+    expect(warning).toBeDefined()
+    expect(warning!.severity).toBe('warning')
+    expect(warning!.line).toBe(1)
+    expect(warning!.col).toBe(23)
+  })
+
+  it('M9: named-arg component calls do not warn', () => {
+    const src = [
+      'let Card = (props: { title?: string }) => p { props.title }',
+      'export let App = () => Card(title: "hi")',
+    ].join('\n')
+    const diags = checkTuSource(src, 'named-component.tu')
+    expect(diags.some((d) => d.message.includes('positional component call'))).toBe(false)
+  })
+
   it('squiggles the offending RHS literal in a state-cell assignment', () => {
     // `count.set("not a number")` — TS reports on `"not a number"`. The
     // string literal in the source spans `"not a number"` (15 chars).
