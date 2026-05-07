@@ -32,6 +32,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
     "./server": {
       "import": "./dist/server.js",
       "default": "./dist/server.js"

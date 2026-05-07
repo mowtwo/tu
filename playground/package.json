@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tu-lang/dom": "workspace:*",
+    "@tu-lang/lsp": "workspace:*",
     "@tu-lang/router": "workspace:*",
     "@tu-lang/runtime": "workspace:*",
     "@tu-lang/std": "workspace:*",

@@ -17,6 +17,7 @@ import {
   clearCompileErrorsOn,
   createTuEditor,
   createWorkspaceModels,
+  refreshTuLspDiagnostics,
   setCompileErrorOn,
 } from "./monaco-tu.tu"
 import { CASES, CaseDefinition, CaseFile } from "./live-cases.tu"
@@ -271,6 +272,7 @@ let recompileLive = async (): Promise<void> => {
     content: liveModels.get(f.path)?.getValue() ?? f.content,
   }))
   liveModels.forEach((m) => clearCompileErrorsOn(m))
+  refreshTuLspDiagnostics(liveModels)
   refreshOutputViews()
   let App = null
   try {

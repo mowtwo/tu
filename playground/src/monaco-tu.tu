@@ -20,6 +20,14 @@
 
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api"
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker"
+import { tokenize, TokenKind } from "@tu-lang/compiler"
+import {
+  completionsAtTuBrowserPosition,
+  definitionAtTuBrowserPosition,
+  diagnosticsAtTuBrowserFile,
+  hoverAtTuBrowserPosition,
+  referencesAtTuBrowserPosition,
+} from "@tu-lang/lsp/browser"
 // Basic-languages contributions register JS / TS / CSS / HTML token
 // providers (for syntax highlighting only — no type checking, no LSP).
 // We need them so the read-only JS / .d.ts views in the live editor
@@ -238,6 +246,7 @@ let defineTuTheme = external JS (monaco: any) {
     rules: [
       { token: "comment", foreground: "6b7280", fontStyle: "italic" },
       { token: "keyword.control", foreground: "c084fc", fontStyle: "bold" },
+      { token: "keyword", foreground: "c084fc", fontStyle: "bold" },
       { token: "constant.language", foreground: "fb923c" },
       { token: "string", foreground: "86efac" },
       { token: "string.quote", foreground: "86efac" },
@@ -245,6 +254,9 @@ let defineTuTheme = external JS (monaco: any) {
       { token: "constant.character.escape", foreground: "fde68a" },
       { token: "number", foreground: "fb923c" },
       { token: "type", foreground: "7dd3fc" },
+      { token: "class", foreground: "c4b5fd" },
+      { token: "variable", foreground: "e2e8f0" },
+      { token: "property", foreground: "93c5fd" },
       { token: "type.identifier", foreground: "fde68a" },
       { token: "type.component", foreground: "c4b5fd" },
       { token: "regexp", foreground: "fca5a5" },
@@ -279,6 +291,94 @@ let defineTuTheme = external JS (monaco: any) {
 let _registerLang = registerTuLanguage(monaco)
 let _registerTheme = defineTuTheme(monaco)
 
+let registerTuSemanticTokens = external JS (monaco: any, tokenize: any, TokenKind: any): void {
+  const tokenTypes = [
+    "keyword", "variable", "type", "class", "property",
+    "string", "number", "regexp", "comment", "operator",
+  ]
+  const legend = { tokenTypes, tokenModifiers: [] }
+  const keywordKinds = new Set([
+    TokenKind.Let, TokenKind.Export, TokenKind.Import, TokenKind.From,
+    TokenKind.If, TokenKind.Else, TokenKind.For, TokenKind.In,
+    TokenKind.Try, TokenKind.Catch, TokenKind.Finally, TokenKind.Throw,
+    TokenKind.Return, TokenKind.Async, TokenKind.Await, TokenKind.External,
+    TokenKind.New,
+  ])
+  const typeWords = new Set([
+    "string", "number", "boolean", "void", "unknown", "never",
+    "object", "bigint", "symbol", "Child", "VNode", "Event",
+    "Promise", "RegExp", "Error",
+  ])
+  const constants = new Set(["true", "false", "null"])
+  function typeIndex(name) { return tokenTypes.indexOf(name) }
+  function lineStarts(src) {
+    const starts = [0]
+    for (let i = 0; i < src.length; i++) if (src.charCodeAt(i) === 10) starts.push(i + 1)
+    return starts
+  }
+  function lineCol(starts, offset) {
+    let lo = 0, hi = starts.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (starts[mid] <= offset) lo = mid + 1
+      else hi = mid - 1
+    }
+    const line = Math.max(0, lo - 1)
+    return { line, col: offset - starts[line] }
+  }
+  monaco.languages.registerDocumentSemanticTokensProvider("tu", {
+    getLegend: () => legend,
+    provideDocumentSemanticTokens(model) {
+      const src = model.getValue()
+      let toks
+      try { toks = tokenize(src, model.uri.path) } catch { return { data: new Uint32Array(0) } }
+      const starts = lineStarts(src)
+      const rows = []
+      for (let i = 0; i < toks.length; i++) {
+        const t = toks[i]
+        if (t.kind === TokenKind.Eof || t.end <= t.start) continue
+        let typ = null
+        if (keywordKinds.has(t.kind)) typ = "keyword"
+        else if (t.kind === TokenKind.Ident) {
+          if (constants.has(t.text)) typ = "keyword"
+          else if (typeWords.has(t.text)) typ = "type"
+          else if (/^[A-Z]/.test(t.text)) typ = "type"
+          else typ = "variable"
+        } else if (t.kind === TokenKind.String || t.kind === TokenKind.TemplateChunk || t.kind === TokenKind.Backtick) typ = "string"
+        else if (t.kind === TokenKind.Number) typ = "number"
+        else if (t.kind === TokenKind.Regex) typ = "regexp"
+        else if (
+          t.kind === TokenKind.Plus || t.kind === TokenKind.Minus || t.kind === TokenKind.Star ||
+          t.kind === TokenKind.StarStar || t.kind === TokenKind.Slash || t.kind === TokenKind.Percent ||
+          t.kind === TokenKind.EqEq || t.kind === TokenKind.NotEq || t.kind === TokenKind.Gt ||
+          t.kind === TokenKind.Lt || t.kind === TokenKind.GtEq || t.kind === TokenKind.LtEq ||
+          t.kind === TokenKind.OrOr || t.kind === TokenKind.AndAnd || t.kind === TokenKind.QuestionQuestion ||
+          t.kind === TokenKind.QuestionDot || t.kind === TokenKind.FatArrow
+        ) typ = "operator"
+        if (!typ) continue
+        const start = lineCol(starts, t.start)
+        const end = lineCol(starts, t.end)
+        if (start.line !== end.line) continue
+        rows.push([start.line, start.col, Math.max(1, t.end - t.start), typeIndex(typ), 0])
+      }
+      rows.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+      const data = []
+      let lastLine = 0
+      let lastCol = 0
+      for (const row of rows) {
+        const lineDelta = row[0] - lastLine
+        const colDelta = lineDelta === 0 ? row[1] - lastCol : row[1]
+        data.push(lineDelta, colDelta, row[2], row[3], row[4])
+        lastLine = row[0]
+        lastCol = row[1]
+      }
+      return { data: new Uint32Array(data) }
+    },
+    releaseDocumentSemanticTokens: () => {},
+  })
+}
+let _registerSemanticTokens = registerTuSemanticTokens(monaco, tokenize, TokenKind)
+
 // Stash the monaco namespace globally so peer .tu modules (live-demo)
 // can spawn read-only editors / models without re-importing it (Tu
 // doesn't yet have a clean way to share a namespace import between
@@ -296,7 +396,13 @@ let _stashed = _stashMonaco(monaco)
 //     (`let X = …`, `export let X`, `type X`)
 //   - Hover showing the source of any declaration we can find
 //   - Go-to-definition jumps to the first matching `let X` in any model
-let registerTuLangServices = external JS (monaco: any): void {
+let registerTuLangServices = external JS (
+  monaco: any,
+  hoverAtTuBrowserPosition: any,
+  completionsAtTuBrowserPosition: any,
+  definitionAtTuBrowserPosition: any,
+  referencesAtTuBrowserPosition: any,
+): void {
   const TU_KEYWORDS = [
     "let", "export", "default", "import", "from", "as",
     "interface", "type", "enum", "Exception",
@@ -504,6 +610,36 @@ let registerTuLangServices = external JS (monaco: any): void {
     return src.slice(lineStart, lineEnd === -1 ? src.length : lineEnd)
   }
 
+  function workspaceFiles() {
+    return monaco.editor.getModels()
+      .filter((m) => m.getLanguageId() === "tu")
+      .map((m) => ({ path: m.uri.path, source: m.getValue() }))
+  }
+  function monacoRange(loc) {
+    return {
+      startLineNumber: loc.line + 1,
+      startColumn: loc.col + 1,
+      endLineNumber: loc.line + 1,
+      endColumn: loc.col + 1 + Math.max(1, loc.length),
+    }
+  }
+  function completionKind(kind) {
+    switch (kind) {
+      case "keyword": return CompletionItemKind.Keyword
+      case "const": return CompletionItemKind.Constant
+      case "var": return CompletionItemKind.Variable
+      case "let": return CompletionItemKind.Variable
+      case "function": return CompletionItemKind.Function
+      case "method": return CompletionItemKind.Method
+      case "property": return CompletionItemKind.Property
+      case "class": return CompletionItemKind.Class
+      case "interface": return CompletionItemKind.Interface
+      case "type": return CompletionItemKind.TypeParameter
+      case "enum": return CompletionItemKind.Enum
+      default: return CompletionItemKind.Text
+    }
+  }
+
   monaco.languages.registerCompletionItemProvider("tu", {
     triggerCharacters: [".", " ", "<"],
     provideCompletionItems(model, position) {
@@ -515,8 +651,28 @@ let registerTuLangServices = external JS (monaco: any): void {
         endColumn: word.endColumn,
       }
       const suggestions = []
+      const lspItems = completionsAtTuBrowserPosition(
+        workspaceFiles(),
+        model.uri.path,
+        position.lineNumber - 1,
+        position.column - 1,
+      )
+      const seen = new Set()
+      for (const item of lspItems) {
+        seen.add(item.label)
+        suggestions.push({
+          label: item.label,
+          kind: completionKind(item.kind),
+          insertText: item.insertText ?? item.label,
+          detail: item.detail,
+          documentation: item.documentation,
+          sortText: item.sortText,
+          range,
+        })
+      }
       // Snippets.
       for (const s of SNIPPETS) {
+        if (seen.has(s.label)) continue
         suggestions.push({
           label: s.label,
           kind: CompletionItemKind.Snippet,
@@ -527,16 +683,20 @@ let registerTuLangServices = external JS (monaco: any): void {
           range,
         })
       }
-      // Keywords.
+      // Keywords/snippets remain UI sugar; symbol/type knowledge comes
+      // from the shared browser LSP above.
       for (const k of TU_KEYWORDS) {
+        if (seen.has(k)) continue
         suggestions.push({ label: k, kind: CompletionItemKind.Keyword, insertText: k, range })
       }
       // Constants.
       for (const c of TU_CONSTANTS) {
+        if (seen.has(c)) continue
         suggestions.push({ label: c, kind: CompletionItemKind.Constant, insertText: c, range })
       }
       // HTML tags.
       for (const tag of HTML_TAGS) {
+        if (seen.has(tag)) continue
         suggestions.push({
           label: tag,
           kind: CompletionItemKind.Class,
@@ -546,120 +706,57 @@ let registerTuLangServices = external JS (monaco: any): void {
           range,
         })
       }
-      // Symbols from THIS file + every other open model in the workspace
-      // (so cross-file `let X` in another tab shows up here too).
-      const allModels = monaco.editor.getModels()
-      const seen = new Set()
-      for (const m of allModels) {
-        if (m.getLanguageId() !== "tu") continue
-        for (const d of parseModel(m)) {
-          if (seen.has(d.name)) continue
-          seen.add(d.name)
-          const isCurrent = m === model
-          suggestions.push({
-            label: d.name,
-            kind: d.kind === "type" ? CompletionItemKind.TypeParameter : CompletionItemKind.Variable,
-            detail: d.kind === "type"
-              ? (d.exported ? "exported type" : "type")
-              : (d.exported ? "exported binding" : "binding") + (isCurrent ? "" : ` (${m.uri.path})`),
-            insertText: d.name,
-            range,
-          })
-        }
-      }
       return { suggestions }
     },
   })
 
   monaco.languages.registerHoverProvider("tu", {
     provideHover(model, position) {
-      const word = model.getWordAtPosition(position)
-      if (!word) return null
-      // Search this model first, then peers.
-      const models = [model, ...monaco.editor.getModels().filter((m) => m !== model && m.getLanguageId() === "tu")]
-      for (const m of models) {
-        const decl = parseModel(m).find((d) => d.name === word.word)
-        if (decl) {
-          const where = m === model ? "" : ` (in ${m.uri.path})`
-          const text = snippetText(m, decl)
-          return {
-            contents: [
-              { value: `**${word.word}**${where}` },
-              { value: "```tu\n" + text.trim() + "\n```" },
-            ],
-          }
-        }
-      }
-      return null
+      const info = hoverAtTuBrowserPosition(
+        workspaceFiles(),
+        model.uri.path,
+        position.lineNumber - 1,
+        position.column - 1,
+      )
+      if (!info) return null
+      const contents = [{ value: "```typescript\n" + info.contents + "\n```" }]
+      if (info.documentation) contents.push({ value: info.documentation })
+      return { contents, range: monacoRange(info) }
     },
   })
 
   monaco.languages.registerDefinitionProvider("tu", {
     provideDefinition(model, position) {
-      const word = model.getWordAtPosition(position)
-      if (!word) return null
-      for (const m of monaco.editor.getModels()) {
-        if (m.getLanguageId() !== "tu") continue
-        const decl = parseModel(m).find((d) => d.name === word.word)
-        if (decl) {
-          const ln = lineForOffset(m.getValue(), decl.offset)
-          // The decl's `offset` is the start of `let`/`export let`; jump
-          // to the column of the name (offset by `let ` keyword).
-          const before = m.getValue().slice(decl.offset, decl.offset + decl.len)
-          const nameStart = decl.offset + before.lastIndexOf(decl.name)
-          const lineStart = m.getValue().lastIndexOf("\n", nameStart - 1) + 1
-          const colStart = nameStart - lineStart + 1
-          return {
-            uri: m.uri,
-            range: {
-              startLineNumber: ln,
-              startColumn: colStart,
-              endLineNumber: ln,
-              endColumn: colStart + decl.name.length,
-            },
-          }
-        }
-      }
-      return null
+      const defs = definitionAtTuBrowserPosition(
+        workspaceFiles(),
+        model.uri.path,
+        position.lineNumber - 1,
+        position.column - 1,
+      )
+      return defs.map((d) => ({ uri: monaco.Uri.parse(d.uri), range: monacoRange(d) }))
     },
   })
 
-  // Reference provider — find every occurrence of the symbol name in
-  // any Tu model. Word-boundary regex; skips comments + strings.
   monaco.languages.registerReferenceProvider("tu", {
     provideReferences(model, position) {
-      const word = model.getWordAtPosition(position)
-      if (!word) return []
-      const refs = []
-      const re = new RegExp(`\\b${word.word.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\b`, "g")
-      for (const m of monaco.editor.getModels()) {
-        if (m.getLanguageId() !== "tu") continue
-        const src = m.getValue()
-        let match
-        while ((match = re.exec(src)) !== null) {
-          // Skip if inside a // comment.
-          const lineStart = src.lastIndexOf("\n", match.index - 1) + 1
-          const linePrefix = src.slice(lineStart, match.index)
-          if (linePrefix.includes("//")) continue
-          const ln = lineForOffset(src, match.index)
-          const col = match.index - lineStart + 1
-          refs.push({
-            uri: m.uri,
-            range: {
-              startLineNumber: ln,
-              startColumn: col,
-              endLineNumber: ln,
-              endColumn: col + word.word.length,
-            },
-          })
-        }
-      }
-      return refs
+      return referencesAtTuBrowserPosition(
+        workspaceFiles(),
+        model.uri.path,
+        position.lineNumber - 1,
+        position.column - 1,
+        true,
+      ).map((r) => ({ uri: monaco.Uri.parse(r.uri), range: monacoRange(r) }))
     },
   })
 }
 
-let _registerServices = registerTuLangServices(monaco)
+let _registerServices = registerTuLangServices(
+  monaco,
+  hoverAtTuBrowserPosition,
+  completionsAtTuBrowserPosition,
+  definitionAtTuBrowserPosition,
+  referencesAtTuBrowserPosition,
+)
 
 // Mount a Tu-flavored Monaco editor into `host`. Returns the editor
 // instance plus a teardown that disposes the editor + its model. The
@@ -679,6 +776,7 @@ export let createTuEditor = (host: HTMLElement, initialValue: string) => {
     tabSize: 2,
     insertSpaces: true,
     bracketPairColorization: { enabled: true },
+    "semanticHighlighting.enabled": true,
     guides: { indentation: true, bracketPairs: true },
     smoothScrolling: true,
     cursorSmoothCaretAnimation: "on",
@@ -754,4 +852,35 @@ export let setCompileErrorOn = external JS (model: unknown, message: string, lin
 
 export let clearCompileErrorsOn = external JS (model: unknown): void {
   monaco.editor.setModelMarkers(model, "tu-compile", [])
+}
+
+export let refreshTuLspDiagnostics = external JS (models: unknown): void {
+  if (!models) return
+  const files = []
+  models.forEach((model) => {
+    files.push({ path: model.uri.path, source: model.getValue() })
+  })
+  models.forEach((model) => {
+    const diags = diagnosticsAtTuBrowserFile(files, model.uri.path)
+    monaco.editor.setModelMarkers(model, "tu-lsp", diags.map((d) => {
+      const severity =
+        d.severity === "error"
+          ? monaco.MarkerSeverity.Error
+          : d.severity === "warning"
+            ? monaco.MarkerSeverity.Warning
+            : d.severity === "hint"
+              ? monaco.MarkerSeverity.Hint
+              : monaco.MarkerSeverity.Info
+      return {
+        severity,
+        startLineNumber: d.line + 1,
+        startColumn: d.col + 1,
+        endLineNumber: d.line + 1,
+        endColumn: d.col + 1 + Math.max(1, d.length),
+        message: d.message,
+        code: d.code >= 0 ? String(d.code) : undefined,
+        source: "tu-lsp",
+      }
+    }))
+  })
 }
