@@ -1056,6 +1056,11 @@ export class Parser {
     if (k === TokenKind.New) {
       const tok = this.peek()
       this.pos++ // consume `new`
+      if (this.peek().kind === TokenKind.Ident && this.peek().text === 'Date') {
+        throw this.error(
+          `'new Date(…)' is banned in Tu source. Use \`@tu-lang/std/time\` Temporal helpers instead — Date's mutable, timezone-implicit API is intentionally kept out of Tu.`
+        )
+      }
       const arg = this.parsePostfix(this.parsePrefix())
       // M9 ban: `new Array(n)` — single-numeric-arg ctor produces a
       // sparse-length array, the JS-Array footgun source. Use `[…]`
@@ -2272,6 +2277,11 @@ export class Parser {
       if (t.text === 'with') {
         throw this.error(
           `'with' is banned in Tu source. Destructure or pass explicit objects instead; implicit scope mutation is not part of Tu.`
+        )
+      }
+      if (t.text === 'Date') {
+        throw this.error(
+          `'Date' is banned in Tu source. Import \`now\`, \`Instant\`, or other Temporal helpers from \`@tu-lang/std/time\` instead.`
         )
       }
       this.pos++

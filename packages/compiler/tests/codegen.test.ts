@@ -1032,9 +1032,8 @@ describe('codegen', () => {
     expect(() => compile('let f = (c) => c ? "y" : "n"')).toThrow(/ternary.*banned.*if cond/i)
   })
 
-  it('M6.5: `new` operator (still allowed for genuine constructors like Error/Date)', () => {
+  it('M6.5: `new` operator (still allowed for genuine constructors like Error)', () => {
     expect(compile('let err = () => new Error("bad")')).toContain('(new Error("bad"))')
-    expect(compile('let d = () => new Date().getTime()')).toContain('(new Date().getTime())')
   })
 
   it('M9: `new Array(n)` is BANNED — use `[…]` literal instead', () => {
@@ -1043,6 +1042,10 @@ describe('codegen', () => {
 
   it('M9: `new Date()` is BANNED — use std/time Temporal helpers', () => {
     expect(() => compile('let now = new Date()')).toThrow(/new Date.*banned.*std\/time/i)
+  })
+
+  it('M9: bare `Date` is BANNED — use std/time Temporal helpers', () => {
+    expect(() => compile('let stamp = Date.now()')).toThrow(/'Date'.*banned.*std\/time/i)
   })
 
   it('M9: prefix `++` is BANNED', () => {

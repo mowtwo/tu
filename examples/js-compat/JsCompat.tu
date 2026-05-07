@@ -21,6 +21,7 @@
 //     index-based array swap).
 
 import { Fragment } from "@tu-lang/runtime"
+import { now } from "@tu-lang/std/time"
 
 // ── Types ───────────────────────────────────────────────────────────
 interface Todo { id: number; title: string; done: boolean }
@@ -119,10 +120,10 @@ type LoadResult =
   | { tag: "err"; message: string }
 
 export let loadProfile = async (id: number): Promise<LoadResult> => {
-  let started = Date.now()
+  let started = now.instant().epochMilliseconds
   try {
     let user = await fakeFetchUser(id)
-    return { tag: "ok", user, took: `${Date.now() - started}ms` }
+    return { tag: "ok", user, took: `${now.instant().epochMilliseconds - started}ms` }
   } catch (e: unknown) {
     let message = e?.message ?? String(e)
     return { tag: "err", message }

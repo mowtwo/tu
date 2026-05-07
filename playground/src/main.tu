@@ -12,6 +12,7 @@
 //      live-demo.js to keep it out of the initial bundle.
 
 import { mount } from "@tu-lang/dom"
+import { now } from "@tu-lang/std/time"
 
 import * as Sidebar from "./Sidebar.tu"
 import * as Header from "./StageHeader.tu"
@@ -151,7 +152,7 @@ let demos = () => [
         label: "insert middle",
         run: () => {
           let arr = [...DiffMod.items.get()]
-          let fresh = `New ${Date.now() % 1000}`
+          let fresh = `New ${now.instant().epochMilliseconds % 1000}`
           arr.splice(Math.floor(arr.length / 2), 0, fresh)
           DiffMod.items.set(arr)
         },
