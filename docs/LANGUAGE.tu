@@ -435,7 +435,7 @@ export let Page = () => div {
     `computed(expr)` cells are invalidated when any cell read by `expr`
     changes. Assigning to a computed cell is a compile error.
 
-    `mount(thunk, container)` from `@tu-lang/runtime` wires a thunk into the DOM
+    `mount(thunk, container)` from `@tu-lang/dom` wires a thunk into the DOM
     and re-renders on cell mutation. The keyed diff reuses element identity
     across renders (M1.7); LIS-based reorder minimizes moves on long-range
     list shuffles (M1.15).
@@ -603,6 +603,7 @@ export let Page = () => div {
 
     - **`@tu-lang/runtime`** — the *universal* half. `Signal`, `h`, `Fragment`, `VNode`, `Child`, `renderToString`, `renderPage`, `renderPageHtml`, `renderToStringAsync`, `renderPageAsync`, `renderToStream`, `Suspense`, `TuRenderError`. Compiled Tu auto-imports `Signal` / `h` / `Fragment` from here. Safe to use from Node, edge runtimes, Cloudflare Workers — anywhere without a `document`.
     - **`@tu-lang/dom`** — the *browser* half. `mount`, `hydrate`, `defineCustomElement`, plus typed re-exports of the standard DOM types your Tu code touches (`Event`, `MouseEvent`, `HTMLInputElement`, `Node`, `Element`, `RequestInit`, `AbortController`, …). Anything that touches `document` lives behind an explicit `import { … } from "@tu-lang/dom"`.
+    - **`@tu-lang/router`** — the DOM-free route layer. `createRouter` handles static, `:param`, and `*splat` patterns with deployment base stripping; `renderRoute`, `renderRouteToString`, and `renderRouteToStream` connect matched handlers to the SSR runtime.
 
     Typical browser entry:
 
@@ -620,6 +621,15 @@ export let Page = () => div {
     import { Page } from "./Page.tu"
 
     let html = await renderPageAsync(() => Page(), { title: "Hi" })
+    ```
+
+    Typical routed SSR entry:
+
+    ```ts
+    import { createRouter, renderRoute } from "@tu-lang/router"
+
+    const router = createRouter([{ path: "/users/:id", handler: ({ params }) => User({ id: params.id }) }])
+    const html = await renderRoute(router, "/users/alice", { title: "User" })
     ```
 
     The split is enforced at the *runtime-function* layer today. Strict type-level isolation (dropping `lib.dom` from the LSP shadow so unused DOM globals can't sneak in) is tracked in DEFERRED.
@@ -730,18 +740,15 @@ export let Page = () => div {
 
     ## What's not in V1
 
-    See [DEFERRED](./DEFERRED) for the live list. As of M6.11 the notable gaps are:
+    See [DEFERRED](./DEFERRED) for the live list. As of M9 the notable gaps are:
 
     - **Generic syntax on Tu declarations** — `interface Box<T>` and generic
       component declarations remain deferred.
     - **Lifecycle hooks + element ref sugar** — no `onMount` / `onUnmount`; no Vue-2-style explicit `ref`.
-    - **Router** — Tu has no built-in routing yet; tu-shu loads pages by file discovery, but there's no general router (M7 milestone).
-    - **`as` type assertion** — no `expr as Type` cast; route through `external JS` for now.
+    - **File-based app router** — `@tu-lang/router` provides route matching and SSR helpers; Next.js-style `app/[slug]/page.tu` discovery, layouts, loaders, and server functions remain deferred.
     - **Per-component fine-grained HMR** — full module re-import on save.
     - **Local reactivity** — full thunk re-runs on cell mutation; per-binding
       patches are deeper rework.
-    - **CSS4 nesting / `@layer` / `@scope`** — needs a real CSS parser; the
-      regex-based scanner handles most flat selectors today.
     - **Style ↔ JS state interop** — design pending; cells don't auto-bind to CSS variables yet.
     - **Qwik-style resumability** — hydrate re-runs the first-frame thunk; serialized listener references are future work.
 

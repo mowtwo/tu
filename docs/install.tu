@@ -14,10 +14,10 @@ export let Page = () => div {
 
     ```sh
     pnpm add -D @tu-lang/vite@alpha @tu-lang/compiler@alpha
-    pnpm add @tu-lang/runtime@alpha @tu-lang/dom@alpha
+    pnpm add @tu-lang/runtime@alpha @tu-lang/dom@alpha @tu-lang/router@alpha
     ```
 
-    `@tu-lang/runtime` is universal — Signals, vnode construction, SSR helpers (`renderToString`, `renderPageAsync`, `renderToStream`, `Suspense`). `@tu-lang/dom` is the browser side — `mount`, `hydrate`, `defineCustomElement`, plus typed re-exports of common DOM types. Server-only consumers (Node SSR, edge functions) only need `@tu-lang/runtime`. See [LANGUAGE: Runtime + platform packages](./LANGUAGE#runtime--platform-packages).
+    `@tu-lang/runtime` is universal — Signals, vnode construction, SSR helpers (`renderToString`, `renderPageAsync`, `renderToStream`, `Suspense`). `@tu-lang/dom` is the browser side — `mount`, `hydrate`, `defineCustomElement`, plus typed re-exports of common DOM types. `@tu-lang/router` adds DOM-free route matching and SSR render helpers. Server-only consumers (Node SSR, edge functions) usually need `@tu-lang/runtime` and optionally `@tu-lang/router`. See [LANGUAGE: Runtime + platform packages](./LANGUAGE#runtime--platform-packages).
 
     ```ts
     // vite.config.ts
@@ -83,7 +83,9 @@ export let Page = () => div {
 
     | Package | Role | Stage |
     |---|---|---|
-    | [`@tu-lang/runtime`](https://www.npmjs.com/package/@tu-lang/runtime) | Signal cells + DOM glue (`h`, `mount`, `hydrate`, `renderToString`, `Fragment`, `defineCustomElement`) | alpha |
+    | [`@tu-lang/runtime`](https://www.npmjs.com/package/@tu-lang/runtime) | Universal Signals, vnode construction, SSR, Suspense, and streaming helpers | alpha |
+    | [`@tu-lang/dom`](https://www.npmjs.com/package/@tu-lang/dom) | Browser-only `mount`, `hydrate`, `defineCustomElement`, diffing, and DOM type re-exports | alpha |
+    | [`@tu-lang/router`](https://www.npmjs.com/package/@tu-lang/router) | Universal route matching plus SSR helpers (`createRouter`, `renderRoute`, `renderRouteToStream`) | alpha |
     | [`@tu-lang/compiler`](https://www.npmjs.com/package/@tu-lang/compiler) | Lexer / parser / codegen / source maps | alpha |
     | [`@tu-lang/vite`](https://www.npmjs.com/package/@tu-lang/vite) | Vite plugin — load `.tu` modules on import | alpha |
     | [`@tu-lang/lsp`](https://www.npmjs.com/package/@tu-lang/lsp) | Language server (diagnostics + hover + completion + def + rename) | alpha |

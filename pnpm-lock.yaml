@@ -328,6 +328,12 @@ importers:
         specifier: ^1.0.12
         version: 1.0.12
 
+  packages/router:
+    dependencies:
+      '@tu-lang/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/runtime:
     dependencies:
       signal-polyfill:
@@ -345,6 +351,9 @@ importers:
       '@tu-lang/compiler':
         specifier: workspace:*
         version: link:../compiler
+      '@tu-lang/router':
+        specifier: workspace:*
+        version: link:../router
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -402,6 +411,9 @@ importers:
       '@tu-lang/dom':
         specifier: workspace:*
         version: link:../packages/dom
+      '@tu-lang/router':
+        specifier: workspace:*
+        version: link:../packages/router
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../packages/runtime

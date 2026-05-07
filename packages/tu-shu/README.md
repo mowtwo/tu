@@ -1,6 +1,6 @@
 # tu-shu (图书)
 
-Tu-native static site generator. Markdown in, themed HTML pages out — all built on `@tu-lang/runtime`'s `renderPage` primitive.
+Tu-native static site generator. Markdown in, themed HTML pages out — built on `@tu-lang/runtime` SSR primitives and `@tu-lang/router` file-path URL helpers.
 
 ## Status: pre-alpha (V1)
 

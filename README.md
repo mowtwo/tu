@@ -95,7 +95,9 @@ For everything that's been **deferred** (per-component HMR, static-HTML optimiza
 ```
 packages/
 ├── compiler/    @tu-lang/compiler   lexer, parser, codegen, source maps
-├── runtime/     @tu-lang/runtime    Signal + DOM glue (h, mount, hydrate, renderToString, Fragment)
+├── runtime/     @tu-lang/runtime    Signal + vnode + SSR primitives
+├── dom/         @tu-lang/dom        browser mount, hydrate, custom elements, DOM diff
+├── router/      @tu-lang/router     universal route matching + SSR helpers
 ├── vite-tu/     @tu-lang/vite       Vite plugin: load .tu files via the compiler
 ├── lsp/         @tu-lang/lsp        Language server (diagnostics + hover + completion + def + rename)
 ├── vscode/      vscode-tu      VS Code extension (syntax + icon + LSP client)

@@ -4,7 +4,7 @@ The first **interactive** Tu component. Three new pieces show up here:
 
 - `count = count + 1` — assignment in expression position. The compiler rewrites this to `count.set(count.get() + 1)` because `count` is a top-level state cell.
 - `onClick: () => …` — lambda-valued props become DOM event listeners. The runtime maps any `on{CapitalLetter}` prop name to `addEventListener('click', …)` (lowercased).
-- `mount(thunk, container)` — runtime API that materializes the component into real DOM and re-renders on every cell change. Browser-only; the runner uses jsdom to simulate a browser in Node.
+- `mount(thunk, container)` from `@tu-lang/dom` — browser API that materializes the component into real DOM and re-renders on every cell change. The runner uses jsdom to simulate a browser in Node.
 
 ## Run it
 

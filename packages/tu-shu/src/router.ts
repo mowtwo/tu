@@ -6,7 +6,8 @@
 //   docs/guide/x.md   → /guide/x
 //   docs/foo/index.md → /foo/
 import { readdirSync, statSync } from 'node:fs'
-import { join, posix, relative, sep } from 'node:path'
+import { join, relative, sep } from 'node:path'
+import { filePathToRoutePath } from '@tu-lang/router'
 
 export interface RoutedFile {
   /** Source path absolute on disk. */
@@ -42,15 +43,12 @@ function walk(root: string, dir: string, out: RoutedFile[], exclude: string[]): 
         ? 'tu'
         : null
     if (kind === null) continue
-    const rel = relative(root, abs).split(sep).join(posix.sep)
+    const rel = relative(root, abs).split(sep).join('/')
     if (exclude.some((pat) => rel.includes(pat))) continue
     out.push({ abs, rel, url: relToUrl(rel), kind })
   }
 }
 
 function relToUrl(rel: string): string {
-  let p = rel.replace(/\.(md|tu)$/, '')
-  if (p === 'index') return '/'
-  if (p.endsWith('/index')) return '/' + p.slice(0, -'/index'.length) + '/'
-  return '/' + p
+  return filePathToRoutePath(rel)
 }

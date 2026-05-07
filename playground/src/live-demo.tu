@@ -46,6 +46,10 @@ let liveJsEditorDispose = null
 let liveDtsEditor = null
 let liveDtsEditorDispose = null
 
+let playgroundBase = external JS (): string {
+  return import.meta.env.BASE_URL.replace(/\/$/, "")
+}
+
 let revokeBlobs = external JS (urls: string[]): void {
   for (const u of urls) URL.revokeObjectURL(u)
 }
@@ -404,15 +408,16 @@ let attachLiveCompiler = (): void => {
   liveSidebarEl = toolbar  // re-used as the host of file-tabs queries
 
   // Back button — exits live mode and returns to the playground demo
-  // grid. We just navigate to the default hash (#hello) so the main
-  // hash router takes over; stopLivePreview tears down everything via
-  // the demo lifecycle's teardown.
+  // grid. Navigate to the shareable route for the default demo; the
+  // main router tears down live preview through the demo lifecycle.
   let backBtn = document.createElement("button")
   backBtn.className = "live-back"
   backBtn.title = "Back to playground"
   backBtn.innerHTML = "← Back"
   backBtn.addEventListener("click", () => {
-    window.location.hash = "#hello"
+    let base = playgroundBase()
+    history.pushState(null, "", (base || "") + "/hello")
+    window.dispatchEvent(new PopStateEvent("popstate"))
   })
 
   let brand = document.createElement("div")

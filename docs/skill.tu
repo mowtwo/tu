@@ -12,7 +12,7 @@ export let Page = () => div {
 
     Tu is a **reactive UI language** that compiles to JS/TS. It is **JS-superset-with-types-via-TS** in spirit — most JS expression-level constructs work, types come from TypeScript (Volar pattern), reactivity comes from TC39 Signals. The grammar **converges JS, never collides with active TC39 proposals**.
 
-    The compiler maps Tu source to TS shadow files; tsserver does the type checking. The runtime is a tiny Signal + DOM glue layer. There is no virtual machine and no custom runtime — it's vanilla JS at runtime, with `Signal.State` / `Signal.Computed` cells as the only library-level primitive.
+    The compiler maps Tu source to TS shadow files; tsserver does the type checking. The universal runtime provides Signals, vnodes, and SSR helpers; browser DOM glue lives in `@tu-lang/dom`. There is no virtual machine — it's vanilla JS at runtime, with `Signal.State` / `Signal.Computed` cells as the main library-level primitive.
 
     Mental model order when reading Tu:
 
@@ -351,7 +351,7 @@ export let Page = () => div {
     4. **Generates** JS/TS via a streaming buffer that records `TokenMapping`s as it emits. Top-level lets become `const X = new Signal.State(…)` / `Signal.Computed(…)` / plain const based on classification. Tag-calls become `h("tag", props, children)`. Component calls stay as real function calls. Pug-shorthand desugars in the AST. ClassRefs emit hashed class strings. Style blocks emit as `<style>` vnode children with the CSS rewritten.
     5. **Source maps** are V3, per-token + per-statement.
 
-    The runtime is `@tu-lang/runtime` — `h(tag, props, children)`, `mount(thunk, container)`, `hydrate(thunk, container)`, `renderToString(node)`, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved).
+    The universal runtime is `@tu-lang/runtime` — `h(tag, props, children)`, `renderToString(node)`, async SSR helpers, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Browser entry points live in `@tu-lang/dom` — `mount(thunk, container)`, `hydrate(thunk, container)`, and `defineCustomElement(...)`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved). Routing lives in `@tu-lang/router` via `createRouter`, `renderRoute`, and `renderRouteToStream`.
 
     ## Testing pattern
 

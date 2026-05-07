@@ -2,16 +2,17 @@
 //
 // What lives here:
 //   1. demo registry (id → setup/thunk/teardown/controls)
-//   2. hash-routing → Sidebar.activeId cell
+//   2. shareable path routing → Sidebar.activeId cell
 //   3. demo lifecycle (mount, teardown previous, swap into #mount)
 //   4. Diff demo's setInterval ticker + array shuffle controls — the
 //      shuffle uses a Fisher-Yates loop that needs JS-style for(;;) so
 //      it sits in an `external JS` block.
-//   5. Live-editor demo lazy-loaded on first navigation to `#live`
+//   5. Live-editor demo lazy-loaded on first navigation to `/live`
 //      (Monaco + @tu-lang/compiler in the browser); kept in
 //      live-demo.js to keep it out of the initial bundle.
 
 import { mount } from "@tu-lang/dom"
+import { createRouter } from "@tu-lang/router"
 import { now } from "@tu-lang/std/time"
 
 import * as Sidebar from "./Sidebar.tu"
@@ -36,6 +37,12 @@ let diffTickHandle = null
 let stop = null
 let activeDemo = null
 let liveDemoPromise = null
+
+let playgroundBase = external JS (): string {
+  return import.meta.env.BASE_URL.replace(/\/$/, "")
+}
+
+let routeBase = playgroundBase()
 
 // `demoBlurbs` is rebuilt fresh on every read — wrapping it in a
 // lambda factory side-steps Tu's auto-cell-wrap on object literals
@@ -250,11 +257,58 @@ let activate = (demo, sidebarEl: Element, headerEl: Element, mountEl: Element) =
   demo.afterMount?.()
 }
 
-let activateFromHash = async () => {
+let playgroundRoutes = () => {
+  let routes = demos().map((demo) => ({
+    path: "/" + demo.id,
+    handler: () => demo.id,
+  }))
+  routes.push({ path: "/live", handler: () => "live" })
+  return createRouter(routes, { base: routeBase || "/" })
+}
+
+let demoHref = (id: string): string => (routeBase || "") + "/" + id
+
+let closestAnchorHref = external JS (target: EventTarget | null): string | null {
+  const el = target instanceof Element
+    ? target
+    : target instanceof Node
+      ? target.parentElement
+      : null
+  return el?.closest("a")?.getAttribute("href") ?? null
+}
+
+let isPlaygroundHref = (href: string): boolean => {
+  if (routeBase) {
+    return href == routeBase || href.startsWith(routeBase + "/")
+  }
+  return href == "/live" || demos().some((demo) => href == "/" + demo.id)
+}
+
+let currentRouteId = (): string => {
+  let hash = window.location.hash.slice(1)
+  if (hash) {
+    history.replaceState(null, "", demoHref(hash))
+    return hash
+  }
+  let match = playgroundRoutes().match(window.location.pathname)
+  if (match) {
+    return match.handler(match.ctx)
+  }
+  return demos()[0].id
+}
+
+let navigateToPath = (href: string): void => {
+  if (window.location.pathname != href) {
+    history.pushState(null, "", href)
+  }
+  activateFromRoute()
+}
+
+let activateFromRoute = async () => {
   let sidebarEl = document.getElementById("sidebar-host")
   let headerEl = document.getElementById("header-host")
   let mountEl = document.getElementById("mount")
-  let id = window.location.hash.slice(1)
+  let id = currentRouteId()
   let next = null
   if (id == "live") {
     // Show the loading blurb immediately so the user sees feedback,
@@ -265,10 +319,13 @@ let activateFromHash = async () => {
     Header.title.set(labelFor("live"))
     Header.blurb.set(blurbFor("live"))
     next = await loadLiveDemo()
-    if (window.location.hash.slice(1) != "live") { return }
+    if (currentRouteId() != "live") { return }
   } else {
     let list = demos()
     next = list.find((d) => d.id == id) ?? list[0]
+    if (next.id != id) {
+      history.replaceState(null, "", demoHref(next.id))
+    }
   }
   if (activeDemo == null || next.id != activeDemo.id) {
     activate(next, sidebarEl, headerEl, mountEl)
@@ -284,6 +341,12 @@ let _bootstrap = (() => {
   let headerEl = document.getElementById("header-host")
   mount(() => Sidebar.Sidebar(), sidebarEl)
   mount(() => Header.StageHeader(), headerEl)
-  window.addEventListener("hashchange", activateFromHash)
-  activateFromHash()
+  sidebarEl.addEventListener("click", (event) => {
+    let href = closestAnchorHref(event.target)
+    if (!href || !isPlaygroundHref(href)) { return }
+    event.preventDefault()
+    navigateToPath(href)
+  })
+  window.addEventListener("popstate", activateFromRoute)
+  activateFromRoute()
 })()

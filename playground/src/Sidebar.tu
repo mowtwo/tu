@@ -31,8 +31,12 @@ let linkClass = (id: string): string =>
 
 interface DemoLinkProps { id: string; label: string; mil: string }
 
+let playgroundBase = external JS (): string {
+  return import.meta.env.BASE_URL.replace(/\/$/, "")
+}
+
 let DemoLink = (props: DemoLinkProps) => a(
-  href: "#" + props.id,
+  href: (playgroundBase() || "") + "/" + props.id,
   class: linkClass(props.id),
 ) {
   div(class: "flex items-center justify-between gap-2") {

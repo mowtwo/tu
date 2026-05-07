@@ -8,7 +8,7 @@ export let Page = () => div {
 
     A Tu-native UI component library — shadcn + baseui style. Tailwind-driven primitives with theme tokens. Source-only package.
 
-    > Published as [`@tu-lang/tu-xing`](https://www.npmjs.com/package/@tu-lang/tu-xing) on npm. Live demo: [Playground → tu-xing](https://mowtwo.github.io/tu/playground#tu-xing).
+    > Published as [`@tu-lang/tu-xing`](https://www.npmjs.com/package/@tu-lang/tu-xing) on npm. Live demo: [Playground → tu-xing](https://mowtwo.github.io/tu/playground/tu-xing).
 
     ## What's in V1
 
