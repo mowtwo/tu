@@ -28,6 +28,8 @@ export enum TokenKind {
   Pipe,
   /** `&` — V1 used only inside raw type spans (`A & B`). */
   Amp,
+  Caret,
+  Tilde,
   /** `;` — V1 used only inside raw type spans (object type field separator). */
   Semi,
   /** `?` — V1 used only inside raw type spans (optional fields like
@@ -46,6 +48,8 @@ export enum TokenKind {
   Lt,
   GtEq,
   LtEq,
+  LtLt,
+  GtGt,
   EqEq,
   NotEq,
   // logical / nullish

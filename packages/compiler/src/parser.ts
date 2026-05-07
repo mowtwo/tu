@@ -120,24 +120,31 @@ const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number; rightA
   [TokenKind.OrOr]: { op: '||', prec: 1 },
   // Logical AND
   [TokenKind.AndAnd]: { op: '&&', prec: 2 },
+  // Bitwise
+  [TokenKind.Pipe]: { op: '|', prec: 3 },
+  [TokenKind.Caret]: { op: '^', prec: 4 },
+  [TokenKind.Amp]: { op: '&', prec: 5 },
   // Equality
-  [TokenKind.EqEq]: { op: '==', prec: 3 },
-  [TokenKind.NotEq]: { op: '!=', prec: 3 },
+  [TokenKind.EqEq]: { op: '==', prec: 6 },
+  [TokenKind.NotEq]: { op: '!=', prec: 6 },
   // Relational
-  [TokenKind.Lt]: { op: '<', prec: 4 },
-  [TokenKind.LtEq]: { op: '<=', prec: 4 },
-  [TokenKind.Gt]: { op: '>', prec: 4 },
-  [TokenKind.GtEq]: { op: '>=', prec: 4 },
+  [TokenKind.Lt]: { op: '<', prec: 7 },
+  [TokenKind.LtEq]: { op: '<=', prec: 7 },
+  [TokenKind.Gt]: { op: '>', prec: 7 },
+  [TokenKind.GtEq]: { op: '>=', prec: 7 },
+  // Shift
+  [TokenKind.LtLt]: { op: '<<', prec: 8 },
+  [TokenKind.GtGt]: { op: '>>', prec: 8 },
   // Additive
-  [TokenKind.Plus]: { op: '+', prec: 5 },
-  [TokenKind.Minus]: { op: '-', prec: 5 },
-  // Multiplicative (highest)
-  [TokenKind.Star]: { op: '*', prec: 6 },
-  [TokenKind.Slash]: { op: '/', prec: 6 },
-  [TokenKind.Percent]: { op: '%', prec: 6 },
+  [TokenKind.Plus]: { op: '+', prec: 9 },
+  [TokenKind.Minus]: { op: '-', prec: 9 },
+  // Multiplicative
+  [TokenKind.Star]: { op: '*', prec: 10 },
+  [TokenKind.Slash]: { op: '/', prec: 10 },
+  [TokenKind.Percent]: { op: '%', prec: 10 },
   // Exponentiation — right-associative like JS: `2 ** 3 ** 2`
   // parses as `2 ** (3 ** 2)`.
-  [TokenKind.StarStar]: { op: '**', prec: 7, rightAssoc: true },
+  [TokenKind.StarStar]: { op: '**', prec: 11, rightAssoc: true },
 }
 
 export class Parser {
@@ -1134,9 +1141,9 @@ export class Parser {
       )
     }
     if (k === TokenKind.Backtick) return this.parseTemplateLit()
-    if (k === TokenKind.Bang || k === TokenKind.Minus || k === TokenKind.Plus) {
+    if (k === TokenKind.Bang || k === TokenKind.Tilde || k === TokenKind.Minus || k === TokenKind.Plus) {
       const tok = this.peek()
-      const op = k === TokenKind.Bang ? '!' : k === TokenKind.Minus ? '-' : '+'
+      const op = k === TokenKind.Bang ? '!' : k === TokenKind.Tilde ? '~' : k === TokenKind.Minus ? '-' : '+'
       this.pos++ // consume the prefix operator
       const arg = this.parsePostfix(this.parsePrefix())
       return {

@@ -218,11 +218,13 @@ export class Lexer {
         }
         return this.punct(TokenKind.Bang, start, 1)
       case '<':
+        if (this.src.charAt(this.pos + 1) === '<') return this.punct(TokenKind.LtLt, start, 2)
         if (this.src.charAt(this.pos + 1) === '=') {
           return this.punct(TokenKind.LtEq, start, 2)
         }
         return this.punct(TokenKind.Lt, start, 1)
       case '>':
+        if (this.src.charAt(this.pos + 1) === '>') return this.punct(TokenKind.GtGt, start, 2)
         if (this.src.charAt(this.pos + 1) === '=') {
           return this.punct(TokenKind.GtEq, start, 2)
         }
@@ -258,6 +260,10 @@ export class Lexer {
           return this.punct(TokenKind.AndAnd, start, 2)
         }
         return this.punct(TokenKind.Amp, start, 1)
+      case '^':
+        return this.punct(TokenKind.Caret, start, 1)
+      case '~':
+        return this.punct(TokenKind.Tilde, start, 1)
       case ';':
         return this.punct(TokenKind.Semi, start, 1)
       case '?':

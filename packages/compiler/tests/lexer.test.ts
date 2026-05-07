@@ -112,6 +112,19 @@ describe('lexer', () => {
     ])
   })
 
+  it('lexes bitwise operators', () => {
+    const tokens = tokenize('& | ^ ~ << >>')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Amp,
+      TokenKind.Pipe,
+      TokenKind.Caret,
+      TokenKind.Tilde,
+      TokenKind.LtLt,
+      TokenKind.GtGt,
+      TokenKind.Eof,
+    ])
+  })
+
   it('distinguishes = / == / =>', () => {
     const tokens = tokenize('= == =>')
     expect(tokens.map((t) => t.kind)).toEqual([

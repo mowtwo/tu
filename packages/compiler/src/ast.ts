@@ -370,6 +370,7 @@ export interface CallExpr extends Ranged {
 
 export type BinaryOp =
   | '+' | '-' | '*' | '**' | '/' | '%'
+  | '&' | '|' | '^' | '<<' | '>>'
   | '==' | '!=' | '<' | '<=' | '>' | '>='
   | '||' | '&&' | '??'
 
@@ -380,12 +381,13 @@ export interface BinaryExpr extends Ranged {
   right: Expr
 }
 
-/** Prefix unary — `!` (logical NOT), `-` (numeric negation), `+`
+/** Prefix unary — `!` (logical NOT), `~` (bitwise NOT),
+ *  `-` (numeric negation), `+`
  *  (numeric coercion). Each emits as the matching JS operator, with the
  *  arg wrapped in parens so larger expressions compose correctly. */
 export interface UnaryExpr extends Ranged {
   kind: 'UnaryExpr'
-  op: '!' | '-' | '+'
+  op: '!' | '~' | '-' | '+'
   arg: Expr
 }
 

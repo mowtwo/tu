@@ -514,4 +514,24 @@ describe('parser', () => {
       },
     })
   })
+
+  it('parses bitwise precedence below equality and above logical AND', () => {
+    const tree = ast('let x = a & b == c && d')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'BinaryExpr',
+      op: '&&',
+      left: {
+        kind: 'BinaryExpr',
+        op: '&',
+        left: { kind: 'Ident', name: 'a' },
+        right: {
+          kind: 'BinaryExpr',
+          op: '==',
+          left: { kind: 'Ident', name: 'b' },
+          right: { kind: 'Ident', name: 'c' },
+        },
+      },
+      right: { kind: 'Ident', name: 'd' },
+    })
+  })
 })

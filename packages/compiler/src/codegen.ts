@@ -569,6 +569,7 @@ export type CellKind = 'state' | 'computed' | 'function'
  *  through verbatim — they have identical semantics in JS. */
 const BINARY_OP_JS: Record<BinaryOp, string> = {
   '+': '+', '-': '-', '*': '*', '**': '**', '/': '/', '%': '%',
+  '&': '&', '|': '|', '^': '^', '<<': '<<', '>>': '>>',
   '==': '===', '!=': '!==',
   '<': '<', '<=': '<=', '>': '>', '>=': '>=',
   '||': '||', '&&': '&&', '??': '??',
@@ -1492,7 +1493,7 @@ function collectParamBodyUseTypes(
       return
     }
     case 'BinaryExpr': {
-      if (expr.op === '-' || expr.op === '*' || expr.op === '**' || expr.op === '/' || expr.op === '%') {
+      if (expr.op === '-' || expr.op === '*' || expr.op === '**' || expr.op === '/' || expr.op === '%' || expr.op === '&' || expr.op === '|' || expr.op === '^' || expr.op === '<<' || expr.op === '>>') {
         recordIdent(expr.left, 'number')
         recordIdent(expr.right, 'number')
       }
@@ -1516,6 +1517,7 @@ function collectParamBodyUseTypes(
     }
     case 'UnaryExpr':
       if (expr.op === '!') recordIdent(expr.arg, 'boolean')
+      if (expr.op === '~') recordIdent(expr.arg, 'number')
       if (expr.op === '-' || expr.op === '+') recordIdent(expr.arg, 'number')
       collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
       return
@@ -1657,7 +1659,7 @@ function inferExprTsType(
       return '(...args: unknown[]) => unknown'
     case 'UnaryExpr': {
       if (expr.op === '!') return 'boolean'
-      if (expr.op === '-' || expr.op === '+') return 'number'
+      if (expr.op === '~' || expr.op === '-' || expr.op === '+') return 'number'
       return undefined
     }
     case 'BinaryExpr': {
@@ -1683,6 +1685,11 @@ function inferExprTsType(
         case '**':
         case '/':
         case '%':
+        case '&':
+        case '|':
+        case '^':
+        case '<<':
+        case '>>':
           return 'number'
         case '+': {
           const left = inferExprTsType(expr.left, valueTypes, returnTypes)

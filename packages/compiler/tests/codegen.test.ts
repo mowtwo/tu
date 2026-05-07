@@ -72,6 +72,11 @@ describe('codegen', () => {
     expect(js).toContain('(2 ** (3 ** 2))')
   })
 
+  it('emits bitwise binary and unary operators', () => {
+    const js = compile('let App = (n: number) => p { ~(n << 1) | (n & 3) ^ (n >> 1) }')
+    expect(js).toContain('((~(n << 1)) | ((n & 3) ^ (n >> 1)))')
+  })
+
   it('emits ||, &&, ?? logical/nullish operators verbatim', () => {
     const js = compile('let App = (p) => div { p.show && (p.label || p.fallback) ?? "x" }')
     expect(js).toContain('((p.show && (p.label || p.fallback)) ?? "x")')
