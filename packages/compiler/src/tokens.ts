@@ -38,6 +38,7 @@ export enum TokenKind {
   Plus,
   Minus,
   Star,
+  StarStar,
   Slash,
   Percent,
   // comparison

@@ -568,7 +568,7 @@ export type CellKind = 'state' | 'computed' | 'function'
  *  Other operators (logical, nullish, arithmetic, relational) pass
  *  through verbatim — they have identical semantics in JS. */
 const BINARY_OP_JS: Record<BinaryOp, string> = {
-  '+': '+', '-': '-', '*': '*', '/': '/', '%': '%',
+  '+': '+', '-': '-', '*': '*', '**': '**', '/': '/', '%': '%',
   '==': '===', '!=': '!==',
   '<': '<', '<=': '<=', '>': '>', '>=': '>=',
   '||': '||', '&&': '&&', '??': '??',
@@ -1492,7 +1492,7 @@ function collectParamBodyUseTypes(
       return
     }
     case 'BinaryExpr': {
-      if (expr.op === '-' || expr.op === '*' || expr.op === '/' || expr.op === '%') {
+      if (expr.op === '-' || expr.op === '*' || expr.op === '**' || expr.op === '/' || expr.op === '%') {
         recordIdent(expr.left, 'number')
         recordIdent(expr.right, 'number')
       }
@@ -1680,6 +1680,7 @@ function inferExprTsType(
         }
         case '-':
         case '*':
+        case '**':
         case '/':
         case '%':
           return 'number'

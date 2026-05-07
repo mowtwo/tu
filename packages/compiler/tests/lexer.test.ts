@@ -102,6 +102,16 @@ describe('lexer', () => {
     ])
   })
 
+  it('lexes exponentiation as a single operator', () => {
+    const tokens = tokenize('2 ** 3')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Number,
+      TokenKind.StarStar,
+      TokenKind.Number,
+      TokenKind.Eof,
+    ])
+  })
+
   it('distinguishes = / == / =>', () => {
     const tokens = tokenize('= == =>')
     expect(tokens.map((t) => t.kind)).toEqual([

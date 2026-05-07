@@ -494,4 +494,24 @@ describe('parser', () => {
       right: { kind: 'NumberLit', value: 0 },
     })
   })
+
+  it('parses exponentiation as right-associative and above multiplication', () => {
+    const tree = ast('let x = 2 * 3 ** 4 ** 5')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'BinaryExpr',
+      op: '*',
+      left: { kind: 'NumberLit', value: 2 },
+      right: {
+        kind: 'BinaryExpr',
+        op: '**',
+        left: { kind: 'NumberLit', value: 3 },
+        right: {
+          kind: 'BinaryExpr',
+          op: '**',
+          left: { kind: 'NumberLit', value: 4 },
+          right: { kind: 'NumberLit', value: 5 },
+        },
+      },
+    })
+  })
 })

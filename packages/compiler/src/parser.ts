@@ -111,7 +111,7 @@ const COMPOUND_ASSIGN_OPS: Partial<Record<TokenKind, BinaryOp>> = {
   [TokenKind.QuestionQuestionEq]: '??',
 }
 
-const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
+const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number; rightAssoc?: boolean }>> = {
   // Nullish + logical OR (lowest). Same precedence as ||; mixing them
   // would be ambiguous so users will need parens — JS itself disallows
   // `a || b ?? c` without parens at the syntax level. We stay lax and
@@ -135,6 +135,9 @@ const BINARY_OPS: Partial<Record<TokenKind, { op: BinaryOp; prec: number }>> = {
   [TokenKind.Star]: { op: '*', prec: 6 },
   [TokenKind.Slash]: { op: '/', prec: 6 },
   [TokenKind.Percent]: { op: '%', prec: 6 },
+  // Exponentiation — right-associative like JS: `2 ** 3 ** 2`
+  // parses as `2 ** (3 ** 2)`.
+  [TokenKind.StarStar]: { op: '**', prec: 7, rightAssoc: true },
 }
 
 export class Parser {
@@ -800,7 +803,7 @@ export class Parser {
       const op = BINARY_OPS[this.peek().kind]
       if (!op || op.prec < minPrec) break
       this.pos++ // consume operator
-      const right = this.parseBinary(op.prec + 1)
+      const right = this.parseBinary(op.prec + (op.rightAssoc ? 0 : 1))
       left = {
         kind: 'BinaryExpr',
         op: op.op,

@@ -369,7 +369,7 @@ export interface CallExpr extends Ranged {
 }
 
 export type BinaryOp =
-  | '+' | '-' | '*' | '/' | '%'
+  | '+' | '-' | '*' | '**' | '/' | '%'
   | '==' | '!=' | '<' | '<=' | '>' | '>='
   | '||' | '&&' | '??'
 

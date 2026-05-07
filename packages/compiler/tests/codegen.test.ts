@@ -67,6 +67,11 @@ describe('codegen', () => {
     expect(js).toContain(`(a.get() + (2 * 3))`)
   })
 
+  it('emits exponentiation with right-associative parsing', () => {
+    const js = compile('let App = () => p { 2 ** 3 ** 2 }')
+    expect(js).toContain('(2 ** (3 ** 2))')
+  })
+
   it('emits ||, &&, ?? logical/nullish operators verbatim', () => {
     const js = compile('let App = (p) => div { p.show && (p.label || p.fallback) ?? "x" }')
     expect(js).toContain('((p.show && (p.label || p.fallback)) ?? "x")')
