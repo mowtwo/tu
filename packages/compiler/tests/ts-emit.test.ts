@@ -93,6 +93,38 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const show = (value: number | string) =>')
   })
 
+  it('M9 Phase D: callsite inference follows typed helper return values', () => {
+    const ts = compileToTS(`
+      let user = { profile: { name: "Ada" } }
+      let getName = (u: { profile: { name: string } }) => u.profile.name
+      let name = getName(user)
+      let show = (value) => value
+      let out = show(name)
+    `)
+    expect(ts).toContain('const show = (value: string) =>')
+  })
+
+  it('M9 Phase D: callsite inference follows explicit helper return annotations', () => {
+    const ts = compileToTS(`
+      let getName = (): string => "Ada"
+      let name = getName()
+      let show = (value) => value
+      let out = show(name)
+    `)
+    expect(ts).toContain('const show = (value: string) =>')
+  })
+
+  it('M9 Phase D: callsite inference follows inferred identity returns', () => {
+    const ts = compileToTS(`
+      let id = (x) => x
+      let value = id(42)
+      let show = (value) => value
+      let out = show(value)
+    `)
+    expect(ts).toContain('const id = (x: number) =>')
+    expect(ts).toContain('const show = (value: number) =>')
+  })
+
   it('M9 Phase D: uncalled params infer from first member-use shape', () => {
     const ts = compileToTS(`
       let label = (card) => card.title

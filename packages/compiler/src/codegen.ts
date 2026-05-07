@@ -914,6 +914,42 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
   }
 
   const inferred: InferredParamTypes = new Map()
+  collectCallsiteParamTypes(program, functions, valueTypes, inferred)
+
+  const returnTypes = inferTopLevelFunctionReturnTypes(functions, inferred, valueTypes)
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    if (stmt.type !== undefined || stmt.value.kind === 'Lambda') continue
+    const inferredValueType = inferExprTsType(stmt.value, valueTypes, returnTypes)
+    if (inferredValueType) valueTypes.set(stmt.name, inferredValueType)
+  }
+
+  collectCallsiteParamTypes(program, functions, valueTypes, inferred)
+
+  for (const lambda of functions.values()) {
+    const bodyShapes = inferBodyFirstUseParamTypes(lambda)
+    if (bodyShapes.size === 0) continue
+    let byParam = inferred.get(lambda)
+    for (const [idx, typeText] of bodyShapes) {
+      const p = lambda.params[idx]
+      if (!p || p.type !== undefined || p.destructureFields) continue
+      if (byParam?.has(idx)) continue
+      if (!byParam) {
+        byParam = new Map()
+        inferred.set(lambda, byParam)
+      }
+      byParam.set(idx, typeText)
+    }
+  }
+  return inferred
+}
+
+function collectCallsiteParamTypes(
+  program: Program,
+  functions: ReadonlyMap<string, Lambda>,
+  valueTypes: ReadonlyMap<string, string>,
+  inferred: InferredParamTypes
+): void {
   for (const stmt of program.body) {
     collectCallsFromStmt(stmt, (call) => {
       const lambda = functions.get(call.callee)
@@ -933,22 +969,31 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
       }
     })
   }
-  for (const lambda of functions.values()) {
-    const bodyShapes = inferBodyFirstUseParamTypes(lambda)
-    if (bodyShapes.size === 0) continue
-    let byParam = inferred.get(lambda)
-    for (const [idx, typeText] of bodyShapes) {
-      const p = lambda.params[idx]
-      if (!p || p.type !== undefined || p.destructureFields) continue
-      if (byParam?.has(idx)) continue
-      if (!byParam) {
-        byParam = new Map()
-        inferred.set(lambda, byParam)
-      }
-      byParam.set(idx, typeText)
+}
+
+function inferTopLevelFunctionReturnTypes(
+  functions: ReadonlyMap<string, Lambda>,
+  inferred: InferredParamTypes,
+  valueTypes: ReadonlyMap<string, string>
+): Map<string, string> {
+  const returnTypes = new Map<string, string>()
+  for (const [name, lambda] of functions) {
+    if (lambda.returnType) {
+      returnTypes.set(name, lambda.returnType.trim())
+      continue
     }
+    const localTypes = new Map(valueTypes)
+    for (let i = 0; i < lambda.params.length; i++) {
+      const p = lambda.params[i]!
+      if (p.destructureFields) continue
+      const typeText = p.type?.trim() || inferred.get(lambda)?.get(i)
+      if (typeText) localTypes.set(p.name, typeText)
+    }
+    const returnType = inferExprTsType(lambda.body, localTypes)
+    if (!returnType) continue
+    returnTypes.set(name, returnType)
   }
-  return inferred
+  return returnTypes
 }
 
 function mergeInferredTypes(existing: string | undefined, candidate: string): string {
@@ -1195,7 +1240,11 @@ function collectParamMemberReadsFromChild(
   collectParamMemberReads(child, paramNames, shapesByParam, shadowed)
 }
 
-function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): string | undefined {
+function inferExprTsType(
+  expr: Expr,
+  valueTypes: ReadonlyMap<string, string>,
+  returnTypes?: ReadonlyMap<string, string>
+): string | undefined {
   switch (expr.kind) {
     case 'StringLit':
     case 'TemplateLit':
@@ -1223,8 +1272,8 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
         case '||':
         case '&&':
         case '??': {
-          const left = inferExprTsType(expr.left, valueTypes)
-          const right = inferExprTsType(expr.right, valueTypes)
+          const left = inferExprTsType(expr.left, valueTypes, returnTypes)
+          const right = inferExprTsType(expr.right, valueTypes, returnTypes)
           if (!left) return right
           if (!right) return left
           return mergeInferredTypes(left, right)
@@ -1235,8 +1284,8 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
         case '%':
           return 'number'
         case '+': {
-          const left = inferExprTsType(expr.left, valueTypes)
-          const right = inferExprTsType(expr.right, valueTypes)
+          const left = inferExprTsType(expr.left, valueTypes, returnTypes)
+          const right = inferExprTsType(expr.right, valueTypes, returnTypes)
           return left === 'number' && right === 'number' ? 'number' : undefined
         }
       }
@@ -1248,18 +1297,21 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
       return valueTypes.get(expr.name)
     }
     case 'MemberExpr': {
-      const objectType = inferExprTsType(expr.object, valueTypes)
+      const objectType = inferExprTsType(expr.object, valueTypes, returnTypes)
       return objectType ? lookupObjectPropertyType(objectType, expr.property) : undefined
     }
     case 'IndexExpr': {
-      const objectType = inferExprTsType(expr.object, valueTypes)
+      const objectType = inferExprTsType(expr.object, valueTypes, returnTypes)
       return objectType ? arrayElementTypeFromType(objectType) : undefined
     }
+    case 'CallExpr':
+      if (expr.namedArgs && expr.namedArgs.length > 0) return undefined
+      return returnTypes?.get(expr.callee)
     case 'ArrayLit': {
       if (expr.elements.length === 0) return 'unknown[]'
       let elementType: string | undefined
       for (const item of expr.elements) {
-        elementType = mergeInferredTypes(elementType, inferExprTsType(item, valueTypes) ?? 'unknown')
+        elementType = mergeInferredTypes(elementType, inferExprTsType(item, valueTypes, returnTypes) ?? 'unknown')
       }
       return `${arrayElementTypeText(elementType ?? 'unknown')}[]`
     }
@@ -1267,14 +1319,41 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
       const fields: string[] = []
       for (const member of expr.properties) {
         if (member.kind === 'ObjectSpread') return undefined
-        const valueType = inferExprTsType(member.value, valueTypes) ?? 'unknown'
+        const valueType = inferExprTsType(member.value, valueTypes, returnTypes) ?? 'unknown'
         fields.push(`${renderObjectTypeKey(member.key)}: ${valueType}`)
       }
       return `{ ${fields.join('; ')} }`
     }
+    case 'Block':
+      return inferBlockTsType(expr, valueTypes, returnTypes)
+    case 'ReturnExpr':
+      return expr.value ? inferExprTsType(expr.value, valueTypes, returnTypes) : undefined
     default:
       return undefined
   }
+}
+
+function inferBlockTsType(
+  block: Block,
+  valueTypes: ReadonlyMap<string, string>,
+  returnTypes?: ReadonlyMap<string, string>
+): string | undefined {
+  const localTypes = new Map(valueTypes)
+  let out: string | undefined
+  for (let i = 0; i < block.body.length; i++) {
+    const item = block.body[i]!
+    if (item.kind === 'LocalLet') {
+      if (item.type !== undefined) {
+        localTypes.set(item.name, item.type.trim())
+      } else if (!item.destructureFields) {
+        const valueType = inferExprTsType(item.value, localTypes, returnTypes)
+        if (valueType) localTypes.set(item.name, valueType)
+      }
+      continue
+    }
+    out = inferExprTsType(item, localTypes, returnTypes)
+  }
+  return out
 }
 
 function renderObjectTypeKey(key: string): string {
