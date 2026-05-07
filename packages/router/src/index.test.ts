@@ -6,7 +6,7 @@ import {
   joinRoutePaths,
   renderRoute,
   renderRouteToString,
-} from './index.js'
+} from '../dist/index.js'
 
 describe('@tu-lang/router', () => {
   it('matches static routes and renders route bodies', async () => {

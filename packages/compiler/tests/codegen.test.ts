@@ -182,9 +182,9 @@ describe('codegen', () => {
     expect(js).toContain('((p.a || p.b) && p.c)')
   })
 
-  it('TS-style optional param `name?: T` lowers to `(T) | undefined` in TS-emit', () => {
+  it('TS-style optional param `name?: T` stays optional in TS-emit', () => {
     const ts = compileToTS('export let f = (x: string, y?: boolean) => true')
-    expect(ts).toContain('y: (boolean) | undefined')
+    expect(ts).toContain('y?: boolean')
   })
 
   it('flattens block-bodied lambdas to expression form when single child', () => {

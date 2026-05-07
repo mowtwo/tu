@@ -2510,6 +2510,7 @@ class Codegen {
       // TS's implicit `any`. Forces narrow / cast at use sites; pairs
       // with the M8 `type.as` helper for typed runtime casts.
       if (this.tsMode) {
+        if (p.optional) this.write('?')
         this.write(': ')
         if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
           this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
@@ -2873,6 +2874,7 @@ class Codegen {
         // with single-file first-call inference for omitted annotations.
         if (this.tsMode) {
           const inferred = this.inferredParamTypes.get(node)?.get(i)
+          if (p.optional) this.write('?')
           this.write(': ')
           if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
             this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))

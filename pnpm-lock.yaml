@@ -333,6 +333,13 @@ importers:
       '@tu-lang/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tu-lang/std':
+        specifier: workspace:*
+        version: link:../std
+    devDependencies:
+      '@tu-lang/compiler':
+        specifier: workspace:*
+        version: link:../compiler
 
   packages/runtime:
     dependencies:

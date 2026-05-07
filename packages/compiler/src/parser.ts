@@ -2023,11 +2023,9 @@ export class Parser {
     let typeStart: number | undefined
     let typeEnd: number | undefined
     let endOffset = nameTok.end
-    // TS-style optional param: `(name?: T)`. Tu mirrors the syntax — the
-    // `?` is folded into the emitted TS type span so tsserver sees a
-    // proper optional. We append ` | undefined` rather than rewriting
-    // the param name to `name?` since codegen emits the param name in
-    // a JS context where `?` would be a syntax error.
+    // TS-style optional param: `(name?: T)`. Tu mirrors the syntax and
+    // preserves the optional marker for TS emit / declaration generation.
+    // JS emit still writes a plain parameter name.
     let optional = false
     if (this.peek().kind === TokenKind.Question) {
       optional = true
@@ -2037,14 +2035,13 @@ export class Parser {
     if (this.peek().kind === TokenKind.Colon) {
       this.pos++
       const span = this.parseRawTypeUntilParamBoundary()
-      type = optional ? `(${span.text}) | undefined` : span.text
+      type = span.text
       typeStart = span.start
       typeEnd = span.end
       endOffset = span.end
     } else if (optional) {
-      // `name?` with no colon = implicit `unknown | undefined`. Pass the
-      // narrower `undefined` through; tsserver will widen as needed.
-      type = 'undefined'
+      // `name?` with no colon = optional `unknown`.
+      type = 'unknown'
     }
     return type === undefined
       ? {
@@ -2056,6 +2053,7 @@ export class Parser {
         }
       : {
           name: nameTok.text,
+          optional,
           type,
           typeStart,
           typeEnd,

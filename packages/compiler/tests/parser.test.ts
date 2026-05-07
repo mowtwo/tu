@@ -118,6 +118,17 @@ describe('parser', () => {
     ])
   })
 
+  it('parses optional typed parameters', () => {
+    const tree = ast('let f = (name: string, active?: boolean) => "ok"')
+    const lambda = (tree.body[0] as { value: unknown }).value as {
+      params: { name: string; type?: string; optional?: boolean }[]
+    }
+    expect(lambda.params).toMatchObject([
+      { name: 'name', type: 'string' },
+      { name: 'active', type: 'boolean', optional: true },
+    ])
+  })
+
   it('parses tag-call with props and nested children', () => {
     const tree = ast(`
       let App = () => {

@@ -36,13 +36,17 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "check": "tsc --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "build": "node scripts/build.mjs",
+    "test": "pnpm run build && vitest run",
+    "check": "node scripts/check.mjs",
+    "clean": "rm -rf dist .tu-build .tu-check *.tsbuildinfo"
   },
   "dependencies": {
-    "@tu-lang/runtime": "workspace:*"
+    "@tu-lang/runtime": "workspace:*",
+    "@tu-lang/std": "workspace:*"
+  },
+  "devDependencies": {
+    "@tu-lang/compiler": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

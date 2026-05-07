@@ -1,10 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
     "rootDir": ".tu-build",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./dist/.dts.tsbuildinfo",
     "lib": ["ES2023", "DOM"],
+    "emitDeclarationOnly": true,
     "noUncheckedIndexedAccess": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false

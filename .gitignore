@@ -1,6 +1,8 @@
 node_modules/
 dist/
 lib/
+.tu-build/
+.tu-check/
 .turbo/
 coverage/
 *.log

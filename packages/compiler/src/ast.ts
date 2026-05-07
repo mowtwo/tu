@@ -271,6 +271,8 @@ export interface Param extends Ranged {
   name: string
   /** Type annotation as a raw identifier ('string', 'number'…) — full type AST lands later. */
   type?: string
+  /** True when the parameter was written with a `?` marker, e.g. `opts?: T`. */
+  optional?: boolean
   /** Source byte range of the type expression, when a `: T` annotation exists. */
   typeStart?: number
   typeEnd?: number

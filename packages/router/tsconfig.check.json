@@ -1,14 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".tu-build",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "rootDir": ".tu-check",
+    "tsBuildInfoFile": "./.tu-check/.tsbuildinfo",
     "lib": ["ES2023", "DOM"],
+    "noEmit": true,
     "noUncheckedIndexedAccess": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": [".tu-build/index.ts"],
+  "include": [".tu-check/index.ts"],
   "references": [{ "path": "../runtime" }, { "path": "../std" }]
 }
