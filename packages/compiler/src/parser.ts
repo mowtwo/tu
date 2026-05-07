@@ -1875,6 +1875,8 @@ export class Parser {
         name: `__tu_destruct_${lbrace.start}`,
         destructureFields: fields,
         type: span.text,
+        typeStart: span.start,
+        typeEnd: span.end,
         start: lbrace.start,
         end: span.end,
         nameStart: lbrace.start,
@@ -1883,6 +1885,8 @@ export class Parser {
     }
     const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
+    let typeStart: number | undefined
+    let typeEnd: number | undefined
     let endOffset = nameTok.end
     // TS-style optional param: `(name?: T)`. Tu mirrors the syntax — the
     // `?` is folded into the emitted TS type span so tsserver sees a
@@ -1899,6 +1903,8 @@ export class Parser {
       this.pos++
       const span = this.parseRawTypeUntilParamBoundary()
       type = optional ? `(${span.text}) | undefined` : span.text
+      typeStart = span.start
+      typeEnd = span.end
       endOffset = span.end
     } else if (optional) {
       // `name?` with no colon = implicit `unknown | undefined`. Pass the
@@ -1916,6 +1922,8 @@ export class Parser {
       : {
           name: nameTok.text,
           type,
+          typeStart,
+          typeEnd,
           start: nameTok.start,
           end: endOffset,
           nameStart: nameTok.start,

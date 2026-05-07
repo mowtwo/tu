@@ -2128,7 +2128,12 @@ class Codegen {
           if (i > 0) this.write('; ')
           const p = params[i]!
           this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
-          this.write(`?: ${p.type}`)
+          this.write('?: ')
+          if (p.typeStart !== undefined && p.typeEnd !== undefined) {
+            this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+          } else {
+            this.write(p.type!)
+          }
         }
         if (!hasOwnChildren) {
           this.write('; children?: Child[]')
@@ -2153,11 +2158,28 @@ class Codegen {
         const preWrapped =
           t.startsWith('Signal.State<') || t.startsWith('Signal.Computed<')
         if (preWrapped || kind === 'function') {
-          this.write(`: ${decl.type}`)
+          this.write(': ')
+          if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+          } else {
+            this.write(decl.type)
+          }
         } else if (kind === 'computed') {
-          this.write(`: Signal.Computed<${decl.type}>`)
+          this.write(': Signal.Computed<')
+          if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+          } else {
+            this.write(decl.type)
+          }
+          this.write('>')
         } else {
-          this.write(`: Signal.State<${decl.type}>`)
+          this.write(': Signal.State<')
+          if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+          } else {
+            this.write(decl.type)
+          }
+          this.write('>')
         }
       }
       this.write(' = ')
@@ -2217,7 +2239,13 @@ class Codegen {
           : null
       const tagName = explicitTag ?? anonTag
       if (tagName !== null) {
-        this.write(`type.tag(${tagName}, `)
+        this.write('type.tag(')
+        if (explicitTag !== null && decl.typeStart !== undefined && decl.typeEnd !== undefined) {
+          this.mark(decl.typeStart, decl.typeEnd, () => this.write(explicitTag))
+        } else {
+          this.write(tagName)
+        }
+        this.write(', ')
         this.emitExpr(decl.value)
         this.write(')')
       } else {
@@ -2456,12 +2484,22 @@ class Codegen {
       // TS's implicit `any`. Forces narrow / cast at use sites; pairs
       // with the M8 `type.as` helper for typed runtime casts.
       if (this.tsMode) {
-        this.write(`: ${p.type ?? 'unknown'}`)
+        this.write(': ')
+        if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
+          this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+        } else {
+          this.write(p.type ?? 'unknown')
+        }
       }
     }
     this.write(')')
     if (this.tsMode && node.returnType !== undefined) {
-      this.write(`: ${node.returnType}`)
+      this.write(': ')
+      if (node.returnTypeStart !== undefined && node.returnTypeEnd !== undefined) {
+        this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(node.returnType!))
+      } else {
+        this.write(node.returnType)
+      }
     }
     this.write(' => {')
     // Paste the raw body verbatim. The `mark` call ties the entire
@@ -2809,12 +2847,22 @@ class Codegen {
         // with single-file first-call inference for omitted annotations.
         if (this.tsMode) {
           const inferred = this.inferredParamTypes.get(node)?.get(i)
-          this.write(`: ${p.type ?? inferred ?? 'unknown'}`)
+          this.write(': ')
+          if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
+            this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+          } else {
+            this.write(p.type ?? inferred ?? 'unknown')
+          }
         }
       }
       this.write(')')
       if (this.tsMode && node.returnType !== undefined) {
-        this.write(`: ${node.returnType}`)
+        this.write(': ')
+        if (node.returnTypeStart !== undefined && node.returnTypeEnd !== undefined) {
+          this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(node.returnType!))
+        } else {
+          this.write(node.returnType)
+        }
       }
       this.write(' => ')
       // An object literal directly after `=>` is grammatically ambiguous
@@ -3021,7 +3069,12 @@ class Codegen {
       this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
     }
     if (this.tsMode && node.type !== undefined) {
-      this.write(`: ${node.type}`)
+      this.write(': ')
+      if (node.typeStart !== undefined && node.typeEnd !== undefined) {
+        this.mark(node.typeStart, node.typeEnd, () => this.write(node.type!))
+      } else {
+        this.write(node.type)
+      }
     }
     this.write(' = ')
     this.emitExpr(node.value)

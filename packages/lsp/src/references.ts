@@ -68,6 +68,9 @@ export function referencesAtTuPosition(
   // site that ALSO appears as a reference (TS sometimes does this) doesn't
   // double-list.
   const seen = new Set<string>()
+  // Generated helper/interface code can legitimately point multiple TS spans
+  // back to the same Tu token. Keep the user-facing location list unique.
+  const seenSource = new Set<string>()
   const push = (
     fileName: string,
     spanStart: number,
@@ -87,6 +90,9 @@ export function referencesAtTuPosition(
       spanLength,
       targetShadow.mapPos
     )
+    const sourceKey = `${targetShadow.tuPath}:${range.line}:${range.col}:${range.length}`
+    if (seenSource.has(sourceKey)) return
+    seenSource.add(sourceKey)
     out.push({
       uri: pathToFileURL(targetShadow.tuPath).toString(),
       line: range.line,

@@ -216,6 +216,23 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.documentation!).toContain('count: number')
   })
 
+  it('M6.12: hovering an interface name in a lambda param annotation expands it', () => {
+    const lines = [
+      'interface Card { title: string; count: number }',
+      'export let render = (c: Card) => p { c.title }',
+    ]
+    const src = lines.join('\n')
+    const col = lines[1]!.indexOf('Card')
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 1, col)
+    expect(info).not.toBeNull()
+    expect(info!.documentation).toContain('Card')
+    expect(info!.documentation).toContain('title: string')
+    expect(info!.documentation).toContain('count: number')
+    expect(info!.line).toBe(1)
+    expect(info!.col).toBe(col)
+    expect(info!.length).toBe(4)
+  })
+
   it('M9: non-interface type hover (primitive number) does NOT inject expansion', () => {
     const src = ['export let count: number = 0'].join('\n')
     const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 0, 12)

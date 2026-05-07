@@ -61,6 +61,24 @@ describe('referencesAtTuPosition — find all references to a Tu identifier', ()
     expect(cardRefs.some((r) => r.isDefinition)).toBe(true)
   })
 
+  it('M6.12: lists interface references from a lambda type annotation cursor', () => {
+    const lines = [
+      'interface User { id: number; name: string }',
+      'export let alice: User = { id: 1, name: "Alice" }',
+      'export let render = (u: User): User => p { u.name }',
+    ]
+    const src = lines.join('\n')
+    const filename = join(tmp, 'types.tu')
+    const col = lines[2]!.indexOf('User')
+    const refs = referencesAtTuPosition(src, filename, 2, col)
+    expect(refs.length).toBeGreaterThanOrEqual(4)
+    expect(refs.every((r) => r.uri.endsWith('types.tu'))).toBe(true)
+    expect(refs.some((r) => r.isDefinition && r.line === 0)).toBe(true)
+    expect(refs.some((r) => r.line === 1)).toBe(true)
+    expect(refs.filter((r) => r.line === 2).length).toBeGreaterThanOrEqual(2)
+    expect(refs.every((r) => r.length === 4)).toBe(true)
+  })
+
   it('returns [] when the cursor is on a literal / keyword / whitespace', () => {
     const src = 'export let count = 0'
     // Col 19 — the `0` literal.

@@ -228,6 +228,9 @@ export interface Param extends Ranged {
   name: string
   /** Type annotation as a raw identifier ('string', 'number'…) — full type AST lands later. */
   type?: string
+  /** Source byte range of the type expression, when a `: T` annotation exists. */
+  typeStart?: number
+  typeEnd?: number
   /**
    * Object-destructure pattern. When present, codegen emits `{ a, b, c }`
    * in the param position (TS-native destructuring) and the body sees
