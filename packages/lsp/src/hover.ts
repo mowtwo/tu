@@ -1,4 +1,4 @@
-import { lineColAt, parse, tokenize, type CanonicalizeResult, type Program } from '@tu-lang/compiler'
+import { lineColAt, parse, tokenize, type CanonicalizeResult, type Expr, type Program } from '@tu-lang/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import ts from 'typescript'
@@ -74,7 +74,16 @@ export function hoverAtTuPosition(
   )
   if (!quickInfo) return null
 
-  const contents = ts.displayPartsToString(quickInfo.displayParts)
+  const rawContents = ts.displayPartsToString(quickInfo.displayParts)
+  const sourceToken = session.rootShadow.tuSource.slice(mapped.tokenSrcStart, mapped.tokenSrcEnd)
+  const contents = replaceAnonymousObjectTypes(
+    rawContents,
+    session.shadows,
+    session.rootShadow.tuPath,
+    mapped.tokenSrcStart,
+    session.rootShadow.ast,
+    sourceToken
+  )
   let documentation = quickInfo.documentation && quickInfo.documentation.length > 0
     ? ts.displayPartsToString(quickInfo.documentation)
     : undefined
@@ -222,6 +231,197 @@ function expandInterfaceTypes(
     lines.push('```')
   }
   return lines.join('\n')
+}
+
+interface InterfaceCandidate {
+  name: string
+  shapeKey: string
+  sourceFile: string
+  start: number
+}
+
+/**
+ * tsserver hovers unannotated object cells as anonymous structural types:
+ * `Signal.State<{ x: number; y: number; }>` even when a nearby
+ * `interface Point { x: number; y: number }` exists. Tu's runtime
+ * canonicalizer already treats those shapes as identical; mirror that
+ * ergonomics in hover text by replacing exact anonymous object shapes
+ * with the nearest same-shape interface name.
+ */
+function replaceAnonymousObjectTypes(
+  contents: string,
+  shadows: ReadonlyMap<string, { ast: Program; tuPath: string }> | Map<string, unknown>,
+  rootTuPath: string,
+  hoverOffset: number,
+  rootAst: Program,
+  sourceToken: string
+): string {
+  const candidates = collectInterfaceShapeCandidates(shadows, rootTuPath, hoverOffset)
+  if (candidates.length === 0) return contents
+
+  let out = ''
+  let last = 0
+  if (contents.includes('{')) {
+    for (const span of objectTypeSpans(contents)) {
+      const shapeKey = shapeKeyFromObjectType(contents.slice(span.start + 1, span.end - 1))
+      if (shapeKey === null) continue
+      const match = candidates.find((c) => c.shapeKey === shapeKey)
+      if (!match) continue
+      out += contents.slice(last, span.start) + match.name
+      last = span.end
+    }
+  }
+  const replaced = last === 0 ? contents : out + contents.slice(last)
+  if (replaced !== contents) return replaced
+
+  const inferred = inferNamedObjectLetShape(rootAst, sourceToken)
+  if (inferred === null) return contents
+  const match = candidates.find((c) => c.shapeKey === inferred)
+  if (!match) return contents
+  return contents.replace(/\bSignal\.(State|Computed)<any>/g, `Signal.$1<${match.name}>`)
+}
+
+function collectInterfaceShapeCandidates(
+  shadows: ReadonlyMap<string, { ast: Program; tuPath: string }> | Map<string, unknown>,
+  rootTuPath: string,
+  hoverOffset: number
+): InterfaceCandidate[] {
+  const candidates: InterfaceCandidate[] = []
+  for (const shadow of (shadows as ReadonlyMap<string, { ast: Program; tuPath: string }>).values()) {
+    if (!shadow.ast) continue
+    for (const stmt of shadow.ast.body) {
+      if (stmt.kind !== 'InterfaceDecl') continue
+      const fields = stmt.fields.map((f) => ({
+        name: f.name,
+        optional: f.optional,
+        type: normalizeShapeType(f.rawType),
+      }))
+      const shapeKey = shapeKeyFromFields(fields)
+      candidates.push({
+        name: stmt.name,
+        shapeKey,
+        sourceFile: shadow.tuPath,
+        start: stmt.start,
+      })
+    }
+  }
+  return candidates.sort((a, b) => {
+    const aLocal = a.sourceFile === rootTuPath ? 0 : 1
+    const bLocal = b.sourceFile === rootTuPath ? 0 : 1
+    if (aLocal !== bLocal) return aLocal - bLocal
+    if (aLocal === 0) return Math.abs(a.start - hoverOffset) - Math.abs(b.start - hoverOffset)
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function objectTypeSpans(contents: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = []
+  const stack: number[] = []
+  for (let i = 0; i < contents.length; i++) {
+    const ch = contents[i]
+    if (ch === '{') stack.push(i)
+    else if (ch === '}' && stack.length > 0) {
+      const start = stack.pop()!
+      if (stack.length === 0) spans.push({ start, end: i + 1 })
+    }
+  }
+  return spans
+}
+
+function shapeKeyFromObjectType(body: string): string | null {
+  const fields: Array<{ name: string; optional: boolean; type: string }> = []
+  for (const part of body.split(/[;,]/)) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const match = /^(?:readonly\s+)?([A-Za-z_$][\w$]*|\[[^\]]+\]|"[^"]+"|'[^']+')(\?)?\s*:\s*(.+)$/.exec(trimmed)
+    if (!match) return null
+    const rawName = match[1]!
+    const name = rawName.startsWith('"') || rawName.startsWith("'")
+      ? rawName.slice(1, -1)
+      : rawName
+    fields.push({
+      name,
+      optional: match[2] === '?',
+      type: normalizeShapeType(match[3]!),
+    })
+  }
+  return fields.length > 0 ? shapeKeyFromFields(fields) : null
+}
+
+function shapeKeyFromFields(
+  fields: ReadonlyArray<{ name: string; optional: boolean; type: string }>
+): string {
+  return [...fields]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((f) => `${f.name}:${f.optional ? '?' : ''}${f.type}`)
+    .join('|')
+}
+
+function normalizeShapeType(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, ' ')
+  if (/^(['"]).*\1$/.test(t)) return 'string'
+  if (/^-?\d+(?:\.\d+)?$/.test(t)) return 'number'
+  if (t === 'true' || t === 'false') return 'boolean'
+  return t
+    .replace(/\s*\|\s*/g, '|')
+    .replace(/\s*&\s*/g, '&')
+    .replace(/\s*<\s*/g, '<')
+    .replace(/\s*>\s*/g, '>')
+    .replace(/\s*,\s*/g, ',')
+}
+
+function inferNamedObjectLetShape(ast: Program, name: string): string | null {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null
+  for (const stmt of ast.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    if (stmt.name !== name) continue
+    if (stmt.type !== undefined) return null
+    if (stmt.value.kind !== 'ObjectLit') return null
+    const fields: Array<{ name: string; optional: boolean; type: string }> = []
+    for (const member of stmt.value.properties) {
+      if (member.kind === 'ObjectSpread') return null
+      if (member.keyKind === 'computed') return null
+      fields.push({
+        name: member.key,
+        optional: false,
+        type: normalizeShapeType(inferExprShapeType(member.value)),
+      })
+    }
+    return fields.length > 0 ? shapeKeyFromFields(fields) : null
+  }
+  return null
+}
+
+function inferExprShapeType(expr: Expr): string {
+  switch (expr.kind) {
+    case 'StringLit':
+    case 'TemplateLit':
+      return 'string'
+    case 'NumberLit':
+      return 'number'
+    case 'RegexLit':
+      return 'RegExp'
+    case 'Lambda':
+      return 'Function'
+    case 'Ident':
+      if (expr.name === 'true' || expr.name === 'false') return 'boolean'
+      if (expr.name === 'null' || expr.name === 'undefined') return 'null'
+      return expr.name
+    case 'ArrayLit':
+      return expr.elements.length === 0
+        ? 'any[]'
+        : `${inferExprShapeType(expr.elements[0]!)}[]`
+    case 'ObjectLit': {
+      const fields: string[] = []
+      for (const member of expr.properties) {
+        if (member.kind === 'ObjectSpread' || member.keyKind === 'computed') return 'object'
+        fields.push(`${member.key}:${normalizeShapeType(inferExprShapeType(member.value))}`)
+      }
+      return `{${fields.sort().join(';')}}`
+    }
+    default:
+      return 'unknown'
+  }
 }
 
 function canonicalPeersForInterface(

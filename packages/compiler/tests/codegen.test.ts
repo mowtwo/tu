@@ -1516,6 +1516,11 @@ describe('codegen', () => {
     expect(ts).toContain(
       'const NotFoundError: ((message: string, props?: { resource?: string }) => NotFoundError) & __tu_TypeDescriptor'
     )
+    expect(ts).toContain('const factory = (message: string, props?: { resource?: string }) => {')
+    expect(ts).toContain('const e = new Error(message) as NotFoundError')
+    expect(ts).toContain('(v as { name?: unknown }).name === "NotFoundError"')
+    expect(ts).toContain('(descriptor as unknown as Record<string, unknown>)[k]')
+    expect(ts).toContain('return factory as typeof factory & __tu_TypeDescriptor')
   })
 
   it('Exception decl JS-mode emits a factory function with stack-trace capture', () => {

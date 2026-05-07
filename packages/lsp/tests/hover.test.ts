@@ -188,6 +188,30 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.documentation!).toContain('email: string | null')
   })
 
+  it('M9: hovering an unannotated object cell prefers the nearest matching interface name', () => {
+    const src = [
+      'interface Point { x: number; y: number }',
+      'export let origin = { x: 0, y: 0 }',
+    ].join('\n')
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 1, 12)
+    expect(info).not.toBeNull()
+    expect(info!.contents).toContain('Signal.State<Point>')
+    expect(info!.contents).not.toContain('{ x: number; y: number; }')
+    expect(info!.documentation).toContain('Point')
+    expect(info!.documentation).toContain('x: number')
+    expect(info!.documentation).toContain('y: number')
+  })
+
+  it('M9: object-shape hover matching widens literal property types', () => {
+    const src = [
+      'interface Tagged { kind: string; count: number; enabled: boolean }',
+      'export let tagged = { kind: "point", count: 1, enabled: true }',
+    ].join('\n')
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 1, 12)
+    expect(info).not.toBeNull()
+    expect(info!.contents).toContain('Signal.State<Tagged>')
+  })
+
   it('M8/M9: interface hover reports canonical same-shape merges', () => {
     writeFileSync(join(tmp, 'person.tu'), 'export interface Person { id: number; name: string }\n')
     const src = [

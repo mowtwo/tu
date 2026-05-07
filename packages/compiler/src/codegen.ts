@@ -3188,8 +3188,17 @@ class Codegen {
     // Body: build the factory + descriptor, attach descriptor fields
     // onto the function so `type.is(e, XxxError)` reaches them.
     this.write(' = (() => {\n')
-    this.write(`  const factory = (message, props) => {\n`)
-    this.write(`    const e = new Error(message)\n`)
+    if (this.tsMode) {
+      const propsType = renderPropsTypeText(node.fields)
+      this.write(`  const factory = (message: string, props?: ${propsType}) => {\n`)
+    } else {
+      this.write(`  const factory = (message, props) => {\n`)
+    }
+    if (this.tsMode) {
+      this.write(`    const e = new Error(message) as ${node.name}\n`)
+    } else {
+      this.write(`    const e = new Error(message)\n`)
+    }
     this.write(`    e.name = ${JSON.stringify(node.name)}\n`)
     if (node.fields.length > 0) {
       this.write(`    if (props) {\n`)
@@ -3210,11 +3219,13 @@ class Codegen {
     // in strict mode. Manually copy each descriptor field via
     // `Object.defineProperty` to override the built-in.
     this.write(`  const descriptor = type.native(${JSON.stringify(node.name)}, (v) => `)
-    this.write(`v != null && typeof v === "object" && v.name === ${JSON.stringify(node.name)})\n`)
+    this.write(`v != null && typeof v === "object" && (v as { name?: unknown }).name === ${JSON.stringify(node.name)})\n`)
     this.write(`  for (const k of Object.keys(descriptor)) {\n`)
-    this.write(`    Object.defineProperty(factory, k, { value: descriptor[k], writable: true, configurable: true, enumerable: true })\n`)
+    this.write(`    Object.defineProperty(factory, k, { value: (descriptor as unknown as Record<string, unknown>)[k], writable: true, configurable: true, enumerable: true })\n`)
     this.write(`  }\n`)
-    this.write(`  return factory\n`)
+    this.write(this.tsMode
+      ? `  return factory as typeof factory & __tu_TypeDescriptor\n`
+      : `  return factory\n`)
     this.write(`})()`)
   }
 

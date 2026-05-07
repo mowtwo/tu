@@ -151,14 +151,20 @@ describe('completionsAtTuPosition — completion at a .tu cursor position', () =
     expect(labels).toContain('Child')
   })
 
-  it('M5.4: surfaces user-defined `type X` aliases in a type position', () => {
-    const src = ['type Person = { name: string }', 'export let alice: '].join('\n')
-    const items = completionsAtTuPosition(src, join(tmp, 'type-user.tu'), 1, 18)
+  it('M5.4/M9: surfaces user-defined named types in a type position', () => {
+    const src = [
+      'interface Person { name: string }',
+      'enum Tone { Neutral, Accent = "accent" }',
+      'Exception NotFound { resource: string }',
+      'export let alice: ',
+    ].join('\n')
+    const items = completionsAtTuPosition(src, join(tmp, 'type-user.tu'), 3, 18)
     const labels = items.map((i) => i.label)
     expect(labels).toContain('Person')
-    // detail explains it's a Tu type alias.
+    expect(labels).toContain('Tone')
+    expect(labels).toContain('NotFound')
     const person = items.find((i) => i.label === 'Person')!
-    expect(person.detail).toMatch(/type alias/)
+    expect(person.detail).toMatch(/named type/)
   })
 
   it('M5.4: surfaces types in a lambda param annotation position', () => {

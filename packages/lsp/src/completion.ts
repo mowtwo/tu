@@ -124,7 +124,7 @@ export function completionsAtTuPosition(
     }
     for (const t of ctx.userTypes) {
       if (seen.has(t)) continue
-      out.push({ label: t, kind: 'type', sortText: '0_' + t, detail: 'Tu type alias' })
+      out.push({ label: t, kind: 'type', sortText: '0_' + t, detail: 'Tu named type' })
     }
     return out
   }
@@ -406,10 +406,10 @@ function isTypePositionAfter(tokens: Token[], colonIdx: number): boolean {
 }
 
 /**
- * Find every top-level `type X = …` declaration in `source` and return
- * the names. Uses a regex scan so it works even when the rest of the
- * file is mid-typing and won't parse cleanly (`let alice: |` → parse
- * error, but a `type Person = …` above is still extractable).
+ * Find every top-level type-like declaration in `source` and return the
+ * names. Uses a regex scan so it works even when the rest of the file is
+ * mid-typing (`let alice: |` → parse error, but declarations above are
+ * still extractable).
  */
 function collectUserTypes(source: string): string[] {
   const out: string[] = []
@@ -420,6 +420,12 @@ function collectUserTypes(source: string): string[] {
   // `interface X {` (M8 — object shapes; runtime descriptor + TS interface).
   const ifaceRe = /^[ \t]*(?:export[ \t]+)?interface[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\{/gm
   while ((m = ifaceRe.exec(source)) !== null) out.push(m[1]!)
+  // `enum X {` and `Exception X {` (M9 declarations with runtime values
+  // and type-space names).
+  const enumRe = /^[ \t]*(?:export[ \t]+)?enum[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\{/gm
+  while ((m = enumRe.exec(source)) !== null) out.push(m[1]!)
+  const exceptionRe = /^[ \t]*(?:export[ \t]+)?Exception[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\{/gm
+  while ((m = exceptionRe.exec(source)) !== null) out.push(m[1]!)
   return out
 }
 

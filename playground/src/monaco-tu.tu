@@ -41,15 +41,18 @@ let _wireWorker = installWorker(EditorWorker)
 
 let registerTuLanguage = external JS (monaco: any) {
   const KEYWORDS = [
-    "let", "export", "import", "from", "as", "if", "else", "for", "of", "in",
+    "let", "export", "default", "import", "from", "as",
+    "interface", "type", "enum", "Exception",
+    "if", "else", "for", "of", "in",
     "computed", "effect", "watch", "async", "await",
     "where", "order", "by", "take", "skip", "server", "client", "stream", "defer",
-    "try", "catch", "finally", "throw", "return", "new", "external",
+    "try", "catch", "finally", "throw", "return", "new", "external", "style", "markdown",
   ]
   const CONSTANTS = ["true", "false", "null"]
   const TYPE_PRIMITIVES = [
-    "string", "number", "boolean", "void", "any", "unknown", "never", "object",
-    "Child", "VNode", "Event",
+    "string", "number", "boolean", "void", "any", "unknown", "never",
+    "null", "undefined", "object", "bigint", "symbol",
+    "Child", "VNode", "Event", "Promise", "RegExp", "Error",
   ]
   monaco.languages.register({ id: "tu", extensions: [".tu"], aliases: ["Tu"] })
   monaco.languages.setMonarchTokensProvider("tu", {
@@ -74,13 +77,22 @@ let registerTuLanguage = external JS (monaco: any) {
         [/\bexternal\s+TS\b/, { token: "keyword.control", next: "@externalHeadTs" }],
         [/\bstyle\b(?=\s*\{)/, { token: "keyword.control", next: "@styleEnter" }],
         [/\bmarkdown\b(?=\s*\{)/, { token: "keyword.control", next: "@markdownEnter" }],
+        [/\b(interface|type|enum|Exception)\s+([A-Z_$][\w$]*)/, ["keyword.control", "type.identifier"]],
+        [/\b(export)\s+(default)\s+(let)\s+([A-Za-z_$][\w$]*)/, ["keyword.control", "keyword.control", "keyword.control", "identifier"]],
+        [/\b(export)\s+(let)\s+([A-Za-z_$][\w$]*)/, ["keyword.control", "keyword.control", "identifier"]],
+        [/\b(let)\s+([A-Za-z_$][\w$]*)/, ["keyword.control", "identifier"]],
         [/"([^"\\]|\\.)*$/, "string.invalid"],
         [/"/, { token: "string.quote", next: "@string" }],
+        [/'([^'\\]|\\.)*$/, "string.invalid"],
+        [/'/, { token: "string.quote", next: "@stringSingle" }],
+        [/`/, { token: "string.quote", next: "@templateString" }],
+        [/\/(?:\\.|[^\n\/\\])+\/[dgimsuvy]*/, "regexp"],
         [/\b\d+(\.\d+)?\b/, "number"],
         [/\.([a-zA-Z_][\w-]*)/, "entity.other.attribute-name"],
         [/\b([a-z][\w]*)(?=\s*:)/, "attribute.name"],
-        [/\b[A-Z][\w]*\b/, "type.identifier"],
+        [/\b([A-Z][\w]*)(?=\s*[\(\{])/, "type.component"],
         [/\b([a-z][\w]*)(?=\s*[\(\{])/, "tag"],
+        [/\b[A-Z][\w]*\b/, "type.identifier"],
         [/\b[a-zA-Z_]\w*\b/, {
           cases: {
             "@keywords": "keyword.control",
@@ -89,7 +101,7 @@ let registerTuLanguage = external JS (monaco: any) {
             "@default": "identifier",
           },
         }],
-        [/=>|==|!=|<=|>=|\|\||&&|\?\?|\?\.|[+\-*/%!<>=?]/, "operator"],
+        [/=>|\*\*=|\*\*|\?\?|\?\.|\.{3}|\.{2}|&&|\|\||==|!=|<=|>=|<<|>>|[+\-*/%=&|^~!<>?:]=?/, "operator"],
         [/[{}()\[\]]/, "@brackets"],
         [/[,;:.]/, "delimiter"],
       ],
@@ -97,6 +109,21 @@ let registerTuLanguage = external JS (monaco: any) {
         [/[^"\\]+/, "string"],
         [/\\(n|t|r|"|\\)/, "constant.character.escape"],
         [/"/, { token: "string.quote", next: "@pop" }],
+      ],
+      stringSingle: [
+        [/[^'\\]+/, "string"],
+        [/\\(n|t|r|'|\\)/, "constant.character.escape"],
+        [/'/, { token: "string.quote", next: "@pop" }],
+      ],
+      templateString: [
+        [/[^`\\$]+/, "string"],
+        [/\\(`|\$|n|t|r|\\)/, "constant.character.escape"],
+        [/\$\{/, { token: "delimiter.bracket", next: "@templateExpr" }],
+        [/`/, { token: "string.quote", next: "@pop" }],
+      ],
+      templateExpr: [
+        [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+        { include: "root" },
       ],
       styleEnter: [[/\{/, { token: "delimiter.curly", next: "@styleBody" }]],
       styleBody: [
@@ -186,6 +213,8 @@ let defineTuTheme = external JS (monaco: any) {
       { token: "number", foreground: "fb923c" },
       { token: "type", foreground: "7dd3fc" },
       { token: "type.identifier", foreground: "fde68a" },
+      { token: "type.component", foreground: "c4b5fd" },
+      { token: "regexp", foreground: "fca5a5" },
       { token: "tag", foreground: "60a5fa" },
       { token: "attribute.name", foreground: "93c5fd" },
       { token: "entity.other.attribute-name", foreground: "fbbf24" },
@@ -236,9 +265,11 @@ let _stashed = _stashMonaco(monaco)
 //   - Go-to-definition jumps to the first matching `let X` in any model
 let registerTuLangServices = external JS (monaco: any): void {
   const TU_KEYWORDS = [
-    "let", "export", "import", "from", "as", "if", "else", "for", "of", "in",
+    "let", "export", "default", "import", "from", "as",
+    "interface", "type", "enum", "Exception",
+    "if", "else", "for", "of", "in",
     "computed", "async", "await", "try", "catch", "finally", "throw", "return",
-    "new", "external", "type",
+    "new", "external", "style", "markdown",
   ]
   const TU_CONSTANTS = ["true", "false", "null"]
   const HTML_TAGS = [
@@ -261,6 +292,30 @@ let registerTuLangServices = external JS (monaco: any): void {
       detail: "named component",
       insertText: 'export let ${1:Name} = (props) => div {\n  $0\n}',
       docs: "Reusable component with props parameter.",
+    },
+    {
+      label: "default component",
+      detail: "default export",
+      insertText: 'export default let ${1:App} = () => div {\n  $0\n}',
+      docs: "Default-exported component.",
+    },
+    {
+      label: "interface",
+      detail: "object shape",
+      insertText: 'interface ${1:Name} {\n  ${2:field}: ${3:string}\n}',
+      docs: "Named structural object shape.",
+    },
+    {
+      label: "enum",
+      detail: "enum declaration",
+      insertText: 'enum ${1:Name} {\n  ${2:Value}\n}',
+      docs: "Runtime enum with a matching type.",
+    },
+    {
+      label: "Exception",
+      detail: "structured exception",
+      insertText: 'Exception ${1:AppError} {\n  ${2:code}?: ${3:string}\n}',
+      docs: "Tagged Error shape for throws/catch flows.",
     },
     {
       label: "cell",
@@ -336,10 +391,9 @@ let registerTuLangServices = external JS (monaco: any): void {
     parseCache.set(model, { v, result })
     return result
   }
-  // Lightweight regex-based scan for top-level `let`/`export let`/`type`
-  // declarations. Skips comments + strings; tracks brace depth to keep
-  // top-level only. Faster than full Tu parse + good enough for hover
-  // and symbol completion.
+  // Lightweight regex-based scan for top-level value/type declarations.
+  // Skips comments + strings; tracks brace depth to keep top-level only.
+  // Faster than full Tu parse + good enough for hover and symbol completion.
   function scanDeclarations(src) {
     const decls = []
     let i = 0
@@ -367,10 +421,16 @@ let registerTuLangServices = external JS (monaco: any): void {
       // Track depth.
       if (ch === "{" || ch === "(" || ch === "[") { depth++; i++; col++; continue }
       if (ch === "}" || ch === ")" || ch === "]") { depth--; i++; col++; continue }
-      // Look for top-level `let`/`export let`/`type` at depth 0.
-      if (depth === 0 && /[a-z]/.test(ch)) {
+      // Look for top-level value/type declarations at depth 0.
+      if (depth === 0 && /[A-Za-z]/.test(ch)) {
         const rest = src.slice(i)
-        let m = rest.match(/^export\s+let\s+([A-Za-z_$][\w$]*)/)
+        let m = rest.match(/^export\s+default\s+let\s+([A-Za-z_$][\w$]*)/)
+        if (m) {
+          decls.push({ kind: "let", exported: true, name: m[1], line, col, offset: i, len: m[0].length })
+          i += m[0].length
+          continue
+        }
+        m = rest.match(/^export\s+let\s+([A-Za-z_$][\w$]*)/)
         if (m) {
           decls.push({ kind: "let", exported: true, name: m[1], line, col, offset: i, len: m[0].length })
           i += m[0].length
@@ -382,15 +442,15 @@ let registerTuLangServices = external JS (monaco: any): void {
           i += m[0].length
           continue
         }
-        m = rest.match(/^export\s+type\s+([A-Za-z_$][\w$]*)/)
+        m = rest.match(/^export\s+(type|interface|enum|Exception)\s+([A-Za-z_$][\w$]*)/)
         if (m) {
-          decls.push({ kind: "type", exported: true, name: m[1], line, col, offset: i, len: m[0].length })
+          decls.push({ kind: "type", exported: true, name: m[2], line, col, offset: i, len: m[0].length })
           i += m[0].length
           continue
         }
-        m = rest.match(/^type\s+([A-Za-z_$][\w$]*)/)
+        m = rest.match(/^(type|interface|enum|Exception)\s+([A-Za-z_$][\w$]*)/)
         if (m) {
-          decls.push({ kind: "type", exported: false, name: m[1], line, col, offset: i, len: m[0].length })
+          decls.push({ kind: "type", exported: false, name: m[2], line, col, offset: i, len: m[0].length })
           i += m[0].length
           continue
         }

@@ -177,10 +177,15 @@ export function checkTuFile(path: string): TuDiagnostic[] {
 
 function checkDeprecatedPositionalComponentCalls(program: Program, source: string): TuDiagnostic[] {
   const out: TuDiagnostic[] = []
+  const exceptionNames = new Set(
+    program.body
+      .filter((stmt) => stmt.kind === 'ExceptionDecl')
+      .map((stmt) => stmt.name)
+  )
   const visit = (expr: Expr): void => {
     switch (expr.kind) {
       case 'CallExpr':
-        if (isDeprecatedPositionalComponentCall(expr)) {
+        if (isDeprecatedPositionalComponentCall(expr, exceptionNames)) {
           const lc = lineColAt(source, expr.calleeStart)
           out.push({
             line: lc.line - 1,
@@ -317,8 +322,12 @@ function checkDeprecatedPositionalComponentCalls(program: Program, source: strin
   return out
 }
 
-function isDeprecatedPositionalComponentCall(expr: Extract<Expr, { kind: 'CallExpr' }>): boolean {
+function isDeprecatedPositionalComponentCall(
+  expr: Extract<Expr, { kind: 'CallExpr' }>,
+  exceptionNames: ReadonlySet<string>
+): boolean {
   if (expr.namedArgs !== undefined) return false
   if (!/^[A-Z]/.test(expr.callee)) return false
+  if (exceptionNames.has(expr.callee)) return false
   return expr.args.length > 0 || expr.children !== undefined
 }

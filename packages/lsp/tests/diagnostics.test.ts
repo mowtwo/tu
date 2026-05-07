@@ -120,6 +120,15 @@ describe('checkTuSource — diagnostic round-trip', () => {
     expect(diags.some((d) => d.message.includes('positional component call'))).toBe(false)
   })
 
+  it('M9: Exception declarations do not leak generated implicit-any or field-index diagnostics', () => {
+    const src = [
+      'Exception NotFound { field: string }',
+      'export let make = () => NotFound("missing", { field: "id" })',
+    ].join('\n')
+    const diags = checkTuSource(src, 'exception.tu')
+    expect(diags).toEqual([])
+  })
+
   it('squiggles the offending RHS literal in a state-cell assignment', () => {
     // `count.set("not a number")` — TS reports on `"not a number"`. The
     // string literal in the source spans `"not a number"` (15 chars).
