@@ -146,6 +146,41 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const label = (user: { profile: { age: unknown; name: unknown } }) =>')
   })
 
+  it('M9 Phase D: uncalled params infer number from arithmetic body use', () => {
+    const ts = compileToTS(`
+      let double = (x) => x * 2
+    `)
+    expect(ts).toContain('const double = (x: number) =>')
+  })
+
+  it('M9 Phase D: uncalled params infer number from numeric plus body use', () => {
+    const ts = compileToTS(`
+      let inc = (x) => x + 1
+    `)
+    expect(ts).toContain('const inc = (x: number) =>')
+  })
+
+  it('M9 Phase D: uncalled params infer boolean from unary body use', () => {
+    const ts = compileToTS(`
+      let toggle = (ok) => !ok
+    `)
+    expect(ts).toContain('const toggle = (ok: boolean) =>')
+  })
+
+  it('M9 Phase D: uncalled params infer arrays from spread body use', () => {
+    const ts = compileToTS(`
+      let copy = (items) => [...items]
+    `)
+    expect(ts).toContain('const copy = (items: unknown[]) =>')
+  })
+
+  it('M9 Phase D: uncalled params infer from literal comparisons', () => {
+    const ts = compileToTS(`
+      let matches = (name, age) => [name == "Ada", age > 18]
+    `)
+    expect(ts).toContain('const matches = (name: string, age: number) =>')
+  })
+
   it('M9 Phase D: callsite inference wins over body-use fallback', () => {
     const ts = compileToTS(`
       let label = (card) => card.title

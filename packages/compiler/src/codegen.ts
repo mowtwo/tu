@@ -1028,6 +1028,11 @@ function inferBodyFirstUseParamTypes(lambda: Lambda): Map<number, string> {
     if (shape.children.size === 0) continue
     out.set(idx, renderInferredObjectShape(shape))
   }
+  const bodyUseTypes = new Map<number, string>()
+  collectParamBodyUseTypes(lambda.body, paramNames, bodyUseTypes, new Set())
+  for (const [idx, typeText] of bodyUseTypes) {
+    out.set(idx, mergeInferredTypes(out.get(idx), typeText))
+  }
   return out
 }
 
@@ -1238,6 +1243,211 @@ function collectParamMemberReadsFromChild(
 ): void {
   if (child === null || typeof child !== 'object') return
   collectParamMemberReads(child, paramNames, shapesByParam, shadowed)
+}
+
+function collectParamBodyUseTypes(
+  expr: Expr,
+  paramNames: ReadonlyMap<string, number>,
+  typesByParam: Map<number, string>,
+  shadowed: ReadonlySet<string>
+): void {
+  const recordIdent = (candidate: Expr, typeText: string): void => {
+    if (candidate.kind !== 'Ident') return
+    if (shadowed.has(candidate.name)) return
+    const idx = paramNames.get(candidate.name)
+    if (idx === undefined) return
+    typesByParam.set(idx, mergeInferredTypes(typesByParam.get(idx), typeText))
+  }
+
+  switch (expr.kind) {
+    case 'Ident':
+    case 'StringLit':
+    case 'NumberLit':
+    case 'ClassRef':
+    case 'StyleBlock':
+    case 'MarkdownBlock':
+    case 'RegexLit':
+    case 'ExternalLambda':
+      return
+    case 'MemberExpr':
+      collectParamBodyUseTypes(expr.object, paramNames, typesByParam, shadowed)
+      return
+    case 'MethodCallExpr':
+      collectParamBodyUseTypes(expr.object, paramNames, typesByParam, shadowed)
+      for (const arg of expr.args) collectParamBodyUseTypes(arg, paramNames, typesByParam, shadowed)
+      return
+    case 'Lambda': {
+      const nextShadowed = new Set(shadowed)
+      for (const p of expr.params) {
+        if (p.destructureFields) {
+          for (const f of p.destructureFields) nextShadowed.add(f)
+        } else {
+          nextShadowed.add(p.name)
+        }
+      }
+      collectParamBodyUseTypes(expr.body, paramNames, typesByParam, nextShadowed)
+      return
+    }
+    case 'Block': {
+      const nextShadowed = new Set(shadowed)
+      for (const item of expr.body) {
+        if (item.kind === 'LocalLet') {
+          collectParamBodyUseTypes(item.value, paramNames, typesByParam, nextShadowed)
+          if (item.destructureFields) {
+            for (const f of item.destructureFields) nextShadowed.add(f)
+          } else {
+            nextShadowed.add(item.name)
+          }
+        } else {
+          collectParamBodyUseTypes(item, paramNames, typesByParam, nextShadowed)
+        }
+      }
+      return
+    }
+    case 'BinaryExpr': {
+      if (expr.op === '-' || expr.op === '*' || expr.op === '/' || expr.op === '%') {
+        recordIdent(expr.left, 'number')
+        recordIdent(expr.right, 'number')
+      }
+      if (expr.op === '+') {
+        if (literalComparableType(expr.right) === 'number') recordIdent(expr.left, 'number')
+        if (literalComparableType(expr.left) === 'number') recordIdent(expr.right, 'number')
+      }
+      if (expr.op === '<' || expr.op === '<=' || expr.op === '>' || expr.op === '>=') {
+        recordIdent(expr.left, literalComparableType(expr.right) ?? 'number')
+        recordIdent(expr.right, literalComparableType(expr.left) ?? 'number')
+      }
+      if (expr.op === '==' || expr.op === '!=') {
+        const rightType = literalComparableType(expr.right)
+        const leftType = literalComparableType(expr.left)
+        if (rightType) recordIdent(expr.left, rightType)
+        if (leftType) recordIdent(expr.right, leftType)
+      }
+      collectParamBodyUseTypes(expr.left, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.right, paramNames, typesByParam, shadowed)
+      return
+    }
+    case 'UnaryExpr':
+      if (expr.op === '!') recordIdent(expr.arg, 'boolean')
+      if (expr.op === '-' || expr.op === '+') recordIdent(expr.arg, 'number')
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'IndexExpr':
+      recordIdent(expr.object, 'unknown[]')
+      collectParamBodyUseTypes(expr.object, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.index, paramNames, typesByParam, shadowed)
+      return
+    case 'SpreadElement':
+      recordIdent(expr.arg, 'unknown[]')
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'ForExpr': {
+      recordIdent(expr.iter, 'unknown[]')
+      collectParamBodyUseTypes(expr.iter, paramNames, typesByParam, shadowed)
+      const nextShadowed = new Set(shadowed)
+      nextShadowed.add(expr.item)
+      collectParamBodyUseTypes(expr.body, paramNames, typesByParam, nextShadowed)
+      return
+    }
+    case 'CallExpr':
+      for (const arg of expr.args) collectParamBodyUseTypes(arg, paramNames, typesByParam, shadowed)
+      for (const arg of expr.namedArgs ?? []) collectParamBodyUseTypes(arg.value, paramNames, typesByParam, shadowed)
+      for (const child of expr.children ?? []) collectParamBodyUseTypesFromChild(child, paramNames, typesByParam, shadowed)
+      return
+    case 'TagCall':
+      for (const prop of expr.props) collectParamBodyUseTypes(prop.value, paramNames, typesByParam, shadowed)
+      for (const child of expr.children) collectParamBodyUseTypesFromChild(child, paramNames, typesByParam, shadowed)
+      return
+    case 'ArrayLit':
+      for (const item of expr.elements) collectParamBodyUseTypes(item, paramNames, typesByParam, shadowed)
+      return
+    case 'ObjectLit':
+      for (const prop of expr.properties) {
+        if (prop.kind === 'ObjectSpread') collectParamBodyUseTypes(prop.arg, paramNames, typesByParam, shadowed)
+        else collectParamBodyUseTypes(prop.value, paramNames, typesByParam, shadowed)
+      }
+      return
+    case 'MemberAssignExpr':
+      collectParamBodyUseTypes(expr.target, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.value, paramNames, typesByParam, shadowed)
+      return
+    case 'InvokeExpr':
+      collectParamBodyUseTypes(expr.callee, paramNames, typesByParam, shadowed)
+      for (const arg of expr.args) collectParamBodyUseTypes(arg, paramNames, typesByParam, shadowed)
+      return
+    case 'AssignExpr':
+      collectParamBodyUseTypes(expr.value, paramNames, typesByParam, shadowed)
+      return
+    case 'NonNullAssertExpr':
+    case 'AsExpr':
+    case 'AwaitExpr':
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'IfExpr':
+      collectParamBodyUseTypes(expr.cond, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.then, paramNames, typesByParam, shadowed)
+      if (expr.else) collectParamBodyUseTypes(expr.else, paramNames, typesByParam, shadowed)
+      return
+    case 'TryExpr':
+      collectParamBodyUseTypes(expr.body, paramNames, typesByParam, shadowed)
+      if (expr.catchClause) {
+        const nextShadowed = new Set(shadowed)
+        if (expr.catchClause.param) nextShadowed.add(expr.catchClause.param)
+        collectParamBodyUseTypes(expr.catchClause.body, paramNames, typesByParam, nextShadowed)
+      }
+      if (expr.finallyClause) collectParamBodyUseTypes(expr.finallyClause, paramNames, typesByParam, shadowed)
+      return
+    case 'TernaryExpr':
+      collectParamBodyUseTypes(expr.cond, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.then, paramNames, typesByParam, shadowed)
+      collectParamBodyUseTypes(expr.else, paramNames, typesByParam, shadowed)
+      return
+    case 'NewExpr':
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'UpdateExpr':
+      recordIdent(expr.arg, 'number')
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'TemplateLit':
+      for (const part of expr.expressions) collectParamBodyUseTypes(part, paramNames, typesByParam, shadowed)
+      return
+    case 'ThrowExpr':
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+    case 'ReturnExpr':
+      if (expr.value) collectParamBodyUseTypes(expr.value, paramNames, typesByParam, shadowed)
+      return
+    case 'ImportExpr':
+      collectParamBodyUseTypes(expr.arg, paramNames, typesByParam, shadowed)
+      return
+  }
+}
+
+function collectParamBodyUseTypesFromChild(
+  child: Child,
+  paramNames: ReadonlyMap<string, number>,
+  typesByParam: Map<number, string>,
+  shadowed: ReadonlySet<string>
+): void {
+  if (child === null || typeof child !== 'object') return
+  collectParamBodyUseTypes(child, paramNames, typesByParam, shadowed)
+}
+
+function literalComparableType(expr: Expr): string | undefined {
+  switch (expr.kind) {
+    case 'StringLit':
+    case 'TemplateLit':
+      return 'string'
+    case 'NumberLit':
+      return 'number'
+    case 'Ident':
+      if (expr.name === 'true' || expr.name === 'false') return 'boolean'
+      if (expr.name === 'null') return 'null'
+      return undefined
+    default:
+      return undefined
+  }
 }
 
 function inferExprTsType(
