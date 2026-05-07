@@ -79,7 +79,7 @@ let shuffleInPlace = external JS (arr: any[]): any[] {
 }
 
 let demos = () => [
-  { id: "hello", setup: () => undefined, thunk: () => HelloMod.Greeting("World") },
+  { id: "hello", setup: () => null, thunk: () => HelloMod.Greeting("World") },
   {
     id: "counter",
     setup: () => CounterMod.count.set(0),
@@ -95,7 +95,7 @@ let demos = () => [
   },
   {
     id: "card",
-    setup: () => undefined,
+    setup: () => null,
     thunk: () =>
       CardMod.Card("Tu", "A reactive UI language with first-class style blocks."),
   },
@@ -104,8 +104,8 @@ let demos = () => [
     setup: () => ClickerMod.count.set(0),
     thunk: () => ClickerMod.Clicker(),
   },
-  { id: "scoped", setup: () => undefined, thunk: () => ScopedMod.Scoped() },
-  { id: "composition", setup: () => undefined, thunk: () => CompositionMod.App() },
+  { id: "scoped", setup: () => null, thunk: () => ScopedMod.Scoped() },
+  { id: "composition", setup: () => null, thunk: () => CompositionMod.App() },
   {
     id: "typed",
     setup: () => TypedMod.n.set(1),

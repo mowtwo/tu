@@ -171,7 +171,7 @@ export let Page = () => div {
     }
     ```
 
-    Each item is parsed as an expression (or a `LocalLet`). The last non-LocalLet expression is the block's value. Multi-statement blocks compile to an IIFE; single-statement blocks compile to `(stmt)`. **Note: `{}` is an empty object literal, not an empty block** — write `{ undefined }` if you want a block that evaluates to `undefined`.
+    Each item is parsed as an expression (or a `LocalLet`). The last non-LocalLet expression is the block's value. Multi-statement blocks compile to an IIFE; single-statement blocks compile to `(stmt)`. **Note: `{}` is an empty object literal, not an empty block** — write `{ null }` if you want a block that evaluates to an intentional empty value.
 
     ## Markup (tag-calls)
 
@@ -328,7 +328,7 @@ export let Page = () => div {
 
     ## Common gotchas (study these — they prevent bugs)
 
-    1. **`{}` is an empty OBJECT, not an empty block.** Write `{ undefined }` for an empty block.
+    1. **`{}` is an empty OBJECT, not an empty block.** Write `{ null }` for an empty block.
     2. **Children are whitespace-separated.** Don't write `,` between them: `div { x, y }` parses as `div { (x, y) }` which is not what you want.
     3. **No shorthand object props yet.** `{ x }` is a Block, not `{ x: x }`. Write the key explicitly.
     4. **No spread / computed keys / member access via `[]`.** Use object literal + member access via `.` only.

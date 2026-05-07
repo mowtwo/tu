@@ -46,7 +46,7 @@ let registerTuLanguage = external JS (monaco: any) {
     "where", "order", "by", "take", "skip", "server", "client", "stream", "defer",
     "try", "catch", "finally", "throw", "return", "new", "external",
   ]
-  const CONSTANTS = ["true", "false", "null", "undefined"]
+  const CONSTANTS = ["true", "false", "null"]
   const TYPE_PRIMITIVES = [
     "string", "number", "boolean", "void", "any", "unknown", "never", "object",
     "Child", "VNode", "Event",
@@ -240,7 +240,7 @@ let registerTuLangServices = external JS (monaco: any): void {
     "computed", "async", "await", "try", "catch", "finally", "throw", "return",
     "new", "external", "type",
   ]
-  const TU_CONSTANTS = ["true", "false", "null", "undefined"]
+  const TU_CONSTANTS = ["true", "false", "null"]
   const HTML_TAGS = [
     "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "a", "button", "input", "textarea", "select", "option", "form", "label",

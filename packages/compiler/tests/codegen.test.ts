@@ -1048,6 +1048,11 @@ describe('codegen', () => {
     expect(() => compile('let stamp = Date.now()')).toThrow(/'Date'.*banned.*std\/time/i)
   })
 
+  it('M9: value-position `undefined` is BANNED — use null', () => {
+    expect(() => compile('let x = undefined')).toThrow(/undefined.*banned.*null/i)
+    expect(compile('let x = null')).toContain('null')
+  })
+
   it('M9: prefix `++` is BANNED', () => {
     expect(() => compile('let inc = () => ++count')).toThrow(/prefix.*banned.*\+= 1/i)
   })

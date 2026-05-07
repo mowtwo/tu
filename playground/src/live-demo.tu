@@ -546,7 +546,7 @@ let attachLiveCompiler = (): void => {
 
 export let liveDemo = () => ({
   id: "live",
-  setup: () => undefined,
+  setup: () => null,
   teardown: () => stopLivePreview(),
   thunk: () => h("div", { class: "live-anchor" }, []),
   afterMount: () => attachLiveCompiler(),

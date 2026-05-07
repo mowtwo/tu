@@ -241,8 +241,8 @@ export let Page = () => div {
     statement evaluated for side effects, the final one is the block's value).
     A 1-statement block compiles to `(stmt)`. Note that `{}` parses as an
     empty **object literal**, not an empty block — write a one-statement block
-    explicitly (e.g. `{ undefined }`) if you really mean "evaluate to
-    undefined."
+    explicitly (e.g. `{ null }`) if you really mean "evaluate to an
+    intentional empty value."
 
     ---
 

@@ -2254,6 +2254,11 @@ export class Parser {
           `'void' operator is banned in Tu source. Use \`null\` for intentional empty values; type-position \`: void\` return annotations are still allowed.`
         )
       }
+      if (t.text === 'undefined') {
+        throw this.error(
+          `'undefined' is banned in Tu source. Use \`null\` for intentional empty values; compiler-generated JS may still use undefined for omitted values.`
+        )
+      }
       if (t.text === 'this') {
         throw this.error(
           `'this' is banned in Tu source. Components and helpers are lexical lambdas; pass dependencies explicitly instead of relying on method receiver binding.`
