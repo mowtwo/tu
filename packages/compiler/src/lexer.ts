@@ -238,6 +238,9 @@ export class Lexer {
         if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.MinusEq, start, 2)
         return this.punct(TokenKind.Minus, start, 1)
       case '*':
+        if (this.src.charAt(this.pos + 1) === '*' && this.src.charAt(this.pos + 2) === '=') {
+          return this.punct(TokenKind.StarStarEq, start, 3)
+        }
         if (this.src.charAt(this.pos + 1) === '*') return this.punct(TokenKind.StarStar, start, 2)
         if (this.src.charAt(this.pos + 1) === '=') return this.punct(TokenKind.StarEq, start, 2)
         return this.punct(TokenKind.Star, start, 1)

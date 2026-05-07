@@ -112,6 +112,16 @@ describe('lexer', () => {
     ])
   })
 
+  it('lexes exponent compound assignment as a single operator', () => {
+    const tokens = tokenize('x **= 2')
+    expect(tokens.map((t) => t.kind)).toEqual([
+      TokenKind.Ident,
+      TokenKind.StarStarEq,
+      TokenKind.Number,
+      TokenKind.Eof,
+    ])
+  })
+
   it('lexes bitwise operators', () => {
     const tokens = tokenize('& | ^ ~ << >>')
     expect(tokens.map((t) => t.kind)).toEqual([

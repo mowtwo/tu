@@ -72,6 +72,7 @@ export enum TokenKind {
   StarEq,
   SlashEq,
   PercentEq,
+  StarStarEq,
   OrOrEq,
   AndAndEq,
   QuestionQuestionEq,

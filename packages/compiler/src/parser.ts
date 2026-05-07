@@ -104,6 +104,7 @@ const COMPOUND_ASSIGN_OPS: Partial<Record<TokenKind, BinaryOp>> = {
   [TokenKind.PlusEq]: '+',
   [TokenKind.MinusEq]: '-',
   [TokenKind.StarEq]: '*',
+  [TokenKind.StarStarEq]: '**',
   [TokenKind.SlashEq]: '/',
   [TokenKind.PercentEq]: '%',
   [TokenKind.OrOrEq]: '||',

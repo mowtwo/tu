@@ -820,6 +820,11 @@ describe('codegen', () => {
     expect(js).toContain('(obj.x = (obj.x || "default"))')
   })
 
+  it('M6.10.1: exponent compound assign desugars `obj.x **= 2`', () => {
+    const js = compile('let App = (obj: { x: number }) => { obj.x **= 2; obj }')
+    expect(js).toContain('(obj.x = (obj.x ** 2))')
+  })
+
   it('M6.10.1: cell-backed object compound assign unwraps via .get() on both reads', () => {
     // Top-level `let counts = { a: 0 }` is a Signal.State cell. The
     // compound desugar produces `counts.get().a = counts.get().a + 5`
