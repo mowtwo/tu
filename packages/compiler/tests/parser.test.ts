@@ -43,6 +43,20 @@ describe('parser', () => {
     })
   })
 
+  it('parses `export default let` as a default public binding', () => {
+    expect(ast('export default let App = () => div { "Hi" }')).toMatchObject({
+      kind: 'Program',
+      body: [
+        {
+          kind: 'LetDecl',
+          exported: true,
+          default: true,
+          name: 'App',
+        },
+      ],
+    })
+  })
+
   it('parses a parameterless lambda with a tag-call body', () => {
     const tree = ast('let App = () => div { "Hi" }')
     const decl = tree.body[0]!

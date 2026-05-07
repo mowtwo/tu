@@ -135,6 +135,8 @@ export interface LetDecl extends Ranged {
   kind: 'LetDecl'
   /** Top-level lets are auto-exported in M1.0+. Will become opt-in via `export let` later. */
   exported: boolean
+  /** True for `export default let Name = …`. */
+  default?: boolean
   name: string
   value: Expr
   /** Source byte range of the bound name (`X` in `export let X = …`). Drives

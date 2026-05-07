@@ -177,12 +177,20 @@ export class Parser {
       return this.parseImportDecl(start)
     }
     let exported = false
+    let defaultExport = false
     if (this.peek().kind === TokenKind.Export) {
       this.pos++
       exported = true
       // `export { … } from "…"` re-export form.
       if (this.peek().kind === TokenKind.LBrace) {
         return this.parseReExportDecl(start)
+      }
+      if (this.peek().kind === TokenKind.Ident && this.peek().text === 'default') {
+        this.pos++
+        defaultExport = true
+      }
+      if (defaultExport && this.peek().kind !== TokenKind.Let) {
+        throw this.error("expected 'let' after 'export default'")
       }
       // `export type X = …` — type alias.
       if (this.isTypeAliasNext()) {
@@ -198,7 +206,7 @@ export class Parser {
       }
     }
     if (this.peek().kind === TokenKind.Let) {
-      return this.parseLetDecl(start, exported)
+      return this.parseLetDecl(start, exported, defaultExport)
     }
     if (this.isTypeAliasNext()) {
       return this.parseTypeAlias(start, exported)
@@ -576,7 +584,7 @@ export class Parser {
     }
   }
 
-  private parseLetDecl(start: number, exported: boolean): LetDecl {
+  private parseLetDecl(start: number, exported: boolean, defaultExport = false): LetDecl {
     this.expect(TokenKind.Let)
     const nameTok = this.expect(TokenKind.Ident)
     let type: string | undefined
@@ -594,6 +602,7 @@ export class Parser {
     const decl: LetDecl = {
       kind: 'LetDecl',
       exported,
+      ...(defaultExport ? { default: true } : {}),
       name: nameTok.text,
       value,
       start,

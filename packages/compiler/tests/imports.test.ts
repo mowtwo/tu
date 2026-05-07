@@ -31,6 +31,16 @@ describe('import declarations — parse', () => {
     })
   })
 
+  it('parses a default import binding', () => {
+    const tree = ast('import Card from "./Card.tu"')
+    expect(tree.body[0]).toMatchObject({
+      kind: 'ImportDecl',
+      default: 'Card',
+      names: [],
+      source: './Card.tu',
+    })
+  })
+
   it('imports + lets can interleave', () => {
     const tree = ast(`
       import { Card } from "./Card.tu"
@@ -45,6 +55,11 @@ describe('import declarations — codegen (JS)', () => {
   it('emits the import line verbatim with the source path unchanged', () => {
     const js = compile('import { Card } from "./Card.tu"')
     expect(js).toContain('import { Card } from "./Card.tu"')
+  })
+
+  it('emits default imports', () => {
+    const js = compile('import Card from "./Card.tu"')
+    expect(js).toContain('import Card from "./Card.tu"')
   })
 
   it('emits a re-export line', () => {
@@ -76,6 +91,11 @@ describe('import declarations — codegen (TS shadow)', () => {
     const ts = compileToTS('import { Card } from "./Card.tu"')
     expect(ts).toContain('import { Card } from "./Card.ts"')
     expect(ts).not.toContain('"./Card.tu"')
+  })
+
+  it('rewrites default import `.tu` source paths to `.ts`', () => {
+    const ts = compileToTS('import Card from "./Card.tu"')
+    expect(ts).toContain('import Card from "./Card.ts"')
   })
 
   it('rewrites re-export paths the same way', () => {

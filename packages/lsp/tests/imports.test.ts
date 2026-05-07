@@ -104,6 +104,20 @@ describe('checkTuSource — cross-`.tu` import resolution', () => {
     expect(appShadow.ts).not.toMatch(/\[count\]/) // no bare-ident read
   })
 
+  it('M9: default-importing a state cell across files reads via `.get()`', async () => {
+    const cellPath = join(tmp, 'cell.tu')
+    writeFileSync(cellPath, 'export default let count = 0\n')
+    const appPath = join(tmp, 'App.tu')
+    const appSrc = [
+      'import count from "./cell.tu"',
+      'export let App = () => p { count }',
+    ].join('\n')
+    const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
+    const shadows = buildShadowGraph(appSrc, appPath)
+    const appShadow = shadows.get(tuPathToTs(appPath))!
+    expect(appShadow.ts).toContain('count.get()')
+  })
+
   it('M9 Phase D: imported untyped lambdas infer params from cross-file callsites', async () => {
     const { buildShadowGraph, tuPathToTs } = await import('../src/shadow-graph.js')
     const cardPath = join(tmp, 'Card.tu')

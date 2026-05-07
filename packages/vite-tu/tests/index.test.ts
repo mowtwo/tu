@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import tu, { tuBundle, VERSION } from '../src/index.js'
+import { importedNameKindsFor } from '../src/import-kinds.js'
 
 let tmp: string
 beforeEach(() => {
@@ -15,6 +16,14 @@ afterEach(() => {
 describe('@tu-lang/vite', () => {
   it('exposes a version', () => {
     expect(VERSION).toBe('0.0.0')
+  })
+
+  it('classifies default imports from default-exported Tu cells', () => {
+    const cellPath = join(tmp, 'cell.tu')
+    writeFileSync(cellPath, 'export default let count = 0\n')
+    const src = 'import count from "./cell.tu"\nexport let App = () => p { count }\n'
+    const kinds = importedNameKindsFor(src, join(tmp, 'App.tu'))
+    expect(kinds?.get('count')).toBe('state')
   })
 
   it('exports a default plugin factory returning a named plugin', () => {

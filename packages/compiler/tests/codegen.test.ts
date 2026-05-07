@@ -30,6 +30,20 @@ describe('codegen', () => {
     expect(js).not.toContain(`new Signal.State(`)
   })
 
+  it('emits `export default let` as a const plus default export', () => {
+    const js = compile('export default let App = () => div { "Hi" }')
+    expect(js).toContain(`const App = () => h("div", {}, ["Hi"])`)
+    expect(js).toContain(`export default App`)
+    expect(js).not.toContain(`export const App`)
+  })
+
+  it('emits default-exported state cells without invalid `export default const` syntax', () => {
+    const js = compile('export default let count = 0')
+    expect(js).toContain(`const count = new Signal.State(0)`)
+    expect(js).toContain(`export default count`)
+    expect(js).not.toContain(`export default const`)
+  })
+
   it('treats lambda params as plain identifiers, not cells', () => {
     const js = compile('export let G = (name: string) => div { name }')
     expect(js).toContain(`export const G = (name) => h("div", {}, [name])`)

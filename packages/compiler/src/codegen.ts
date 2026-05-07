@@ -865,6 +865,9 @@ function analyzeProgram(
       for (const name of stmt.names) {
         cells.set(name, importedNameKinds?.get(name) ?? 'function')
       }
+      if (stmt.default !== undefined) {
+        cells.set(stmt.default, importedNameKinds?.get(stmt.default) ?? 'function')
+      }
     }
   }
   return cells
@@ -1031,6 +1034,7 @@ function collectExportedFunctions(programs: ReadonlyMap<string, Program>): Map<s
       if (stmt.kind !== 'LetDecl') continue
       if (!stmt.exported || stmt.value.kind !== 'Lambda') continue
       exports.set(stmt.name, { filename, lambda: stmt.value })
+      if (stmt.default) exports.set('default', { filename, lambda: stmt.value })
     }
     out.set(filename, exports)
   }
@@ -1091,6 +1095,10 @@ function collectImportedFunctions(
     for (const name of stmt.names) {
       const target = exports.get(name)
       if (target) out.set(name, target)
+    }
+    if (stmt.default !== undefined) {
+      const target = exports.get('default')
+      if (target) out.set(stmt.default, target)
     }
   }
   return out
@@ -2088,7 +2096,7 @@ class Codegen {
       return
     }
     const decl = stmt
-    const prefix = decl.exported ? 'export const' : 'const'
+    const prefix = decl.exported && !decl.default ? 'export const' : 'const'
     const kind = this.cells.get(decl.name) ?? 'state'
     const ctx = this.scopedComponents.get(decl.name)
     if (ctx) this.scopes.push(ctx)
@@ -2185,6 +2193,7 @@ class Codegen {
       this.write(' = ')
       if (kind === 'function') {
         this.emitExpr(decl.value)
+        if (decl.default) this.write(`\nexport default ${decl.name}`)
         return
       }
       if (kind === 'computed') {
@@ -2252,6 +2261,7 @@ class Codegen {
         this.emitExpr(decl.value)
       }
       this.write(')')
+      if (decl.default) this.write(`\nexport default ${decl.name}`)
     } finally {
       if (ctx) this.scopes.pop()
     }

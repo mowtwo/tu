@@ -40,6 +40,13 @@ export function importedNameKindsFor(
       if (!result) result = new Map()
       result.set(name, kind)
     }
+    if (stmt.default !== undefined) {
+      const kind = targetExports.get('default')
+      if (kind !== undefined) {
+        if (!result) result = new Map()
+        result.set(stmt.default, kind)
+      }
+    }
   }
   return result
 }
@@ -60,7 +67,9 @@ function readDirectExportKinds(path: string): Map<string, CellKind> | undefined 
   const out = new Map<string, CellKind>()
   for (const stmt of ast.body) {
     if (stmt.kind === 'LetDecl' && stmt.exported) {
-      out.set(stmt.name, classifyTopLevel(stmt.value))
+      const kind = classifyTopLevel(stmt.value)
+      out.set(stmt.name, kind)
+      if (stmt.default) out.set('default', kind)
     }
   }
   return out

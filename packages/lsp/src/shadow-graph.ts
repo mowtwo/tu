@@ -272,7 +272,9 @@ function collectDirectExportKinds(
     const exports = new Map<string, CellKind>()
     for (const stmt of file.ast.body) {
       if (stmt.kind === 'LetDecl' && stmt.exported) {
-        exports.set(stmt.name, classifyTopLevel(stmt.value))
+        const kind = classifyTopLevel(stmt.value)
+        exports.set(stmt.name, kind)
+        if (stmt.default) exports.set('default', kind)
       }
     }
     out.set(filename, exports)
@@ -350,6 +352,13 @@ function buildImportedNameKinds(
       if (kind === undefined) continue
       if (!result) result = new Map()
       result.set(name, kind)
+    }
+    if (stmt.default !== undefined) {
+      const kind = targetExports.get('default')
+      if (kind !== undefined) {
+        if (!result) result = new Map()
+        result.set(stmt.default, kind)
+      }
     }
   }
   return result
