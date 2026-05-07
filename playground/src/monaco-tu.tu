@@ -125,8 +125,22 @@ let registerTuLanguage = external JS (monaco: any) {
         [/\}/, { token: "delimiter.bracket", next: "@pop" }],
         { include: "root" },
       ],
-      styleEnter: [[/\{/, { token: "delimiter.curly", next: "@styleBody" }]],
-      styleBody: [
+      styleEnter: [[/\{/, { token: "delimiter.curly", next: "@styleBodyRoot" }]],
+      styleBodyRoot: [
+        [/\{/, { token: "delimiter.curly", next: "@styleBodyNested" }],
+        [/\}/, { token: "delimiter.curly", next: "@pop" }],
+        [/\/\/.*$/, "comment"],
+        [/\/\*/, { token: "comment", next: "@cssBlockComment" }],
+        [/(--[\w-]+)/, "variable.css"],
+        [/[.#&][\w-]+/, "entity.other.attribute-name.css"],
+        [/[a-zA-Z-]+(?=\s*:)/, "attribute.name.css"],
+        [/"([^"\\]|\\.)*"/, "string"],
+        [/\b\d+(\.\d+)?(px|em|rem|%|vh|vw|fr|s|ms|deg)?\b/, "number"],
+        [/[{}]/, "@brackets"],
+        [/[(),;:]/, "delimiter"],
+      ],
+      styleBodyNested: [
+        [/\{/, { token: "delimiter.curly", next: "@styleBodyNested" }],
         [/\}/, { token: "delimiter.curly", next: "@pop" }],
         [/\/\/.*$/, "comment"],
         [/\/\*/, { token: "comment", next: "@cssBlockComment" }],
@@ -161,7 +175,7 @@ let registerTuLanguage = external JS (monaco: any) {
         [/:/, { token: "delimiter", next: "@externalReturnType" }],
         [/\{/, {
           token: "delimiter.curly",
-          next: "@externalBody",
+          next: "@externalBodyRoot",
           nextEmbedded: "javascript",
         }],
         [/\s+/, "white"],
@@ -171,7 +185,7 @@ let registerTuLanguage = external JS (monaco: any) {
         [/:/, { token: "delimiter", next: "@externalReturnType" }],
         [/\{/, {
           token: "delimiter.curly",
-          next: "@externalBody",
+          next: "@externalBodyRootTs",
           nextEmbedded: "typescript",
         }],
         [/\s+/, "white"],
@@ -180,19 +194,38 @@ let registerTuLanguage = external JS (monaco: any) {
         [/\)/, { token: "delimiter.parenthesis", next: "@pop" }],
         [/[a-zA-Z_]\w*/, "identifier"],
         [/:/, "delimiter"],
-        [/[\w<>,\[\]\s]+/, "type"],
+        [/[{}]/, "@brackets"],
+        [/[\w.$<>,\[\]\s|&?:;'"()-]+/, "type"],
         [/,/, "delimiter"],
       ],
       externalReturnType: [
+        [/\{[^{}]*\}/, "type"],
         [/\{/, { token: "@rematch", next: "@pop" }],
-        [/[\w<>,\[\]\s]+/, "type"],
+        [/[\w.$<>,\[\]\s|&?:;'"()-]+/, "type"],
       ],
-      externalBody: [
+      externalBodyRoot: [
+        [/\{/, { token: "delimiter.curly", next: "@externalBodyNested" }],
         [/\}/, {
           token: "delimiter.curly",
           next: "@pop",
           nextEmbedded: "@pop",
         }],
+      ],
+      externalBodyNested: [
+        [/\{/, { token: "delimiter.curly", next: "@externalBodyNested" }],
+        [/\}/, { token: "delimiter.curly", next: "@pop" }],
+      ],
+      externalBodyRootTs: [
+        [/\{/, { token: "delimiter.curly", next: "@externalBodyNestedTs" }],
+        [/\}/, {
+          token: "delimiter.curly",
+          next: "@pop",
+          nextEmbedded: "@pop",
+        }],
+      ],
+      externalBodyNestedTs: [
+        [/\{/, { token: "delimiter.curly", next: "@externalBodyNestedTs" }],
+        [/\}/, { token: "delimiter.curly", next: "@pop" }],
       ],
     },
   })
