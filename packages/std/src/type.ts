@@ -383,6 +383,80 @@ export function is(value: unknown, descriptor: TypeDescriptor): boolean {
   }
 }
 
+function describeDescriptor(descriptor: TypeDescriptor): string {
+  if (descriptor.kind === 'struct') {
+    const fields = descriptor.fields ?? []
+    const shape = `{ ${fields
+      .map((f) => `${f.name}${f.optional ? '?' : ''}: ${describeDescriptor(f.type)}`)
+      .join('; ')} }`
+    return descriptor.name === '__anon' ? shape : `${descriptor.name} ${shape}`
+  }
+  if (descriptor.kind === 'array') {
+    return `${describeDescriptor(descriptor.element ?? Object_)}[]`
+  }
+  if (descriptor.kind === 'optional') {
+    return `${describeDescriptor(descriptor.inner ?? Object_)}?`
+  }
+  return descriptor.name
+}
+
+function describeActual(value: unknown): string {
+  return describeDescriptor(of(value))
+}
+
+function pathLabel(path: string): string {
+  return path === '$' ? 'value' : path.slice(2)
+}
+
+function explainMismatchAt(value: unknown, descriptor: TypeDescriptor, path: string): string | null {
+  switch (descriptor.kind) {
+    case 'struct': {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return `${pathLabel(path)} expected ${describeDescriptor(descriptor)}, got ${describeActual(value)}`
+      }
+      for (const field of descriptor.fields ?? []) {
+        const record = value as Record<string, unknown>
+        const present = field.name in record
+        const fieldPath = `${path}.${field.name}`
+        if (field.optional) {
+          if (!present || record[field.name] === null || record[field.name] === undefined) continue
+        } else if (!present) {
+          return `${pathLabel(fieldPath)} is missing; expected ${describeDescriptor(field.type)}`
+        }
+        const nested = explainMismatchAt(record[field.name], field.type, fieldPath)
+        if (nested) return nested
+      }
+      return null
+    }
+    case 'array': {
+      if (!Array.isArray(value)) {
+        return `${pathLabel(path)} expected ${describeDescriptor(descriptor)}, got ${describeActual(value)}`
+      }
+      const element = descriptor.element
+      if (!element) return null
+      for (let i = 0; i < value.length; i++) {
+        const nested = explainMismatchAt(value[i], element, `${path}[${i}]`)
+        if (nested) return nested
+      }
+      return null
+    }
+    case 'optional':
+      if (value === null || value === undefined) return null
+      return descriptor.inner ? explainMismatchAt(value, descriptor.inner, path) : null
+    default:
+      return is(value, descriptor)
+        ? null
+        : `${pathLabel(path)} expected ${describeDescriptor(descriptor)}, got ${describeActual(value)}`
+  }
+}
+
+function formatMismatch(prefix: 'type.as' | 'type.tryFrom', value: unknown, descriptor: TypeDescriptor): string {
+  const root = `expected ${describeDescriptor(descriptor)}, got ${describeActual(value)}`
+  const detail = explainMismatchAt(value, descriptor, '$')
+  if (!detail || detail === `value ${root}`) return `${prefix}: ${root}`
+  return `${prefix}: ${root}; ${detail}`
+}
+
 /**
  * Thrown by `type.as` when the input value (after the optional
  * `castFn`) doesn't match the target descriptor. Caller can `try { … }
@@ -436,9 +510,8 @@ export function as<T = unknown>(
 ): T {
   const v = castFn ? castFn(value) : value
   if (!is(v, descriptor)) {
-    const got = of(v)
     throw new TypeMismatchError(
-      `type.as: expected ${descriptor.name}, got ${got.name}`,
+      formatMismatch('type.as', v, descriptor),
       descriptor,
       v
     )
@@ -470,11 +543,10 @@ export function tryFrom<T = unknown>(
     }
   }
   if (!is(v, descriptor)) {
-    const got = of(v)
     return {
       ok: false,
       error: new TypeMismatchError(
-        `type.tryFrom: expected ${descriptor.name}, got ${got.name}`,
+        formatMismatch('type.tryFrom', v, descriptor),
         descriptor,
         v
       ),

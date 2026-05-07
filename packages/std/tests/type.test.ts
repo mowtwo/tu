@@ -174,6 +174,22 @@ describe('@tu-lang/std/type — type.as (M9 Phase C strict-cast)', () => {
     const User = struct('User', [{ name: 'id', type: type.Number }])
     expect(() => type.as({ id: 'not a number' }, User)).toThrow(TypeMismatchError)
     expect(() => type.as({ id: 'not a number' }, User)).toThrow(/expected User/i)
+    expect(() => type.as({ id: 'not a number' }, User)).toThrow(
+      /id expected number, got string/i
+    )
+  })
+
+  it('2-arg form: explains missing and nested fields', () => {
+    const Profile = struct('Profile', [
+      { name: 'name', type: type.String },
+      { name: 'contact', type: struct('Contact', [{ name: 'email', type: type.String }]) },
+    ])
+    expect(() => type.as({ contact: { email: 'a@example.com' } }, Profile)).toThrow(
+      /name is missing; expected string/i
+    )
+    expect(() => type.as({ name: 'Ada', contact: { email: 42 } }, Profile)).toThrow(
+      /contact\.email expected string, got number/i
+    )
   })
 
   it('3-arg form: castFn runs first, then the shape check', () => {
@@ -239,6 +255,7 @@ describe('@tu-lang/std/type — type.tryFrom non-throwing conversion', () => {
       expect(result.error).toBeInstanceOf(TypeMismatchError)
       expect(result.error.expected).toBe(User)
       expect(result.error.message).toMatch(/expected User/i)
+      expect(result.error.message).toMatch(/id expected number, got string/i)
     }
   })
 
