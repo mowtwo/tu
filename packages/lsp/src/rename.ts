@@ -57,6 +57,7 @@ export function renameAtTuPosition(
   if (!locs || locs.length === 0) return []
 
   const out: TuRenameEdit[] = []
+  const seenSource = new Set<string>()
   for (const loc of locs) {
     const targetShadow = session.shadows.get(loc.fileName)
     if (!targetShadow) continue
@@ -68,6 +69,9 @@ export function renameAtTuPosition(
       loc.textSpan.length,
       targetShadow.mapPos
     )
+    const sourceKey = `${targetShadow.tuPath}:${range.line}:${range.col}:${range.length}`
+    if (seenSource.has(sourceKey)) continue
+    seenSource.add(sourceKey)
     out.push({
       uri: pathToFileURL(targetShadow.tuPath).toString(),
       line: range.line,

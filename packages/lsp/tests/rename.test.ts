@@ -59,6 +59,25 @@ describe('renameAtTuPosition — workspace edits for renaming a Tu identifier', 
     for (const e of edits) expect(e.newText).toBe('Tile')
   })
 
+  it('M6.12: renames interface names from a lambda type annotation cursor', () => {
+    const lines = [
+      'interface User { id: number; name: string }',
+      'export let alice: User = { id: 1, name: "Alice" }',
+      'export let render = (u: User): User => p { u.name }',
+    ]
+    const src = lines.join('\n')
+    const filename = join(tmp, 'types.tu')
+    const edits = renameAtTuPosition(src, filename, 2, lines[2]!.indexOf('User'), 'Person')
+    expect(edits.length).toBeGreaterThanOrEqual(4)
+    expect(edits.every((e) => e.uri.endsWith('types.tu'))).toBe(true)
+    expect(edits.every((e) => e.length === 4)).toBe(true)
+    expect(edits.every((e) => e.newText === 'Person')).toBe(true)
+    expect(edits.some((e) => e.line === 0 && e.col === 10)).toBe(true)
+    expect(edits.some((e) => e.line === 1 && e.col === 18)).toBe(true)
+    expect(edits.some((e) => e.line === 2 && e.col === 24)).toBe(true)
+    expect(edits.some((e) => e.line === 2 && e.col === 31)).toBe(true)
+  })
+
   it('rejects an invalid identifier', () => {
     const src = 'export let count = 0'
     expect(renameAtTuPosition(src, join(tmp, 'bad.tu'), 0, 12, 'with space')).toEqual([])
