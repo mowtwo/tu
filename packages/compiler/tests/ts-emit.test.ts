@@ -383,6 +383,28 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(js).not.toContain('interface ')
   })
 
+  it('M6.12: scoped class names emit a literal union for TS class props', () => {
+    const ts = compileToTS(`
+      export let App = (ok: boolean) => {
+        div(class: { card: ok, shadow: true }) { ok }
+        style { .card { color: red; } .shadow { box-shadow: 0 0 4px; } }
+      }
+    `)
+    expect(ts).toContain('type ClassesOf_App = "card" | "shadow"')
+    expect(ts).toContain('"class": __tu_class<ClassesOf_App>({ card: ok, shadow: true })')
+  })
+
+  it('M6.12: scoped class literal types are omitted from JS output', () => {
+    const js = compile(`
+      export let App = (ok: boolean) => {
+        div(class: { card: ok }) { ok }
+        style { .card { color: red; } }
+      }
+    `)
+    expect(js).not.toContain('ClassesOf_App')
+    expect(js).not.toContain('__tu_class')
+  })
+
   it('M3.9: skips auto-Props emit when the user has hand-declared a `${Name}Props` type alias', () => {
     // Otherwise tsserver flags `Duplicate identifier 'BadgeProps'` on the
     // shadow .ts — the hand-written `type BadgeProps = …` collides with
@@ -514,6 +536,15 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       export let count = 0
       let inc = () => count = count + 1
       export let App = () => button(onClick: inc) { "+ " count }
+    `)
+  })
+
+  it('M6.12: typechecks scoped class object props against declared class keys', () => {
+    check(`
+      export let App = (ok: boolean) => {
+        div(class: { card: ok }) { "ok" }
+        style { .card { color: red; } }
+      }
     `)
   })
 

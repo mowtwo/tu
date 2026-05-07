@@ -84,6 +84,20 @@ describe('checkTuSource — diagnostic round-trip', () => {
     expect(cssDiag!.code).toBe(-1)
   })
 
+  it('M6.12: flags unknown keys in scoped class object props', () => {
+    const src = [
+      'export let App = (ok: boolean) => {',
+      '  div(class: { card: ok, ghost: true }) { ok }',
+      '  style { .card { color: red; } }',
+      '}',
+    ].join('\n')
+    const diags = checkTuSource(src, 'class-object.tu')
+    const classDiag = diags.find((d) => d.message.toLowerCase().includes('ghost'))
+    expect(classDiag).toBeDefined()
+    expect(classDiag!.line).toBe(1)
+    expect(classDiag!.col).toBe(25)
+  })
+
   it('squiggles the offending RHS literal in a state-cell assignment', () => {
     // `count.set("not a number")` — TS reports on `"not a number"`. The
     // string literal in the source spans `"not a number"` (15 chars).

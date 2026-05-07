@@ -583,6 +583,8 @@ const BINARY_OP_JS: Record<BinaryOp, string> = {
 interface ScopeCtx {
   hash: string
   declared: Set<string>
+  classTypeName: string
+  scoped: boolean
 }
 
 interface StmtMapping {
@@ -774,6 +776,19 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     }
   }
   cg.write('\n')
+  if (tsMode && scopes.size > 0) {
+    cg.write('type __TuClassValue<C extends string> = string | number | null | undefined | false | __TuClassValue<C>[] | { [K in C]?: unknown }\n')
+    cg.write('const __tu_class = <C extends string>(value: __TuClassValue<C>) => value\n')
+    for (const [, ctx] of [...scopes].sort(([a], [b]) => a.localeCompare(b))) {
+      if (declaredTypeNames.has(ctx.classTypeName)) continue
+      const members =
+        ctx.declared.size === 0
+          ? 'never'
+          : [...ctx.declared].sort().map((name) => JSON.stringify(name)).join(' | ')
+      cg.write(`type ${ctx.classTypeName} = ${members}\n`)
+    }
+    cg.write('\n')
+  }
   // Anonymous-interface descriptors hoisted before user code so `type.tag`
   // sites can reference them.
   for (const line of synth.anonDecls) {
@@ -896,17 +911,22 @@ function analyzeScopedComponents(program: Program): Map<string, ScopeCtx> {
   for (const stmt of program.body) {
     if (stmt.kind !== 'LetDecl') continue
     if (stmt.value.kind !== 'Lambda') continue
-    const refs = new Set<string>()
-    collectClassRefs(stmt.value.body, refs)
-    if (refs.size === 0) continue
     const styleBodies: string[] = []
     collectStyleBlockBodies(stmt.value.body, styleBodies)
+    const refs = new Set<string>()
+    collectClassRefs(stmt.value.body, refs)
+    if (refs.size === 0 && styleBodies.length === 0) continue
     const declared = new Set<string>()
     for (const css of styleBodies) {
       for (const c of findCssClasses(css)) declared.add(c)
     }
     const hash = fnv1a6(`${stmt.name} ${styleBodies.join(' ')}`)
-    out.set(stmt.name, { hash, declared })
+    out.set(stmt.name, {
+      hash,
+      declared,
+      classTypeName: `ClassesOf_${stmt.name}`,
+      scoped: refs.size > 0,
+    })
   }
   return out
 }
@@ -3189,7 +3209,7 @@ class Codegen {
       )
     }
     const ctx = this.currentScope()
-    const css = ctx ? rewriteCss(node.css, ctx.declared, ctx.hash) : node.css
+    const css = ctx?.scoped ? rewriteCss(node.css, ctx.declared, ctx.hash) : node.css
     this.write(`h("style", {}, [${JSON.stringify(css)}])`)
   }
 
@@ -3382,7 +3402,15 @@ class Codegen {
       if (i > 0) this.write(', ')
       const p = props[i]!
       this.write(`${JSON.stringify(p.name)}: `)
-      this.emitExpr(p.value)
+      const classTypeName =
+        this.tsMode && p.name === 'class' ? this.currentScope()?.classTypeName : undefined
+      if (classTypeName) {
+        this.write(`__tu_class<${classTypeName}>(`)
+        this.emitExpr(p.value)
+        this.write(')')
+      } else {
+        this.emitExpr(p.value)
+      }
     }
     this.write(' }')
   }
