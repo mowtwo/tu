@@ -44,6 +44,17 @@ describe('codegen', () => {
     expect(js).not.toContain(`export default const`)
   })
 
+  it('emits enum declarations as frozen runtime objects', () => {
+    const js = compile('export enum Tone { Neutral, Accent = "accent", Danger = 2 }')
+    expect(js).toContain('export const Tone = Object.freeze({ "Neutral": "Neutral", "Accent": "accent", "Danger": 2 })')
+  })
+
+  it('emits enum declarations with a TS value-union alias in TS mode', () => {
+    const ts = compileToTS('export enum Tone { Neutral, Accent = "accent" }')
+    expect(ts).toContain('export const Tone = Object.freeze({ "Neutral": "Neutral", "Accent": "accent" })')
+    expect(ts).toContain('export type Tone = (typeof Tone)[keyof typeof Tone]')
+  })
+
   it('treats lambda params as plain identifiers, not cells', () => {
     const js = compile('export let G = (name: string) => div { name }')
     expect(js).toContain(`export const G = (name) => h("div", {}, [name])`)

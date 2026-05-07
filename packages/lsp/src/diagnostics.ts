@@ -302,6 +302,7 @@ function checkDeprecatedPositionalComponentCalls(program: Program, source: strin
         return
       case 'InterfaceDecl':
       case 'TypeAlias':
+      case 'EnumDecl':
       case 'ExceptionDecl':
       case 'ImportDecl':
       case 'ReExportDecl':

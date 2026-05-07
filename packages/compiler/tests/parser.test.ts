@@ -57,6 +57,24 @@ describe('parser', () => {
     })
   })
 
+  it('parses enum declarations with literal member values', () => {
+    expect(ast('export enum Tone { Neutral, Accent = "accent", Danger = 2 }')).toMatchObject({
+      kind: 'Program',
+      body: [
+        {
+          kind: 'EnumDecl',
+          exported: true,
+          name: 'Tone',
+          members: [
+            { name: 'Neutral' },
+            { name: 'Accent', value: 'accent' },
+            { name: 'Danger', value: 2 },
+          ],
+        },
+      ],
+    })
+  })
+
   it('parses a parameterless lambda with a tag-call body', () => {
     const tree = ast('let App = () => div { "Hi" }')
     const decl = tree.body[0]!

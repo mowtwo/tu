@@ -29,6 +29,7 @@ export let Page = () => div {
     - `export let X = …` — public value binding
     - `let X: T = …` / `export let X: T = …` — annotated binding
     - `type X = …` / `export type X = …` — type alias
+    - `enum X { … }` / `export enum X { … }` — frozen value object + TS value-union type
     - `import { … } from "./other.tu"` — named import
     - `export { … } from "./other.tu"` — named re-export
 
@@ -42,7 +43,7 @@ export let Page = () => div {
 
     export type Pair = { x: number, y: number }
 
-    export let App = () => div { Card("hi") }
+    export let App = () => div { Card(title: "hi") }
     ```
 
     ---
@@ -143,6 +144,22 @@ export let Page = () => div {
     ```tu
     export let f = (type: string) => p { type }
     ```
+
+    ---
+
+    ## Enums
+
+    ```tu
+    export enum Tone {
+      Neutral
+      Accent = "accent"
+      Danger = 3
+    }
+    ```
+
+    Enums emit a frozen runtime object and, in TS shadow output, a like-named
+    value-union type. Use `Tone.Accent` at runtime and `tone: Tone` in
+    annotations. Omitted member values default to the member name as a string.
 
     ---
 

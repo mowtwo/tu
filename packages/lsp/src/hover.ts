@@ -278,6 +278,7 @@ function maybeImportSourceHover(
         const ast = parse(tokenize(target, hit.resolvedPath), target, hit.resolvedPath)
         for (const stmt of ast.body) {
           if (stmt.kind === 'LetDecl' && stmt.exported) exportNames.push(stmt.name)
+          if (stmt.kind === 'EnumDecl' && stmt.exported) exportNames.push(stmt.name)
           if (stmt.kind === 'ReExportDecl') exportNames.push(...stmt.names)
         }
       } catch {

@@ -15,6 +15,12 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('export const G = (name: string) =>')
   })
 
+  it('M9: enum declarations emit a value object plus a like-named value-union type', () => {
+    const ts = compileToTS('export enum Tone { Neutral, Accent = "accent" }')
+    expect(ts).toContain('export const Tone = Object.freeze({ "Neutral": "Neutral", "Accent": "accent" })')
+    expect(ts).toContain('export type Tone = (typeof Tone)[keyof typeof Tone]')
+  })
+
   it('preserves multiple typed params in the same lambda', () => {
     const ts = compileToTS('export let f = (a: number, b: string) => p { a }')
     expect(ts).toContain('export const f = (a: number, b: string) =>')
@@ -567,6 +573,14 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       let raw: unknown = { id: 1, name: "Alice" }
       let alice: User = type.as(raw, User)
       export let App = () => p { alice.name }
+    `)
+  })
+
+  it('M9: typechecks enum values in annotations and member reads', () => {
+    check(`
+      export enum Tone { Neutral, Accent = "accent" }
+      export let Badge = (tone: Tone) => p { tone }
+      export let App = () => Badge(Tone.Accent)
     `)
   })
 })

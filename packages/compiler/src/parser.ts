@@ -9,6 +9,8 @@ import type {
   Child,
   ClassRef,
   Expr,
+  EnumDecl,
+  EnumMember,
   ExternalLambda,
   ForExpr,
   Ident,
@@ -200,6 +202,10 @@ export class Parser {
       if (this.isInterfaceNext()) {
         return this.parseInterfaceDecl(start, true)
       }
+      // `export enum X { … }` — frozen runtime object + TS value union.
+      if (this.isEnumNext()) {
+        return this.parseEnumDecl(start, true)
+      }
       // `export Exception X { … }` — structured error decl.
       if (this.isExceptionNext()) {
         return this.parseExceptionDecl(start, true)
@@ -213,6 +219,9 @@ export class Parser {
     }
     if (this.isInterfaceNext()) {
       return this.parseInterfaceDecl(start, exported)
+    }
+    if (this.isEnumNext()) {
+      return this.parseEnumDecl(start, exported)
     }
     if (this.isExceptionNext()) {
       return this.parseExceptionDecl(start, exported)
@@ -293,6 +302,68 @@ export class Parser {
     if (t2?.kind !== TokenKind.Ident) return false
     const t3 = this.tokens[this.pos + 2]
     return t3?.kind === TokenKind.LBrace
+  }
+
+  /**
+   * `enum` is contextual: top-level only, followed by `Ident {`.
+   * Values are string/number literals; omitted values default to the member
+   * name as a string in codegen.
+   */
+  private isEnumNext(): boolean {
+    const t1 = this.peek()
+    if (t1.kind !== TokenKind.Ident || t1.text !== 'enum') return false
+    const t2 = this.tokens[this.pos + 1]
+    if (t2?.kind !== TokenKind.Ident) return false
+    const t3 = this.tokens[this.pos + 2]
+    return t3?.kind === TokenKind.LBrace
+  }
+
+  private parseEnumDecl(start: number, exported: boolean): EnumDecl {
+    this.pos++ // consume the `enum` ident
+    const nameTok = this.expect(TokenKind.Ident)
+    this.expect(TokenKind.LBrace)
+    const members: EnumMember[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      const memberTok = this.expect(TokenKind.Ident)
+      const member: EnumMember = {
+        name: memberTok.text,
+        nameStart: memberTok.start,
+        nameEnd: memberTok.end,
+        start: memberTok.start,
+        end: memberTok.end,
+      }
+      if (this.peek().kind === TokenKind.Equals) {
+        this.pos++
+        const valueTok = this.peek()
+        if (valueTok.kind !== TokenKind.String && valueTok.kind !== TokenKind.Number) {
+          throw this.error(`enum member values must be string or number literals`)
+        }
+        member.value = valueTok.value as string | number
+        member.valueStart = valueTok.start
+        member.valueEnd = valueTok.end
+        member.end = valueTok.end
+        this.pos++
+      }
+      members.push(member)
+      if (this.peek().kind === TokenKind.Comma || this.peek().kind === TokenKind.Semi) {
+        this.pos++
+        continue
+      }
+      if (this.peek().kind !== TokenKind.RBrace) {
+        throw this.error(`expected ',' or '}' in enum declaration`)
+      }
+    }
+    const closeBrace = this.expect(TokenKind.RBrace)
+    return {
+      kind: 'EnumDecl',
+      exported,
+      name: nameTok.text,
+      nameStart: nameTok.start,
+      nameEnd: nameTok.end,
+      members,
+      start,
+      end: closeBrace.end,
+    }
   }
 
   /**

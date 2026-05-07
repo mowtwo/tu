@@ -19,6 +19,7 @@ export type Stmt =
   | ImportDecl
   | ReExportDecl
   | TypeAlias
+  | EnumDecl
   | InterfaceDecl
   | ExceptionDecl
 
@@ -99,6 +100,29 @@ export interface TypeAlias extends Ranged {
   /** Source byte range of the type expression itself. */
   typeStart: number
   typeEnd: number
+}
+
+/**
+ * `enum Name { A, B = "custom" }` — a small string/number enum form.
+ * Runtime emit is a frozen object, and TS emit adds a like-named type alias
+ * for the union of its values: `type Name = (typeof Name)[keyof typeof Name]`.
+ */
+export interface EnumDecl extends Ranged {
+  kind: 'EnumDecl'
+  exported: boolean
+  name: string
+  nameStart: number
+  nameEnd: number
+  members: EnumMember[]
+}
+
+export interface EnumMember extends Ranged {
+  name: string
+  nameStart: number
+  nameEnd: number
+  value?: string | number
+  valueStart?: number
+  valueEnd?: number
 }
 
 /**

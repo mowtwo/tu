@@ -7,6 +7,7 @@ import type {
   CallExpr,
   Child,
   ClassRef,
+  EnumDecl,
   Expr,
   ForExpr,
   ExceptionDecl,
@@ -682,6 +683,9 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     if (stmt.kind === 'TypeAlias') {
       declaredTypeNames.add(stmt.name)
       typeAliasBodies.set(stmt.name, stmt.type)
+    }
+    if (stmt.kind === 'EnumDecl') {
+      declaredTypeNames.add(stmt.name)
     }
     if (stmt.kind === 'InterfaceDecl') {
       declaredInterfaceNames.add(stmt.name)
@@ -2091,6 +2095,10 @@ class Codegen {
       this.emitInterfaceDecl(stmt)
       return
     }
+    if (stmt.kind === 'EnumDecl') {
+      this.emitEnumDecl(stmt)
+      return
+    }
     if (stmt.kind === 'ExceptionDecl') {
       this.emitExceptionDecl(stmt)
       return
@@ -3257,6 +3265,31 @@ class Codegen {
       this.write(' }')
     }
     this.write('])')
+  }
+
+  private emitEnumDecl(node: EnumDecl): void {
+    const exp = node.exported ? 'export ' : ''
+    this.write(`${exp}const `)
+    this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+    this.write(' = Object.freeze({ ')
+    for (let i = 0; i < node.members.length; i++) {
+      if (i > 0) this.write(', ')
+      const member = node.members[i]!
+      this.write(`${JSON.stringify(member.name)}: `)
+      const value = member.value ?? member.name
+      if (member.valueStart !== undefined && member.valueEnd !== undefined) {
+        this.mark(member.valueStart, member.valueEnd, () => this.write(JSON.stringify(value)))
+      } else {
+        this.write(JSON.stringify(value))
+      }
+    }
+    this.write(' })')
+    if (this.tsMode) {
+      this.write('\n')
+      this.write(`${exp}type `)
+      this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
+      this.write(` = (typeof ${node.name})[keyof typeof ${node.name}]`)
+    }
   }
 
   private emitStyleBlock(node: StyleBlock): void {
