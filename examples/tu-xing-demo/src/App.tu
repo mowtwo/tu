@@ -6,7 +6,6 @@ import { Badge } from "@tu-lang/tu-xing/Badge.tu"
 import { Switch } from "@tu-lang/tu-xing/Switch.tu"
 import { Dialog } from "@tu-lang/tu-xing/Dialog.tu"
 import { Tabs } from "@tu-lang/tu-xing/Tabs.tu"
-import { Event, HTMLInputElement } from "@tu-lang/dom"
 
 export let count = 0
 export let dialogOpen = false

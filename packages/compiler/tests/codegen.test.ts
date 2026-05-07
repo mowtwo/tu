@@ -1514,7 +1514,7 @@ describe('codegen', () => {
   it('M9 fix: type-alias as runtime descriptor — JS-emit also inlines (regression: tu-xing BadgeVariant)', () => {
     const js = compile([
       'export type BadgeVariant = "brand" | "success" | "danger"',
-      'export interface BadgeProps { variant?: BadgeVariant }',
+      'export interface BadgeProps { variant?: BadgeVariant; children?: Child[] }',
     ].join('\n'))
     // Bug: the descriptor used to emit `type: BadgeVariant` — a bare
     // reference to a TS-only symbol that doesn't exist at runtime,
@@ -1522,6 +1522,20 @@ describe('codegen', () => {
     // fix inlines the alias body so the runtime sees `type.String`.
     expect(js).not.toContain('type: BadgeVariant')
     expect(js).toContain('type: type.String')
+    // Same bug class: `Child` is an auto-imported TS-only type, so it
+    // must not leak into JS-mode runtime descriptors either.
+    expect(js).not.toContain('Array(Child)')
+    expect(js).toContain('type: type.Array(type.Any)')
+  })
+
+  it('M9 fix: erased DOM and unknown type-only names do not become bare runtime refs', () => {
+    const js = compile([
+      'export interface InputProps { node?: HTMLInputElement; payload?: ExternalPayload }',
+    ].join('\n'))
+    expect(js).not.toContain('HTMLInputElement')
+    expect(js).not.toContain('ExternalPayload')
+    expect(js).toContain('{ name: "node", type: type.Object, optional: true }')
+    expect(js).toContain('{ name: "payload", type: type.Object, optional: true }')
   })
 
   it('M8 + M9: interface field typed by a type-alias inlines the alias body to a runtime descriptor', () => {

@@ -302,6 +302,7 @@ function renderPropsTypeText(fields: ReadonlyArray<{ name: string; rawType: stri
 function tuTypeToDescriptorExpr(
   raw: string,
   typeAliases?: ReadonlyMap<string, string>,
+  runtimeDescriptorNames?: ReadonlySet<string>,
   visited?: Set<string>
 ): string {
   const t = raw.trim()
@@ -325,16 +326,16 @@ function tuTypeToDescriptorExpr(
     if (trimmed.length === 2) {
       const [a, b] = trimmed
       if (a === 'null' || a === 'undefined') {
-        return `type.Optional(${tuTypeToDescriptorExpr(b!, typeAliases, visited)})`
+        return `type.Optional(${tuTypeToDescriptorExpr(b!, typeAliases, runtimeDescriptorNames, visited)})`
       }
       if (b === 'null' || b === 'undefined') {
-        return `type.Optional(${tuTypeToDescriptorExpr(a!, typeAliases, visited)})`
+        return `type.Optional(${tuTypeToDescriptorExpr(a!, typeAliases, runtimeDescriptorNames, visited)})`
       }
     }
     // Multi-arm union: if every arm reduces to the SAME descriptor (e.g.
     // `"a" | "b" | "c"` → all `type.String`), pick that. Otherwise fall
     // back to Object until M9 ships a real union descriptor.
-    const armDescs = trimmed.map((s) => tuTypeToDescriptorExpr(s, typeAliases, visited))
+    const armDescs = trimmed.map((s) => tuTypeToDescriptorExpr(s, typeAliases, runtimeDescriptorNames, visited))
     const first = armDescs[0]!
     if (armDescs.every((d) => d === first)) return first
     return 'type.Object'
@@ -342,12 +343,12 @@ function tuTypeToDescriptorExpr(
   // Arrays: `T[]`
   if (t.endsWith('[]')) {
     const inner = t.slice(0, -2)
-    return `type.Array(${tuTypeToDescriptorExpr(inner, typeAliases, visited)})`
+    return `type.Array(${tuTypeToDescriptorExpr(inner, typeAliases, runtimeDescriptorNames, visited)})`
   }
   // `Array<T>` / `ReadonlyArray<T>` sugar.
   const arrM = t.match(/^(?:Readonly)?Array\s*<\s*([\s\S]+)\s*>\s*$/)
   if (arrM) {
-    return `type.Array(${tuTypeToDescriptorExpr(arrM[1]!, typeAliases, visited)})`
+    return `type.Array(${tuTypeToDescriptorExpr(arrM[1]!, typeAliases, runtimeDescriptorNames, visited)})`
   }
   // Primitives.
   switch (t) {
@@ -379,13 +380,125 @@ function tuTypeToDescriptorExpr(
       const seen = visited ?? new Set<string>()
       if (seen.has(t)) return 'type.Object' // self-referential alias guard
       seen.add(t)
-      return tuTypeToDescriptorExpr(typeAliases.get(t)!, typeAliases, seen)
+      return tuTypeToDescriptorExpr(typeAliases.get(t)!, typeAliases, runtimeDescriptorNames, seen)
     }
-    return t
+    const typeOnlyDescriptor = typeOnlyRuntimeDescriptor(t)
+    if (typeOnlyDescriptor) return typeOnlyDescriptor
+    const builtinDescriptor = builtinRuntimeDescriptor(t)
+    if (builtinDescriptor) return builtinDescriptor
+    if (runtimeDescriptorNames?.has(t)) return t
+    if (t.startsWith('type.')) return t
+    return 'type.Object'
   }
   // Anything else — soundly fall back to `type.Object` (matches any
   // non-null object). User can wrap fancy shapes in their own struct.
   return 'type.Object'
+}
+
+function builtinRuntimeDescriptor(name: string): string | null {
+  switch (name) {
+    case 'Date':
+      return 'type.Date'
+    case 'Promise':
+      return 'type.Promise'
+    case 'Map':
+      return 'type.Map'
+    case 'Set':
+      return 'type.Set'
+    case 'WeakMap':
+      return 'type.WeakMap'
+    case 'WeakSet':
+      return 'type.WeakSet'
+    case 'Error':
+      return 'type.Error'
+    case 'RegExp':
+      return 'type.RegExp'
+    case 'AbortController':
+      return 'type.AbortController'
+    case 'Temporal.Instant':
+    case 'Instant':
+      return 'type.Instant'
+    case 'Temporal.ZonedDateTime':
+    case 'ZonedDateTime':
+      return 'type.ZonedDateTime'
+    case 'Temporal.PlainDate':
+    case 'PlainDate':
+      return 'type.PlainDate'
+    case 'Temporal.PlainTime':
+    case 'PlainTime':
+      return 'type.PlainTime'
+    case 'Temporal.PlainDateTime':
+    case 'PlainDateTime':
+      return 'type.PlainDateTime'
+    case 'Temporal.Duration':
+    case 'Duration':
+      return 'type.Duration'
+  }
+  return null
+}
+
+function typeOnlyRuntimeDescriptor(name: string): string | null {
+  switch (name) {
+    // `Child` and `VNode` are auto-imported as TS-only names from
+    // @tu-lang/runtime in TS emit. They have no JS binding, so runtime
+    // descriptors must not reference them directly.
+    case 'Child':
+      return 'type.Any'
+    case 'VNode':
+      return 'type.Object'
+    // DOM platform types are likewise type-only aliases from @tu-lang/dom.
+    // If a user puts one in an interface field, keep the descriptor broad
+    // instead of emitting a bare erased type alias.
+    case 'Element':
+    case 'HTMLElement':
+    case 'HTMLInputElement':
+    case 'HTMLButtonElement':
+    case 'HTMLAnchorElement':
+    case 'HTMLImageElement':
+    case 'HTMLFormElement':
+    case 'HTMLTextAreaElement':
+    case 'HTMLSelectElement':
+    case 'HTMLOptionElement':
+    case 'HTMLDivElement':
+    case 'HTMLSpanElement':
+    case 'HTMLLabelElement':
+    case 'HTMLIFrameElement':
+    case 'HTMLCanvasElement':
+    case 'HTMLVideoElement':
+    case 'HTMLAudioElement':
+    case 'HTMLTableElement':
+    case 'HTMLTableRowElement':
+    case 'HTMLTableCellElement':
+    case 'Node':
+    case 'Text':
+    case 'Document':
+    case 'Window':
+    case 'EventTarget':
+    case 'Event':
+    case 'UIEvent':
+    case 'MouseEvent':
+    case 'KeyboardEvent':
+    case 'InputEvent':
+    case 'PointerEvent':
+    case 'TouchEvent':
+    case 'WheelEvent':
+    case 'FocusEvent':
+    case 'DragEvent':
+    case 'ClipboardEvent':
+    case 'CustomEvent':
+    case 'EventListener':
+    case 'EventListenerObject':
+    case 'EventListenerOrEventListenerObject':
+    case 'AddEventListenerOptions':
+    case 'RequestInit':
+    case 'Response':
+    case 'Headers':
+    case 'FormData':
+    case 'URLSearchParams':
+    case 'AbortSignal':
+      return 'type.Object'
+  }
+  return null
 }
 
 /**
@@ -1957,7 +2070,7 @@ class Codegen {
       this.write('{ name: ')
       this.write(JSON.stringify(f.name))
       this.write(', type: ')
-      this.write(tuTypeToDescriptorExpr(f.rawType.trim(), this.typeAliasBodies))
+      this.write(tuTypeToDescriptorExpr(f.rawType.trim(), this.typeAliasBodies, this.declaredInterfaceNames))
       if (f.optional) this.write(', optional: true')
       this.write(' }')
     }
