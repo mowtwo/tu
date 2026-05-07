@@ -298,6 +298,7 @@ function checkDeprecatedPositionalComponentCalls(program: Program, source: strin
   const visitStmt = (stmt: Stmt): void => {
     switch (stmt.kind) {
       case 'LetDecl':
+      case 'DestructureLetDecl':
         visit(stmt.value)
         return
       case 'InterfaceDecl':

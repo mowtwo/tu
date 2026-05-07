@@ -16,6 +16,7 @@ interface Ranged {
 
 export type Stmt =
   | LetDecl
+  | DestructureLetDecl
   | ImportDecl
   | ReExportDecl
   | TypeAlias
@@ -172,6 +173,22 @@ export interface LetDecl extends Ranged {
    *  pipes through to the TS emit verbatim — Tu doesn't parse types itself.
    *  For lambdas the annotation is the const's type directly; for state /
    *  computed cells the codegen wraps it as `Signal.State<T>` / `Signal.Computed<T>`. */
+  type?: string
+  typeStart?: number
+  typeEnd?: number
+}
+
+/**
+ * Top-level `let { a, b } = obj`. Each field becomes its own state cell at
+ * emit time (`const a = new Signal.State(tmp.a)`). MVP is flat fields only;
+ * no rename/default/nesting and no `export let { … }`.
+ */
+export interface DestructureLetDecl extends Ranged {
+  kind: 'DestructureLetDecl'
+  fields: string[]
+  value: Expr
+  nameStart: number
+  nameEnd: number
   type?: string
   typeStart?: number
   typeEnd?: number

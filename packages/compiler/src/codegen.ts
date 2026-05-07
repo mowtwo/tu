@@ -7,6 +7,7 @@ import type {
   CallExpr,
   Child,
   ClassRef,
+  DestructureLetDecl,
   EnumDecl,
   Expr,
   ForExpr,
@@ -861,6 +862,9 @@ function analyzeProgram(
   for (const stmt of program.body) {
     if (stmt.kind === 'LetDecl') {
       cells.set(stmt.name, classifyValue(stmt.value))
+    }
+    if (stmt.kind === 'DestructureLetDecl') {
+      for (const field of stmt.fields) cells.set(field, 'state')
     }
     // Imported names: prefer the caller-provided kind (state / computed /
     // function); otherwise default to 'function' for the standalone-compile
@@ -1889,7 +1893,7 @@ function indexOfTopLevel(s: string, needle: string): number {
 }
 
 function collectCallsFromStmt(stmt: Stmt, visit: (call: CallExpr) => void): void {
-  if (stmt.kind !== 'LetDecl') return
+  if (stmt.kind !== 'LetDecl' && stmt.kind !== 'DestructureLetDecl') return
   collectCallsFromExpr(stmt.value, visit)
 }
 
@@ -2101,6 +2105,10 @@ class Codegen {
     }
     if (stmt.kind === 'ExceptionDecl') {
       this.emitExceptionDecl(stmt)
+      return
+    }
+    if (stmt.kind === 'DestructureLetDecl') {
+      this.emitDestructureLetDecl(stmt)
       return
     }
     const decl = stmt
@@ -3289,6 +3297,22 @@ class Codegen {
       this.write(`${exp}type `)
       this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
       this.write(` = (typeof ${node.name})[keyof typeof ${node.name}]`)
+    }
+  }
+
+  private emitDestructureLetDecl(node: DestructureLetDecl): void {
+    const tmp = `__tu_destruct_${node.nameStart}`
+    this.write(`const ${tmp}`)
+    if (this.tsMode && node.type !== undefined) {
+      this.write(': ')
+      this.mark(node.typeStart!, node.typeEnd!, () => this.write(node.type!))
+    }
+    this.write(' = ')
+    this.emitExpr(node.value)
+    for (const field of node.fields) {
+      this.write('\nconst ')
+      this.mark(node.nameStart, node.nameEnd, () => this.write(field))
+      this.write(` = new Signal.State(${tmp}.${field})`)
     }
   }
 

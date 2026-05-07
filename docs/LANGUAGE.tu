@@ -69,6 +69,7 @@ export let Page = () => div {
     let count = 0                            // Signal.State<number>
     let doubled = computed(count * 2)        // Signal.Computed<number>
     let inc = () => count = count + 1        // function
+    let { a, b } = source                    // two state cells: a, b
     ```
 
     Reads inside a lambda body that reach back to a top-level state / computed
@@ -106,6 +107,13 @@ export let Page = () => div {
     | `let cell: Signal.State<MyShape> = …`      | `const cell: Signal.State<MyShape>` (no double-wrap — codegen detects the explicit Signal prefix) |
 
     The annotation is erased in JS-mode emission.
+
+    ### Module-scope destructuring
+
+    `let { a, b } = source` is a flat object destructure at the top level.
+    The RHS evaluates once, then each field becomes its own state cell. Reads
+    use normal `.get()` injection. MVP scope is private bindings only: no
+    `export let { … }`, nested patterns, renames, defaults, or arrays.
 
     ### Local `let` inside a block
 

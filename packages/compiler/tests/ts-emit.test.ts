@@ -583,4 +583,12 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
       export let App = () => Badge(Tone.Accent)
     `)
   })
+
+  it('M9: typechecks module-scope destructuring as state-cell bindings', () => {
+    check(`
+      let source = { a: 1, b: "two" }
+      let { a, b } = source
+      export let App = () => p { a b }
+    `)
+  })
 })

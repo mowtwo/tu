@@ -75,6 +75,19 @@ describe('parser', () => {
     })
   })
 
+  it('parses module-scope destructuring lets', () => {
+    expect(ast('let { a, b } = source')).toMatchObject({
+      kind: 'Program',
+      body: [
+        {
+          kind: 'DestructureLetDecl',
+          fields: ['a', 'b'],
+          value: { kind: 'Ident', name: 'source' },
+        },
+      ],
+    })
+  })
+
   it('parses a parameterless lambda with a tag-call body', () => {
     const tree = ast('let App = () => div { "Hi" }')
     const decl = tree.body[0]!

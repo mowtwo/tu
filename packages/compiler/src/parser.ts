@@ -8,6 +8,7 @@ import type {
   CallExpr,
   Child,
   ClassRef,
+  DestructureLetDecl,
   Expr,
   EnumDecl,
   EnumMember,
@@ -212,6 +213,12 @@ export class Parser {
       }
     }
     if (this.peek().kind === TokenKind.Let) {
+      if (this.tokens[this.pos + 1]?.kind === TokenKind.LBrace) {
+        if (exported) {
+          throw this.error(`module-scope destructuring cannot be exported; export individual bindings explicitly`)
+        }
+        return this.parseDestructureLetDecl(start)
+      }
       return this.parseLetDecl(start, exported, defaultExport)
     }
     if (this.isTypeAliasNext()) {
@@ -550,6 +557,12 @@ export class Parser {
           const t3 = this.tokens[this.pos + 2]
           if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.LBrace) break
         }
+        // M9+: contextual `enum X { …` — value + type declaration.
+        if (t.kind === TokenKind.Ident && t.text === 'enum') {
+          const t2 = this.tokens[this.pos + 1]
+          const t3 = this.tokens[this.pos + 2]
+          if (t2?.kind === TokenKind.Ident && t3?.kind === TokenKind.LBrace) break
+        }
         // M9+: contextual `Exception X { …` — same treatment.
         if (t.kind === TokenKind.Ident && t.text === 'Exception') {
           const t2 = this.tokens[this.pos + 1]
@@ -680,6 +693,48 @@ export class Parser {
       end: value.end,
       nameStart: nameTok.start,
       nameEnd: nameTok.end,
+    }
+    if (type !== undefined) {
+      decl.type = type
+      decl.typeStart = typeStart!
+      decl.typeEnd = typeEnd!
+    }
+    return decl
+  }
+
+  private parseDestructureLetDecl(start: number): DestructureLetDecl {
+    this.expect(TokenKind.Let)
+    const lbrace = this.expect(TokenKind.LBrace)
+    const fields: string[] = []
+    while (this.peek().kind !== TokenKind.RBrace) {
+      const fieldTok = this.expect(TokenKind.Ident)
+      fields.push(fieldTok.text)
+      if (this.peek().kind === TokenKind.Comma) this.pos++
+      else if (this.peek().kind !== TokenKind.RBrace) {
+        throw this.error(`expected ',' or '}' in module-scope destructuring`)
+      }
+    }
+    const rbrace = this.expect(TokenKind.RBrace)
+    let type: string | undefined
+    let typeStart: number | undefined
+    let typeEnd: number | undefined
+    if (this.peek().kind === TokenKind.Colon) {
+      this.pos++
+      const span = this.parseRawTypeUntilEquals()
+      type = span.text
+      typeStart = span.start
+      typeEnd = span.end
+    }
+    this.expect(TokenKind.Equals)
+    const value = this.parseExpr()
+    const decl: DestructureLetDecl = {
+      kind: 'DestructureLetDecl',
+      fields,
+      value,
+      start,
+      end: value.end,
+      nameStart: lbrace.start,
+      nameEnd: rbrace.end,
     }
     if (type !== undefined) {
       decl.type = type

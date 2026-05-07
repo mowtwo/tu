@@ -55,6 +55,14 @@ describe('codegen', () => {
     expect(ts).toContain('export type Tone = (typeof Tone)[keyof typeof Tone]')
   })
 
+  it('M9: emits module-scope destructuring as per-field state cells', () => {
+    const js = compile('let source = { a: 1, b: 2 }\nlet { a, b } = source\nexport let App = () => p { a b }')
+    expect(js).toMatch(/const __tu_destruct_\d+ = source\.get\(\)/)
+    expect(js).toMatch(/const a = new Signal\.State\(__tu_destruct_\d+\.a\)/)
+    expect(js).toMatch(/const b = new Signal\.State\(__tu_destruct_\d+\.b\)/)
+    expect(js).toContain('h("p", {}, [a.get(), b.get()])')
+  })
+
   it('treats lambda params as plain identifiers, not cells', () => {
     const js = compile('export let G = (name: string) => div { name }')
     expect(js).toContain(`export const G = (name) => h("div", {}, [name])`)
