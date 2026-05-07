@@ -508,11 +508,11 @@ export interface ArrayLit extends Ranged {
 }
 
 /**
- * `{ key: value, "k-2": expr }` — object literal. Disambiguated from a
- * `Block` by lookahead: an opener of `{ }`, `{ Ident :`, or `{ String :`
- * triggers ObjectLit, anything else (including `{ x }` and `{ stmt; … }`)
- * stays a Block. Shorthand (`{ x }`), computed keys (`{ [k]: v }`), and
- * spread (`{ ...rest }`) are tracked in `docs/DEFERRED.md`.
+ * `{ key: value, "k-2": expr, [k]: value }` — object literal.
+ * Disambiguated from a `Block` by lookahead: an opener of `{ }`,
+ * `{ Ident :`, `{ String :`, `{ [expr] :`, shorthand multi-prop, or
+ * spread triggers ObjectLit. Single-item shorthand (`{ x }`) stays a
+ * Block to preserve last-expression-returns semantics.
  */
 export interface ObjectLit extends Ranged {
   kind: 'ObjectLit'
@@ -523,14 +523,15 @@ export type ObjectMember = ObjectProp | ObjectSpread
 
 /**
  * One `key: value` pair inside an `ObjectLit`. The key is captured as an
- * already-decoded string. `keyKind` lets codegen choose between bare-ident
- * emit (`{ x: 1 }`) and quoted emit (`{ "data-id": 1 }`); also lets future
- * IDE features know when a key was a string literal vs identifier.
+ * already-decoded string for static keys. `keyKind` lets codegen choose
+ * between bare-ident emit (`{ x: 1 }`), quoted emit (`{ "data-id": 1 }`),
+ * and computed emit (`{ [expr]: 1 }`).
  */
 export interface ObjectProp {
   kind?: 'ObjectProp'
   key: string
-  keyKind: 'ident' | 'string'
+  keyKind: 'ident' | 'string' | 'computed'
+  computedKey?: Expr
   value: Expr
   /** Source byte range of the key token (used for token-level mapping). */
   keyStart: number

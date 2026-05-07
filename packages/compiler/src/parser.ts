@@ -1277,9 +1277,9 @@ export class Parser {
    *                        unused shape)
    *   `{ Ident :`        — `{ x: 1 }`
    *   `{ String :`       — `{ "data-id": 1 }`
+   *   `{ [expr] :`       — `{ [key]: 1 }`
    * Anything else (including `{ x }`, `{ let y = 1; y }`, `{ tag(...) }`)
-   * stays a Block. Shorthand / computed-key / spread shapes parse as Block
-   * today and are tracked in docs/DEFERRED.md.
+   * stays a Block.
    */
   private peekObjectLitShape(): boolean {
     const t1 = this.tokens[this.pos + 1]
@@ -1296,6 +1296,22 @@ export class Parser {
     // then `}`) stays a Block to preserve last-expression-returns
     // semantics, since either reading is valid there.
     if (t1.kind === TokenKind.Ident && t2.kind === TokenKind.Comma) return true
+    if (t1.kind === TokenKind.LBracket) {
+      let depth = 1
+      for (let i = this.pos + 2; i < this.tokens.length; i++) {
+        const tok = this.tokens[i]!
+        if (tok.kind === TokenKind.LBracket) depth++
+        else if (tok.kind === TokenKind.RBracket) {
+          depth--
+          if (depth === 0) {
+            return this.tokens[i + 1]?.kind === TokenKind.Colon
+          }
+        } else if (tok.kind === TokenKind.Eof) {
+          return false
+        }
+      }
+      return false
+    }
     if (t2.kind !== TokenKind.Colon) return false
     return t1.kind === TokenKind.Ident || t1.kind === TokenKind.String
   }
@@ -1327,6 +1343,21 @@ export class Parser {
     const keyTok = this.peek()
     let key: string
     let keyKind: 'ident' | 'string'
+    if (keyTok.kind === TokenKind.LBracket) {
+      const lbracket = this.expect(TokenKind.LBracket)
+      const computedKey = this.parseExpr()
+      const rbracket = this.expect(TokenKind.RBracket)
+      this.expect(TokenKind.Colon)
+      const value = this.parseExpr()
+      return {
+        key: '',
+        keyKind: 'computed',
+        computedKey,
+        value,
+        keyStart: lbracket.start,
+        keyEnd: rbracket.end,
+      }
+    }
     if (keyTok.kind === TokenKind.Ident) {
       key = keyTok.text
       keyKind = 'ident'
@@ -1334,7 +1365,7 @@ export class Parser {
       key = keyTok.value as string
       keyKind = 'string'
     } else {
-      throw this.error(`expected object-literal key (identifier or string), got ${TokenKind[keyTok.kind]}`)
+      throw this.error(`expected object-literal key (identifier, string, or computed key), got ${TokenKind[keyTok.kind]}`)
     }
     this.pos++
     // Shorthand: `{ id, … }` and `{ id }` (when reached via the new

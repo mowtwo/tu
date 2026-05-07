@@ -745,6 +745,20 @@ describe('codegen', () => {
     expect(js).toMatch(/new Signal\.State\(type\.tag\(__tu_anon_\d+, \{ "data-id": 7 \}\)\)/)
   })
 
+  it('M5.6: computed object keys emit bracket properties', () => {
+    const js = compile('let make = (key: string) => { [key]: 1 }')
+    expect(js).toContain('const make = (key) => ({ [key]: 1 })')
+
+    const ts = compileToTS('let make = (key: string) => { [key]: 1 }')
+    expect(ts).toContain('const make = (key: string) => ({ [key]: 1 })')
+  })
+
+  it('M5.6: computed object keys disable anonymous descriptor synthesis', () => {
+    const js = compile('let key = "x"\nlet p = { [key]: 1 }')
+    expect(js).toContain('const p = new Signal.State({ [key.get()]: 1 })')
+    expect(js).not.toContain('__tu_anon_')
+  })
+
   it('M5.6: nested object literal round-trips', () => {
     const js = compile('let p = { outer: { inner: 1 } }')
     // Outer anon descriptor is hoisted; inner object stays inline (Phase 3

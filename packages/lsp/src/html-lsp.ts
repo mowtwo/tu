@@ -234,7 +234,10 @@ function walkTagCalls(
       // or `ObjectSpread` (kind: 'ObjectSpread', arg). Walk both.
       for (const p of e.properties as Array<Record<string, unknown>>) {
         if (p.kind === 'ObjectSpread') visit(p.arg)
-        else visit(p.value)
+        else {
+          if (p.computedKey) visit(p.computedKey)
+          visit(p.value)
+        }
       }
       return
     case 'CallExpr':

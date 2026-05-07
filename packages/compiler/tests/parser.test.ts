@@ -288,6 +288,20 @@ describe('parser', () => {
     })
   })
 
+  it('parses computed object keys: `{ [key]: value }`', () => {
+    const tree = ast('let p = { [key]: value }')
+    expect((tree.body[0] as { value: unknown }).value).toMatchObject({
+      kind: 'ObjectLit',
+      properties: [
+        {
+          keyKind: 'computed',
+          computedKey: { kind: 'Ident', name: 'key' },
+          value: { kind: 'Ident', name: 'value' },
+        },
+      ],
+    })
+  })
+
   it('keeps `{ x }` as a Block (single-ident is NOT shorthand sugar)', () => {
     // Shorthand-property sugar collides with the more common "block last
     // expression returns its value" idiom; tracked in DEFERRED.

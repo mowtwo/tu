@@ -183,6 +183,10 @@ function synthesizeAnonInterfaces(
         canSynth = false
         break
       }
+      if (member.keyKind === 'computed') {
+        canSynth = false
+        break
+      }
       const descExpr = exprToDescExpr(member.value, declaredInterfaceNames)
       fields.push({ name: member.key, descExpr })
     }
@@ -252,6 +256,7 @@ function exprToDescExpr(e: Expr, knownInterfaces: Set<string>): string {
       const fields: string[] = []
       for (const m of e.properties) {
         if (m.kind === 'ObjectSpread') return 'type.Object'
+        if (m.keyKind === 'computed') return 'type.Object'
         fields.push(
           `{ name: ${JSON.stringify(m.key)}, type: ${exprToDescExpr(m.value, knownInterfaces)} }`
         )
@@ -1327,7 +1332,10 @@ function collectParamMemberReads(
     case 'ObjectLit':
       for (const prop of expr.properties) {
         if (prop.kind === 'ObjectSpread') collectParamMemberReads(prop.arg, paramNames, shapesByParam, shadowed)
-        else collectParamMemberReads(prop.value, paramNames, shapesByParam, shadowed)
+        else {
+          if (prop.computedKey) collectParamMemberReads(prop.computedKey, paramNames, shapesByParam, shadowed)
+          collectParamMemberReads(prop.value, paramNames, shapesByParam, shadowed)
+        }
       }
       return
     case 'IndexExpr':
@@ -1543,7 +1551,10 @@ function collectParamBodyUseTypes(
     case 'ObjectLit':
       for (const prop of expr.properties) {
         if (prop.kind === 'ObjectSpread') collectParamBodyUseTypes(prop.arg, paramNames, typesByParam, shadowed)
-        else collectParamBodyUseTypes(prop.value, paramNames, typesByParam, shadowed)
+        else {
+          if (prop.computedKey) collectParamBodyUseTypes(prop.computedKey, paramNames, typesByParam, shadowed)
+          collectParamBodyUseTypes(prop.value, paramNames, typesByParam, shadowed)
+        }
       }
       return
     case 'MemberAssignExpr':
@@ -1708,6 +1719,7 @@ function inferExprTsType(
       const fields: string[] = []
       for (const member of expr.properties) {
         if (member.kind === 'ObjectSpread') return undefined
+        if (member.keyKind === 'computed') return undefined
         const valueType = inferExprTsType(member.value, valueTypes, returnTypes) ?? 'unknown'
         fields.push(`${renderObjectTypeKey(member.key)}: ${valueType}`)
       }
@@ -1868,7 +1880,10 @@ function collectCallsFromExpr(expr: Expr, visit: (call: CallExpr) => void): void
     case 'ObjectLit':
       for (const prop of expr.properties) {
         if (prop.kind === 'ObjectSpread') collectCallsFromExpr(prop.arg, visit)
-        else collectCallsFromExpr(prop.value, visit)
+        else {
+          if (prop.computedKey) collectCallsFromExpr(prop.computedKey, visit)
+          collectCallsFromExpr(prop.value, visit)
+        }
       }
       return
     case 'MemberExpr':
@@ -2718,8 +2733,14 @@ class Codegen {
       // though the parser only accepts valid Ident tokens for the ident case
       // so we trust those). Mark the key span so cross-language navigation
       // lands on the source key.
-      const emitted = p.keyKind === 'string' ? JSON.stringify(p.key) : p.key
-      this.mark(p.keyStart, p.keyEnd, () => this.write(emitted))
+      if (p.keyKind === 'computed') {
+        this.write('[')
+        if (p.computedKey) this.emitExpr(p.computedKey)
+        this.write(']')
+      } else {
+        const emitted = p.keyKind === 'string' ? JSON.stringify(p.key) : p.key
+        this.mark(p.keyStart, p.keyEnd, () => this.write(emitted))
+      }
       this.write(': ')
       this.emitExpr(p.value)
     }
@@ -3449,7 +3470,10 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
     case 'ObjectLit':
       for (const p of expr.properties) {
         if (p.kind === 'ObjectSpread') collectClassRefs(p.arg, out)
-        else collectClassRefs(p.value, out)
+        else {
+          if (p.computedKey) collectClassRefs(p.computedKey, out)
+          collectClassRefs(p.value, out)
+        }
       }
       return
     case 'MemberExpr':
@@ -3554,7 +3578,10 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
     case 'ObjectLit':
       for (const p of expr.properties) {
         if (p.kind === 'ObjectSpread') collectStyleBlockBodies(p.arg, out)
-        else collectStyleBlockBodies(p.value, out)
+        else {
+          if (p.computedKey) collectStyleBlockBodies(p.computedKey, out)
+          collectStyleBlockBodies(p.value, out)
+        }
       }
       return
     case 'MemberExpr':
@@ -3998,7 +4025,9 @@ function containsControlFlow(expr: Expr): boolean {
       return expr.elements.some(containsControlFlow)
     case 'ObjectLit':
       return expr.properties.some((p) =>
-        p.kind === 'ObjectSpread' ? containsControlFlow(p.arg) : containsControlFlow(p.value)
+        p.kind === 'ObjectSpread'
+          ? containsControlFlow(p.arg)
+          : (p.computedKey ? containsControlFlow(p.computedKey) : false) || containsControlFlow(p.value)
       )
     case 'TernaryExpr':
       return containsControlFlow(expr.cond) || containsControlFlow(expr.then) || containsControlFlow(expr.else)

@@ -201,6 +201,7 @@ function collectAnonFields(
   for (const m of obj.properties) {
     if (m.kind === 'ObjectSpread') return null // skip — Phase 3d work
     const prop = m as ObjectProp
+    if (prop.keyKind === 'computed') return null
     fields.push({
       name: prop.key,
       typeExpr: inferTypeExpr(prop.value),
@@ -244,6 +245,7 @@ function inferTypeExpr(e: Expr): string {
         .filter((m) => m.kind !== 'ObjectSpread')
         .map((m) => {
           const p = m as ObjectProp
+          if (p.keyKind === 'computed') return '[]:unknown'
           return `${p.key}:${inferTypeExpr(p.value)}`
         })
         .join(';')
