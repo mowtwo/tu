@@ -1041,6 +1041,10 @@ describe('codegen', () => {
     expect(() => compile('let xs = new Array(10)')).toThrow(/new Array.*banned/i)
   })
 
+  it('M9: `new Date()` is BANNED — use std/time Temporal helpers', () => {
+    expect(() => compile('let now = new Date()')).toThrow(/new Date.*banned.*std\/time/i)
+  })
+
   it('M9: prefix `++` is BANNED', () => {
     expect(() => compile('let inc = () => ++count')).toThrow(/prefix.*banned.*\+= 1/i)
   })
@@ -1051,6 +1055,15 @@ describe('codegen', () => {
 
   it('M9: explicit `: any` annotation is BANNED outside external JS', () => {
     expect(() => compile('let f = (x: any) => x')).toThrow(/'any'.*banned.*unknown/i)
+  })
+
+  it('M9: legacy scope/receiver operators are BANNED with directive errors', () => {
+    expect(() => compile('let x = void 0')).toThrow(/void.*banned.*null/i)
+    expect(() => compile('let x = this')).toThrow(/this.*banned.*lexical/i)
+    expect(() => compile('let f = () => arguments')).toThrow(/arguments.*banned.*rest parameter/i)
+    expect(() => compile('let x = class')).toThrow(/class.*banned.*interface/i)
+    expect(() => compile('let x = var')).toThrow(/var.*banned.*let/i)
+    expect(() => compile('let x = with')).toThrow(/with.*banned.*Destructure/i)
   })
 
   it('M9: `: any` inside external JS lambda signatures is ALLOWED (escape hatch)', () => {

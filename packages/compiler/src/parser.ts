@@ -1073,6 +1073,15 @@ export class Parser {
           `'new Array(…)' is banned in Tu source. Use array literal \`[…]\` instead — explicit elements are clearer than ctor-arg semantics, and Tu normalizes sparse slots to \`null\`.`
         )
       }
+      if (
+        arg.kind === 'CallExpr' &&
+        typeof arg.callee === 'string' &&
+        arg.callee === 'Date'
+      ) {
+        throw this.error(
+          `'new Date(…)' is banned in Tu source. Use \`@tu-lang/std/time\` Temporal helpers instead — Date's mutable, timezone-implicit API is intentionally kept out of Tu.`
+        )
+      }
       return { kind: 'NewExpr', arg, start: tok.start, end: arg.end }
     }
     if (k === TokenKind.Async) {
@@ -2233,6 +2242,36 @@ export class Parser {
       if (t.text === 'instanceof') {
         throw this.error(
           `'instanceof' is banned in Tu source. Use \`type.is(value, Interface)\` from @tu-lang/std for structural duck-typing checks. For genuine JS-nominal types (Promise, Map, Error, …) use \`type.is(value, type.Promise)\` etc. — the runtime descriptor wraps the \`instanceof\` check.`
+        )
+      }
+      if (t.text === 'void') {
+        throw this.error(
+          `'void' operator is banned in Tu source. Use \`null\` for intentional empty values; type-position \`: void\` return annotations are still allowed.`
+        )
+      }
+      if (t.text === 'this') {
+        throw this.error(
+          `'this' is banned in Tu source. Components and helpers are lexical lambdas; pass dependencies explicitly instead of relying on method receiver binding.`
+        )
+      }
+      if (t.text === 'arguments') {
+        throw this.error(
+          `'arguments' is banned in Tu source. Use an explicit rest parameter (\`...args\`) so the call shape is visible to the type checker.`
+        )
+      }
+      if (t.text === 'class') {
+        throw this.error(
+          `'class' is banned in Tu source. Use \`interface\` for object shapes and \`let Name = (...) => ...\` for components/helpers.`
+        )
+      }
+      if (t.text === 'var') {
+        throw this.error(
+          `'var' is banned in Tu source. Use \`let\`; top-level lets become reactive cells and local lets are block-scoped.`
+        )
+      }
+      if (t.text === 'with') {
+        throw this.error(
+          `'with' is banned in Tu source. Destructure or pass explicit objects instead; implicit scope mutation is not part of Tu.`
         )
       }
       this.pos++
