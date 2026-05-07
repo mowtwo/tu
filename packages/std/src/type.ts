@@ -400,6 +400,10 @@ export class TypeMismatchError extends Error {
   }
 }
 
+export type TypeTryFromResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: TypeMismatchError }
+
 /**
  * Strict-cast helper (M9 Phase C). Validates `value` against `descriptor`
  * and returns it typed as `T`. The optional `castFn` runs first to
@@ -443,8 +447,46 @@ export function as<T = unknown>(
 }
 
 /**
+ * Non-throwing conversion helper. Mirrors `type.as` but returns a Result-
+ * shaped value so callers can handle user-input conversion without
+ * exceptions.
+ */
+export function tryFrom<T = unknown>(
+  value: unknown,
+  descriptor: TypeDescriptor,
+  castFn?: (v: unknown) => unknown
+): TypeTryFromResult<T> {
+  let v: unknown
+  try {
+    v = castFn ? castFn(value) : value
+  } catch {
+    return {
+      ok: false,
+      error: new TypeMismatchError(
+        `type.tryFrom: expected ${descriptor.name}, conversion failed`,
+        descriptor,
+        value
+      ),
+    }
+  }
+  if (!is(v, descriptor)) {
+    const got = of(v)
+    return {
+      ok: false,
+      error: new TypeMismatchError(
+        `type.tryFrom: expected ${descriptor.name}, got ${got.name}`,
+        descriptor,
+        v
+      ),
+    }
+  }
+  return { ok: true, value: v as T }
+}
+
+/**
  * Aggregate namespace export. Compiled Tu code will see this as `type` —
- * `type.of(v)`, `type.is(v, I)`, `type.as(v, T)`, `type.Number`, etc.
+ * `type.of(v)`, `type.is(v, I)`, `type.as(v, T)`, `type.tryFrom(v, T)`,
+ * `type.Number`, etc.
  *
  * The trailing-underscore in primitive names (`Number_`, `String_`)
  * dodges the JS-global collision; the namespace re-exports them under
@@ -454,6 +496,7 @@ export const type = {
   of,
   is,
   as,
+  tryFrom,
   tag,
   struct,
   native,

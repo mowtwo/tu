@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { is, of, struct, tag, type } from '../src/index.js'
+import { TypeMismatchError, is, of, struct, tag, type } from '../src/index.js'
 
 describe('@tu-lang/std/type — primitives', () => {
   it('of() classifies JS primitive values', () => {
@@ -216,6 +216,47 @@ describe('@tu-lang/std/type — type.as (M9 Phase C strict-cast)', () => {
     const User = struct('User', [{ name: 'id', type: type.Number }])
     const v = { id: 1 }
     expect(type.as(v, User)).toBe(v) // same reference
+  })
+})
+
+describe('@tu-lang/std/type — type.tryFrom non-throwing conversion', () => {
+  it('returns ok:true with the typed value when shape matches', () => {
+    const User = struct('User', [
+      { name: 'id', type: type.Number },
+      { name: 'name', type: type.String },
+    ])
+    const v = { id: 1, name: 'Alice' }
+    const result = type.tryFrom<typeof v>(v, User)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value).toBe(v)
+  })
+
+  it('returns ok:false instead of throwing on shape mismatch', () => {
+    const User = struct('User', [{ name: 'id', type: type.Number }])
+    const result = type.tryFrom({ id: 'not a number' }, User)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(TypeMismatchError)
+      expect(result.error.expected).toBe(User)
+      expect(result.error.message).toMatch(/expected User/i)
+    }
+  })
+
+  it('runs castFn first and validates the converted value', () => {
+    const result = type.tryFrom<number>('42', type.Number, (v) => Number(v))
+    expect(result).toEqual({ ok: true, value: 42 })
+  })
+
+  it('captures castFn throws as ok:false', () => {
+    const result = type.tryFrom('x', type.Number, () => {
+      throw new Error('bad input')
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(TypeMismatchError)
+      expect(result.error.actual).toBe('x')
+      expect(result.error.message).toMatch(/conversion failed/i)
+    }
   })
 })
 

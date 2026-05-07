@@ -13,6 +13,7 @@ export {
   of,
   is,
   as,
+  tryFrom,
   tag,
   struct,
   native,
@@ -21,4 +22,4 @@ export {
   TypeMismatchError,
   preloadTemporal,
 } from './type.js'
-export type { TypeDescriptor, TypeKind, StructField } from './type.js'
+export type { TypeDescriptor, TypeKind, StructField, TypeTryFromResult } from './type.js'
