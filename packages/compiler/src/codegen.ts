@@ -914,14 +914,13 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
         const p = lambda.params[i]!
         if (p.type !== undefined || p.destructureFields) continue
         let byParam = inferred.get(lambda)
-        if (byParam?.has(i)) continue
         const t = inferExprTsType(call.args[i]!, valueTypes)
         if (!t) continue
         if (!byParam) {
           byParam = new Map()
           inferred.set(lambda, byParam)
         }
-        byParam.set(i, t)
+        byParam.set(i, mergeInferredTypes(byParam.get(i), t))
       }
     })
   }
@@ -941,6 +940,21 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
     }
   }
   return inferred
+}
+
+function mergeInferredTypes(existing: string | undefined, candidate: string): string {
+  if (!existing || existing === candidate) return candidate
+  const parts: string[] = []
+  const seen = new Set<string>()
+  for (const part of [...splitTopLevel(existing, '|'), ...splitTopLevel(candidate, '|')]) {
+    const trimmed = part.trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    parts.push(trimmed)
+  }
+  if (parts.length === 0) return candidate
+  if (parts.length === 1) return parts[0]!
+  return parts.join(' | ')
 }
 
 function inferBodyFirstUseParamTypes(lambda: Lambda): Map<number, string> {

@@ -41,6 +41,24 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const label = (card: { title: string; count: number }) =>')
   })
 
+  it('M9 Phase D: same-file callsites widen primitive param types', () => {
+    const ts = compileToTS(`
+      let echo = (x) => x
+      let a = echo(1)
+      let b = echo("two")
+    `)
+    expect(ts).toContain('const echo = (x: number | string) =>')
+  })
+
+  it('M9 Phase D: same-file callsites widen object-shape param types', () => {
+    const ts = compileToTS(`
+      let label = (card) => card.title
+      let a = label({ title: "Tu" })
+      let b = label({ title: 2 })
+    `)
+    expect(ts).toContain('const label = (card: { title: string } | { title: number }) =>')
+  })
+
   it('M9 Phase D: uncalled params infer from first member-use shape', () => {
     const ts = compileToTS(`
       let label = (card) => card.title
