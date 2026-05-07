@@ -1,7 +1,7 @@
 // Compile JsCompat.tu, execute the runDemo() entrypoint, and render the
 // component to HTML — all in jsdom so the run is offline. Verifies that
 // the JS/TS surface (template literals, optional chaining, regex,
-// async/await, try/catch/finally, spread, ternary, external JS) compiles
+// async/await, try/catch/finally, spread, if expressions, external JS) compiles
 // to runnable native JS.
 import { compile } from '@tu-lang/compiler'
 import { mount } from '@tu-lang/dom'

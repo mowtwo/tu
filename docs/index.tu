@@ -36,7 +36,7 @@ export let Page = () => div {
     ## Quick taste
 
     ```tu
-    type Point = { x: number; y: number }
+    interface Point { x: number; y: number }
 
     export let origin: Point = { x: 0, y: 0 }
 
@@ -55,7 +55,7 @@ export let Page = () => div {
     }
     ```
 
-    - `type Point = …` — TS-style alias; threaded into the TS-mode emit verbatim.
+    - `interface Point { … }` — object shape; threaded into TS-mode emit and runtime metadata.
     - `let origin: Point = { x: 0, y: 0 }` — top-level `let` auto-binds to a `Signal.State<Point>`. Object literal as the cell's value.
     - `.panel() { … }` — pug-shorthand: `<div class="panel panel-tu-XXX">` plus children. The `XXX` is a per-component hash; the `style { … }` block's selectors get the same suffix, so `.panel` styles never bleed across components.
     - `origin.x` — postfix member access. `.` doesn't collide with prefix-dot ClassRef because they sit at different positions in the grammar.

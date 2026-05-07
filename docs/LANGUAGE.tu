@@ -28,7 +28,8 @@ export let Page = () => div {
     - `let X = …` — module-private value binding
     - `export let X = …` — public value binding
     - `let X: T = …` / `export let X: T = …` — annotated binding
-    - `type X = …` / `export type X = …` — type alias
+    - `interface X { … }` / `export interface X { … }` — object shape
+    - `type X = …` / `export type X = …` — erased alias for non-object unions/tuples
     - `enum X { … }` / `export enum X { … }` — frozen value object + TS value-union type
     - `import { … } from "./other.tu"` — named import
     - `export { … } from "./other.tu"` — named re-export
@@ -41,7 +42,7 @@ export let Page = () => div {
 
     export let count = 0
 
-    export type Pair = { x: number, y: number }
+    export interface Pair { x: number, y: number }
 
     export let App = () => div { Card(title: "hi") }
     ```
@@ -135,16 +136,18 @@ export let Page = () => div {
 
     ---
 
-    ## Type aliases
+    ## Interfaces and aliases
 
     ```tu
-    type Pair = { x: number, y: number }
+    interface Pair { x: number, y: number }
+    type RGB = readonly [number, number, number]
     export enum Color { Red = "red", Green = "green", Blue = "blue" }
     ```
 
     Use `enum` when the values are meaningful at runtime (`Color.Red`) and a
-    type annotation should accept those values. Type aliases still work for
-    structural or ad hoc unions; they erase entirely from JS-mode output.
+    type annotation should accept those values. Use `interface` for object
+    shapes. Type aliases still work for tuples and ad hoc unions; they erase
+    entirely from JS-mode output.
 
     `type` is a contextual keyword: it triggers only when followed by `Ident =`
     at statement boundary. So a lambda param named `type` still works:
@@ -711,7 +714,7 @@ export let Page = () => div {
 
     The TS shadow looks like normal TypeScript: `Signal.State<T>` cells,
     `Signal.Computed<T>` cells, function lambdas with declared param types,
-    `type X = …` aliases, and (for exported lambdas with all-typed params) a
+    interfaces, `type X = …` aliases, and (for exported lambdas with all-typed params) a
     synthesized `interface ${Name}Props { … }`.
 
     `tu check <file>` runs the shadow through tsserver and pretty-prints

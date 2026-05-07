@@ -6,13 +6,13 @@
 // auto-injected only for top-level reactive cells.
 //
 // Features exercised in this single file:
-//   • Type aliases — `type Todo = { … }` (TS-style).
+//   • Interfaces — `interface Todo { … }` for typed object shapes.
 //   • Object spread — `{ ...todo, done: true }`.
 //   • Array spread + array methods — `[...todos, fresh]`, `.filter`, `.map`, `.find`.
 //   • Template literals — `` `${name} has ${n} todos` ``.
 //   • Optional chaining + nullish coalescing — `user?.name ?? "anon"`.
-//   • Ternary — `n > 0 ? "some" : "none"`.
-//   • Compound assignment + update — `total += 1`, `i++`.
+//   • If expressions — `if n > 0 { "some" } else { "none" }`.
+//   • Compound assignment — `total += 1`.
 //   • try / catch / finally + throw — recoverable errors.
 //   • async / await + Promise — `await loadProfile()`.
 //   • Regex literal — `/^[a-z]+$/i.test(slug)`.
@@ -51,9 +51,8 @@ let formatUser = (user: User | null): string => {
 }
 
 // Toggle one todo immutably via object spread + array .map.
-let toggle = (id: number): Todo[] => todos.map((t: Todo) => t.id == id
-  ? { ...t, done: !t.done }
-  : t
+let toggle = (id: number): Todo[] => todos.map((t: Todo) =>
+  if (t.id == id) { { ...t, done: !t.done } } else { t }
 )
 
 // Append via array spread + compound assignment on the cell.
@@ -65,21 +64,20 @@ let append = (title: string): Todo[] => {
   return [...todos.get(), { id, title, done: false }]
 }
 
-// Mark every todo done via .map; ternary just to show the operator.
+// Mark every todo done via .map and an if expression.
 let markAllDone = (): Todo[] => todos.map((t: Todo) =>
   if (t.done) { t } else { { ...t, done: true } }
 )
 
-// Counts via a manual loop + the postfix `++` operator on a plain local
-// binding (Tu's update operators only legally apply to non-cell locals
-// — top-level Signal cells use `+= 1` instead, see `append` above).
+// Counts via a manual loop and explicit local assignment.
 let countLabel = (xs: Todo[]): string => {
   let open = 0
   for t in xs {
-    if (!t.done) { open++ }
+    if (!t.done) { open = open + 1 }
   }
   let total = xs.length
-  return open > 0 ? `${open} of ${total} open` : `all ${total} done`
+  let label = if (open > 0) { `${open} of ${total} open` } else { `all ${total} done` }
+  return label
 }
 
 // ── External JS escape hatch ────────────────────────────────────────
@@ -108,9 +106,11 @@ let fakeFetchUser = async (id: number): Promise<User> => {
   if (id < 0) {
     throw new Error(`bad user id: ${id}`)
   }
-  return id == 0
-    ? { name: "Ada Lovelace", email: null }
-    : { name: `User #${id}`, email: `user${id}@example.com` }
+  return if (id == 0) {
+    { name: "Ada Lovelace", email: null }
+  } else {
+    { name: `User #${id}`, email: `user${id}@example.com` }
+  }
 }
 
 // loadProfile demonstrates try/catch/finally with an async lambda.
@@ -154,11 +154,11 @@ export let runDemo = async (): Promise<{
   todos = toggle(2)
   let afterToggle = todos.get()
 
-  // Array spread + ++.
+  // Array spread + compound assignment.
   todos = append("Showcase external JS")
   let afterAppend = todos.get()
 
-  // Map + ternary.
+  // Map + if expression.
   todos = markAllDone()
   let afterAllDone = todos.get()
 
@@ -169,9 +169,9 @@ export let runDemo = async (): Promise<{
   let r = shuffleAndTime([1, 2, 3, 4, 5])
   let shuffleSummary = `shuffled ${r.out.length} in ${r.ms.toFixed(2)}ms → ${r.out.join(",")}`
 
-  // Regex literal driving a list-comprehension via .map + ternary.
+  // Regex literal driving a list-comprehension via .map + if expression.
   let slugs = ["hello", "Bad Slug", "ok-123", "_no"]
-  let slugChecks = slugs.map((s: string) => slugOk(s) ? `✔ ${s}` : `✘ ${s}`)
+  let slugChecks = slugs.map((s: string) => if (slugOk(s)) { `✔ ${s}` } else { `✘ ${s}` })
 
   // Async + try/catch/finally — happy path.
   let okProfile = await loadProfile(7)
@@ -195,12 +195,12 @@ export let runDemo = async (): Promise<{
 
 // ── App view — same data rendered as a Tu component ─────────────────
 
-let renderTodo = (t: Todo) => li(class: t.done ? "done" : "open") {
+let renderTodo = (t: Todo) => li(class: if (t.done) { "done" } else { "open" }) {
   span(class: "id") { `#${t.id}` }
   " "
   span(class: "title") { t.title }
   " "
-  span(class: "tag") { t.done ? "done" : "open" }
+  span(class: "tag") { if (t.done) { "done" } else { "open" } }
 }
 
 export let App = () => Fragment {
@@ -215,9 +215,8 @@ export let App = () => Fragment {
 
     h3 { "Slug regex" }
     ul(class: .slugs) {
-      // Each ternary + template literal renders inline.
-      li { /^[a-z][a-z0-9-]*$/.test("hello") ? "/.../ matches `hello`" : "no" }
-      li { /^[a-z][a-z0-9-]*$/.test("Bad Slug") ? "yes" : "/.../ rejects `Bad Slug`" }
+      li { if (/^[a-z][a-z0-9-]*$/.test("hello")) { "/.../ matches `hello`" } else { "no" } }
+      li { if (/^[a-z][a-z0-9-]*$/.test("Bad Slug")) { "yes" } else { "/.../ rejects `Bad Slug`" } }
     }
 
     h3 { "Optional chain + ?? on null user" }

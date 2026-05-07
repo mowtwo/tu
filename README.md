@@ -11,7 +11,7 @@ A reactive UI language. Trailing-closure DSL over HTML / CSS / state, scoped sty
 ## A quick taste
 
 ```tu
-type Point = { x: number; y: number }
+interface Point { x: number; y: number }
 
 export let origin: Point = { x: 0, y: 0 }
 export let snapshot = computed({ tag: "point", value: origin })
@@ -32,7 +32,7 @@ export let App = () => .panel() {
 ```
 
 What's happening:
-- `type Point = …` — a TS-style type alias; the RHS is captured verbatim and threaded into TS-mode emit so tsserver checks every use.
+- `interface Point { … }` — an object shape that flows into TS-mode emit and runtime metadata so tsserver checks every use.
 - `let origin: Point = { x: 0, y: 0 }` — top-level `let` auto-binds to a `Signal.State<Point>` cell. Object literal as value.
 - `computed(…)` — a `Signal.Computed` cell. Reads of `origin` inside the body inject `.get()` automatically; the cell re-derives on mutation.
 - `.panel() { … }` — pug-shorthand: a `<div class="panel panel-tu-XXX">` plus children. The `XXX` is a per-component hash; the `style { … }` block's selectors get the same suffix, so `.panel` styles never bleed across components.
@@ -74,7 +74,7 @@ The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files
 | Capitalized components are real functions | `Card(title: "title") { children }` (no `h("Card", …)`) | ✅ |
 | `Fragment { … }` for multi-root returns | `Fragment { header { … } main { … } }` | ✅ |
 | Local `let` inside a block (plain const) | `() => { let g = "Hi, " + n; p { g } }` | ✅ |
-| Type aliases | `type Point = { x: number; y: number }` | ✅ |
+| Interfaces | `interface Point { x: number; y: number }` | ✅ |
 | Annotated bindings | `let count: number = 0` (wraps as `Signal.State<number>`) | ✅ |
 | Lambda return-type annotation | `(n: number): Point => { x: n, y: n }` | ✅ |
 | Object literals + member access | `let p = { x: 1 }; p.x` | ✅ |

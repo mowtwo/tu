@@ -19,7 +19,7 @@ renderPage(() => h('div', {}, ['hello']))
 Tu-flavoured highlighting (when the `tu` grammar is registered):
 
 ```tu
-type Point = { x: number; y: number }
+interface Point { x: number; y: number }
 export let origin: Point = { x: 0, y: 0 }
 ```
 

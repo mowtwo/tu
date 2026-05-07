@@ -2,7 +2,7 @@
 
 Status: design / pre-implementation
 Owner: M8 milestone — user-decided HIGHEST PRIORITY (2026-05-02)
-Closes: `M8 — Type metadata system` deferred row + the `JS legacy bans` row's `instanceof` / `typeof` / `class` / `type X = …` items.
+Closes: `M8 — Type metadata system` deferred row + the `JS legacy bans` row's `instanceof` / `typeof` / `class` / object-shape `type X = { … }` items.
 
 ## 1. Why this exists
 
@@ -19,10 +19,10 @@ The plan: types stop being purely compile-time and become **first-class runtime 
 ## 2. Core decisions (locked 2026-05-02)
 
 1. **Strict duck typing.** Structural matching, but every declared field must be present and correctly typed. Excess properties are tolerated for now (matches TS semantics); future opt-in for "strict-no-extras" mode.
-2. **Only `interface` for compound types.**
+2. **Use `interface` for object shapes.**
    - No `class` (banned, was never needed for UI).
    - No `struct`.
-   - No `type X = …` keyword (REMOVED — current Tu's contextual `type` keyword goes away).
+   - `type X = …` remains for erased tuples/unions/aliases, but object shapes migrate to `interface X { … }`.
 3. **No `extends`, no extension, no pipeline.** Interfaces are flat field declarations. Composition happens at the value level via spread.
 4. **No new symbols.** API uses standard member access: `type.of(v)`, `type.is(v, I)`. No `::` namespace operator.
 5. **Interface = runtime value.** `interface Foo { x: number; y: string }` declares ONE identifier `Foo` that is both a TS type AND a JS value.
@@ -141,7 +141,7 @@ Each carries an `instanceof`-equivalent check internally (since these are nomina
 
 ### 4.1 Lexer
 
-- Add `interface` keyword (replaces contextual `type` keyword from M2.4).
+- Add `interface` keyword for object shapes; keep contextual `type` for erased aliases.
 - Remove `type` keyword recognition (becomes a normal identifier — for the runtime API).
 
 ### 4.2 Parser
@@ -166,11 +166,11 @@ Each carries an `instanceof`-equivalent check internally (since these are nomina
 - Banned constructs throw with directive errors:
   - `typeof v` → "use `type.of(v)`".
   - `v instanceof T` → "use `type.is(v, T)`".
-  - `type X = …` → "use `interface X { … }`".
+  - `type X = { … }` → "use `interface X { … }`".
 
 ### 4.4 Migration
 
-The codebase has many `type X = …` aliases (in examples, tu-xing, playground). Each becomes `interface X { … }`. Audit scope:
+The codebase had many object-shape `type X = …` aliases (in examples, tu-xing, playground). Each becomes `interface X { … }`. Audit scope:
 - `examples/typed/Typed.tu`
 - `examples/js-compat/JsCompat.tu`
 - `examples/suspense/Page.tu`
@@ -178,7 +178,7 @@ The codebase has many `type X = …` aliases (in examples, tu-xing, playground).
 - `playground/src/Sidebar.tu` (`DemoLinkProps`)
 - `packages/tu-xing/src/components/*.tu` (every Props type)
 
-Done in the same commit as the parser change so nothing's left in `type X = …` form after.
+Done in the same commit as the parser change so no object-shape alias is left in `type X = { … }` form after.
 
 ## 5. Performance considerations
 
@@ -192,7 +192,7 @@ Done in the same commit as the parser change so nothing's left in `type X = …`
 - **Phase 1** — `@tu-lang/std/type` primitives + `of` / `is` for JS primitives + arrays + plain objects. Standalone; `type.of(1) === type.Number` works without compiler changes.
 - **Phase 2** — `interface` keyword + codegen + repo migration (the big bang).
 - **Phase 3** — anonymous interface synthesis + shape interning.
-- **Phase 4** — wire the parser bans (`typeof`, `instanceof`, `type X = …`) with directive errors.
+- **Phase 4** — wire the parser bans (`typeof`, `instanceof`, object-shape `type X = { … }`) with directive errors.
 - **Phase 5** — built-in JS-type descriptors (Promise, Map, Set, Error, AbortController) + Temporal types from `@tu-lang/std/time` (submodule of std, decided 2026-05-03 not to carve a separate package).
 - **Phase 6 (M9)** — generics (`interface Box<T>`) + unions (`union(A, B)` runtime constructor or syntax) + recursive interfaces.
 

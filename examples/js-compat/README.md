@@ -6,13 +6,13 @@ runnable `.tu` source.
 
 What you'll see exercised:
 
-- **Type aliases** — `type Todo = { … }`.
+- **Interfaces** — `interface Todo { … }` for typed object shapes.
 - **Object spread** — `{ ...todo, done: true }`.
 - **Array spread + array methods** — `[...todos, fresh]`, `.filter`, `.map`.
 - **Template literals** — `` `${name} has ${n} todos` ``.
 - **Optional chaining + nullish coalescing** — `user?.name ?? "anon"`.
-- **Ternary** — `n > 0 ? "some" : "none"`.
-- **Compound assignment + update** — `total += 1`, `i++`.
+- **If expressions** — `if n > 0 { "some" } else { "none" }`.
+- **Compound assignment** — `total += 1`.
 - **try / catch / finally + throw** — recoverable async errors.
 - **async / await + Promise** — `await loadProfile()`.
 - **Regex literal** — `/^[a-z]+$/i.test(slug)`.

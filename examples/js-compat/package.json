@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "JS/TS compatibility showcase — async/await, try/catch/finally, ternary, template literals, spread, optional chaining, nullish coalescing, regex literal, update operators, external JS escape hatch.",
+  "description": "JS/TS compatibility showcase — async/await, try/catch/finally, if expressions, template literals, spread, optional chaining, nullish coalescing, regex literal, compound assignment, external JS escape hatch.",
   "scripts": {
     "demo": "node run.mjs",
     "build": "echo 'js-compat example: built on demand by run.mjs'",

@@ -392,7 +392,7 @@ export let App = () => div(class: "form") {
 let jsCompatCase = (): CaseDefinition => ({
   id: "js-compat",
   label: "JS/TS surface (compat)",
-  blurb: "How far Tu reaches into modern JS/TS — spread, optional chaining + ??, ternary, regex literal, ++/+=, try/catch/finally, async/await, external JS escape hatch. Click the JS tab on the right to see the emitted code.",
+  blurb: "How far Tu reaches into modern JS/TS — spread, optional chaining + ??, if expressions, regex literal, compound assignment, try/catch/finally, async/await, external JS escape hatch. Click the JS tab on the right to see the emitted code.",
   entry: "App.tu",
   files: [
     {
@@ -420,18 +420,18 @@ let formatUser = (u: User | null): string => {
   return name + " <" + email + ">"
 }
 
-// Counts via a manual loop + postfix ++ on a non-cell local.
+// Counts via a manual loop and explicit local assignment.
 let openCount = (xs: Todo[]): number => {
   let n = 0
   for t in xs {
-    if (!t.done) { n++ }
+    if (!t.done) { n = n + 1 }
   }
   return n
 }
 
-// Object spread for immutable toggle, + ternary inside .map.
+// Object spread for immutable toggle, plus an if expression inside .map.
 let onToggle = (id: number) => {
-  todos = todos.map((t: Todo) => t.id == id ? { ...t, done: !t.done } : t)
+  todos = todos.map((t: Todo) => if (t.id == id) { { ...t, done: !t.done } } else { t })
 }
 
 // Array spread + compound assignment on a top-level cell.
@@ -500,12 +500,12 @@ export let App = () => div(class: "panel") {
 
   ul(class: "todos") {
     for t in todos {
-      li(class: t.done ? "done" : "open", onClick: () => onToggle(t.id)) {
+      li(class: if (t.done) { "done" } else { "open" }, onClick: () => onToggle(t.id)) {
         span(class: "id") { "#" t.id }
         " "
         span(class: "title") { t.title }
         " "
-        span(class: "tag") { t.done ? "done ✔" : "open" }
+        span(class: "tag") { if (t.done) { "done ✔" } else { "open" } }
       }
     }
   }
@@ -526,8 +526,8 @@ export let App = () => div(class: "panel") {
 
   h3 { "Regex literal + slug check" }
   ul(class: "slugs") {
-    li { /^[a-z][a-z0-9-]*$/.test("hello") ? "✔ /^[a-z][a-z0-9-]*$/ matches \\"hello\\"" : "no" }
-    li { slugOk("Bad Slug") ? "yes" : "✘ slugOk(\\"Bad Slug\\")" }
+    li { if (/^[a-z][a-z0-9-]*$/.test("hello")) { "✔ /^[a-z][a-z0-9-]*$/ matches \\"hello\\"" } else { "no" } }
+    li { if (slugOk("Bad Slug")) { "yes" } else { "✘ slugOk(\\"Bad Slug\\")" } }
   }
 
   h3 { "Optional chain + ?? on null user" }

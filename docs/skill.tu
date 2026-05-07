@@ -28,8 +28,8 @@ export let Page = () => div {
     import { Fragment } from "@tu-lang/runtime"
     import { Card } from "./Card.tu"
 
-    // 2. Type aliases (TS-style; raw RHS preserved to TS shadow).
-    type Point = { x: number; y: number }
+    // 2. Interfaces for object shapes.
+    interface Point { x: number; y: number }
 
     // 3. Module-private cell (top-level `let` → Signal.State<number>).
     let count = 0
@@ -96,15 +96,15 @@ export let Page = () => div {
 
     A local `let` is a **plain const**, not a Signal cell. It exists for closures, derived values, and small locals. Block bodies with one or more `let`s compile to an IIFE.
 
-    ## Type aliases
+    ## Interfaces and type aliases
 
     ```tu
-    type Point = { x: number; y: number }
+    interface Point { x: number; y: number }
     type RGB = readonly [number, number, number]
-    export type AppProps = { children: Child[] }
+    export interface AppProps { children?: Child[] }
     ```
 
-    `type` is a contextual keyword (only triggers when followed by `Ident =` at statement boundary). The RHS is captured verbatim and emitted into the TS shadow. JS mode erases the entire alias.
+    Use `interface` for object shapes, especially component props and exported data. Use `type` for erased aliases such as tuples or ad hoc unions; the RHS is captured verbatim and emitted into the TS shadow.
 
     ## Values
 

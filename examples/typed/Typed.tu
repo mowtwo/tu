@@ -1,10 +1,10 @@
 // M5.6 + M5.7 + M5.8 demo: object literals, lambda return-type
-// annotations, type aliases, and member access — the typed-data ergonomics.
+// annotations, interfaces, and member access — the typed-data ergonomics.
 //
 // What this exercises:
-//   • `type Point = …` — a TS-style alias declared inline.
+//   • `interface Point { … }` — an object shape declared inline.
 //   • `let origin: Point = { x: 0, y: 0 }` — object literal as a let-decl
-//     value, with the alias driving inference for the cell.
+//     value, with the interface driving inference for the cell.
 //   • `(n: number): Point => { x: n, y: n }` — lambda return-type
 //     annotation; the body is an object literal (parens-wrapped by codegen
 //     so JS doesn't read it as a function-body block).
