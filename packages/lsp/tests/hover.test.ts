@@ -264,4 +264,23 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     // No interface block in documentation.
     expect(info!.documentation ?? '').not.toContain('interface ')
   })
+
+  it('M9: type.is narrows Exception values inside catch guards', () => {
+    const lines = [
+      'Exception ValidationError { field: string }',
+      'export let run = () => try {',
+      '  throw ValidationError("bad", { field: "id" })',
+      '} catch if ValidationError as e {',
+      '  e.field',
+      '} catch e {',
+      '  e.message',
+      '}',
+    ]
+    const src = lines.join('\n')
+    const col = lines[4]!.indexOf('field')
+    const info = hoverAtTuPosition(src, join(tmp, 'guard.tu'), 4, col)
+    expect(info).not.toBeNull()
+    expect(info!.contents).toContain('field')
+    expect(info!.contents).toContain('string')
+  })
 })

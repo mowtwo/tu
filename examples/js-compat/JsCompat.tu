@@ -124,7 +124,7 @@ export let loadProfile = async (id: number): Promise<LoadResult> => {
   try {
     let user = await fakeFetchUser(id)
     return { tag: "ok", user, took: `${now.instant().epochMilliseconds - started}ms` }
-  } catch (e: unknown) {
+  } catch e {
     let message = e?.message ?? String(e)
     return { tag: "err", message }
   } finally {

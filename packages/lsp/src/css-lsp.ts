@@ -237,7 +237,9 @@ function visitStyleBlocks(
       return
     case 'TryExpr':
       visit(e.body)
-      if (e.catchClause) visit((e.catchClause as { body: unknown }).body)
+      for (const c of (e.catchClauses ?? (e.catchClause ? [e.catchClause] : [])) as { body: unknown }[]) {
+        visit(c.body)
+      }
       if (e.finallyClause) visit(e.finallyClause)
       return
     case 'TemplateLit':

@@ -41,6 +41,7 @@ export function tuPathToTs(p: string): string {
 export const TU_PLATFORM_PACKAGES: readonly string[] = [
   'runtime',
   'dom',
+  'std',
   // future: 'node', 'workers', 'react-native-bridge', …
 ]
 

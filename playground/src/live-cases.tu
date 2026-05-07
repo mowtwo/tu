@@ -220,7 +220,7 @@ let load = async () => {
     let result = await jokeApi()
     joke = result
     status = "ok"
-  } catch (e: unknown) {
+  } catch e {
     error = e?.message ?? String(e)
     status = "error"
   }
@@ -462,7 +462,7 @@ let onLoad = async (id: number) => {
   try {
     let u = await fakeFetch(id)
     profile = u
-  } catch (e: unknown) {
+  } catch e {
     lastError = e?.message ?? String(e)
     profile = null
   } finally {
@@ -630,12 +630,10 @@ let runParse = () => {
     let u = parseUser(obj)
     bob = u
     parsed = "parsed: " + u.name + " (id " + u.id + ")"
-  } catch (e: ValidationError | unknown) {
-    if (type.is(e, ValidationError)) {
-      lastError = "ValidationError on field '" + (e?.field ?? "?") + "': " + (e?.message ?? "")
-    } else {
-      lastError = "Error: " + (e?.message ?? String(e))
-    }
+  } catch if ValidationError as e {
+    lastError = "ValidationError on field '" + (e?.field ?? "?") + "': " + (e?.message ?? "")
+  } catch e {
+    lastError = "Error: " + (e?.message ?? String(e))
   }
 }
 

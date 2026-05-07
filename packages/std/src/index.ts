@@ -22,4 +22,4 @@ export {
   TypeMismatchError,
   preloadTemporal,
 } from './type.js'
-export type { TypeDescriptor, TypeKind, StructField, TypeTryFromResult } from './type.js'
+export type { TypeDescriptor, TypedDescriptor, TypeKind, StructField, TypeTryFromResult } from './type.js'

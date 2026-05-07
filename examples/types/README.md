@@ -9,7 +9,8 @@ End-to-end showcase of Tu's type metadata + structured exception system:
 - **`Exception ValidationError { field: string }`** — like `interface`,
   but the runtime const is a callable factory `(message, props?) =>
   Error` that produces a tagged Error subclass with stack-trace
-  capture. Passable to `type.is(e, ValidationError)`.
+  capture. Passable to `type.is(e, ValidationError)`, which narrows the
+  value in LSP hovers and diagnostics.
 - **`type.as(value, descriptor, castFn?)`** — runtime cast that
   validates `value` against `descriptor` and returns it typed.
   Throws `TypeMismatchError` on mismatch.
@@ -24,5 +25,5 @@ pnpm --filter @tu-examples/types test
 ```
 
 Output should print a report listing the descriptor identity checks,
-the parseUser round-trip on valid/invalid input, and the typed-catch
-dispatch via `type.is`.
+the parseUser round-trip on valid/invalid input, and filtered catch
+dispatch via `catch if ValidationError as e`.

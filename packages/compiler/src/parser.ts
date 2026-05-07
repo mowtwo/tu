@@ -1362,23 +1362,41 @@ export class Parser {
   }
 
   /**
-   * `try { … } catch (e[: T]) { … } finally { … }` — both catch and
-   * finally are optional but at least one must be present (matches JS
-   * grammar; lets the diagnostic catch a `try { … }` with no handler).
+   * `try { … } catch (e[: T]) { … } finally { … }` plus sugar:
+   * `catch if ValidationError as e { … }` and `catch e { … }`.
    */
   private parseTryExpr(): TryExpr {
     const start = this.expect(TokenKind.Try).start
     const body = this.parseBlock()
-    let catchClause: TryCatchClause | undefined
+    const catchClauses: TryCatchClause[] = []
     let finallyClause: Block | undefined
     let endOffset = body.end
-    if (this.peek().kind === TokenKind.Catch) {
+    while (this.peek().kind === TokenKind.Catch) {
       this.pos++
       let param = ''
       let paramStart = this.peek().start
       let paramEnd = paramStart
       let type: string | undefined
-      if (this.peek().kind === TokenKind.LParen) {
+      let guardType: string | undefined
+      let guardStart: number | undefined
+      let guardEnd: number | undefined
+      let defaultError = false
+      if (this.peek().kind === TokenKind.If) {
+        this.pos++
+        const guardTok = this.expect(TokenKind.Ident)
+        guardType = guardTok.text
+        guardStart = guardTok.start
+        guardEnd = guardTok.end
+        const asTok = this.expect(TokenKind.Ident)
+        if (asTok.text !== 'as') {
+          throw this.error('filtered catch expects `as` before the binding name')
+        }
+        const nameTok = this.expect(TokenKind.Ident)
+        param = nameTok.text
+        paramStart = nameTok.start
+        paramEnd = nameTok.end
+        type = guardType
+      } else if (this.peek().kind === TokenKind.LParen) {
         this.pos++
         if (this.peek().kind === TokenKind.RParen) {
           // `catch ()` — semantically same as bare `catch { … }`; just
@@ -1396,10 +1414,25 @@ export class Parser {
           }
           this.expect(TokenKind.RParen)
         }
+      } else if (this.peek().kind === TokenKind.Ident) {
+        const nameTok = this.peek()
+        if (this.tokens[this.pos + 1]?.kind === TokenKind.LBrace) {
+          this.pos++
+          param = nameTok.text
+          paramStart = nameTok.start
+          paramEnd = nameTok.end
+          type = 'Error'
+          defaultError = true
+        }
       }
       const catchBody = this.parseBlock()
-      catchClause = { param, paramStart, paramEnd, body: catchBody }
+      const catchClause: TryCatchClause = { param, paramStart, paramEnd, body: catchBody }
       if (type !== undefined) catchClause.type = type
+      if (guardType !== undefined) catchClause.guardType = guardType
+      if (guardStart !== undefined) catchClause.guardStart = guardStart
+      if (guardEnd !== undefined) catchClause.guardEnd = guardEnd
+      if (defaultError) catchClause.defaultError = true
+      catchClauses.push(catchClause)
       endOffset = catchBody.end
     }
     if (this.peek().kind === TokenKind.Finally) {
@@ -1407,11 +1440,14 @@ export class Parser {
       finallyClause = this.parseBlock()
       endOffset = finallyClause.end
     }
-    if (!catchClause && !finallyClause) {
+    if (catchClauses.length === 0 && !finallyClause) {
       throw this.error('try expression requires a `catch` or `finally` clause')
     }
     const result: TryExpr = { kind: 'TryExpr', body, start, end: endOffset }
-    if (catchClause) result.catchClause = catchClause
+    if (catchClauses.length > 0) {
+      result.catchClauses = catchClauses
+      result.catchClause = catchClauses[0]
+    }
     if (finallyClause) result.finallyClause = finallyClause
     return result
   }

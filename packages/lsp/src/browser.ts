@@ -947,6 +947,9 @@ declare module '@tu-lang/std' {
     name: string
     fields?: ReadonlyArray<{ name: string; type: TypeDescriptor; optional: boolean }>
   }
+  export interface TypedDescriptor<T> extends TypeDescriptor {
+    readonly __tu_type?: T
+  }
   export class TypeMismatchError extends Error {
     expected: TypeDescriptor
     actual: unknown
@@ -966,11 +969,12 @@ declare module '@tu-lang/std' {
     native(name: string, check: (v: unknown) => boolean): TypeDescriptor
     tag<T extends object>(descriptor: TypeDescriptor, value: T): T
     of(value: unknown): TypeDescriptor
+    is<T>(value: unknown, descriptor: TypedDescriptor<T>): value is T
     is(value: unknown, descriptor: TypeDescriptor): boolean
     as<T>(value: unknown, descriptor: TypeDescriptor, cast?: (value: unknown) => unknown): T
     tryFrom<T>(value: unknown, descriptor: TypeDescriptor, cast?: (value: unknown) => unknown): { ok: true; value: T } | { ok: false; error: TypeMismatchError }
   }
-  export type { TypeDescriptor as __tu_TypeDescriptor }
+  export type { TypeDescriptor as __tu_TypeDescriptor, TypedDescriptor as __tu_TypedDescriptor }
 }
 `.trim()
 }

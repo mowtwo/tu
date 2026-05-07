@@ -28,6 +28,7 @@ import type {
   StyleBlock,
   TagCall,
   TemplateLit,
+  TryCatchClause,
   TryExpr,
 } from './ast.js'
 import { lineColAt } from './diagnostics.js'
@@ -104,7 +105,7 @@ function runtimeImportLine(tsMode: boolean): string {
  */
 function typeImportLine(tsMode: boolean): string {
   if (tsMode)
-    return `import { type, type TypeDescriptor as __tu_TypeDescriptor } from '@tu-lang/std'`
+    return `import { type, type TypedDescriptor as __tu_TypedDescriptor } from '@tu-lang/std'`
   return `import { type } from '@tu-lang/std'`
 }
 
@@ -1414,10 +1415,10 @@ function collectParamMemberReads(
     }
     case 'TryExpr':
       collectParamMemberReads(expr.body, paramNames, shapesByParam, shadowed)
-      if (expr.catchClause) {
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
         const nextShadowed = new Set(shadowed)
-        if (expr.catchClause.param) nextShadowed.add(expr.catchClause.param)
-        collectParamMemberReads(expr.catchClause.body, paramNames, shapesByParam, nextShadowed)
+        if (c.param) nextShadowed.add(c.param)
+        collectParamMemberReads(c.body, paramNames, shapesByParam, nextShadowed)
       }
       if (expr.finallyClause) collectParamMemberReads(expr.finallyClause, paramNames, shapesByParam, shadowed)
       return
@@ -1618,10 +1619,10 @@ function collectParamBodyUseTypes(
       return
     case 'TryExpr':
       collectParamBodyUseTypes(expr.body, paramNames, typesByParam, shadowed)
-      if (expr.catchClause) {
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
         const nextShadowed = new Set(shadowed)
-        if (expr.catchClause.param) nextShadowed.add(expr.catchClause.param)
-        collectParamBodyUseTypes(expr.catchClause.body, paramNames, typesByParam, nextShadowed)
+        if (c.param) nextShadowed.add(c.param)
+        collectParamBodyUseTypes(c.body, paramNames, typesByParam, nextShadowed)
       }
       if (expr.finallyClause) collectParamBodyUseTypes(expr.finallyClause, paramNames, typesByParam, shadowed)
       return
@@ -1973,7 +1974,9 @@ function collectCallsFromExpr(expr: Expr, visit: (call: CallExpr) => void): void
       return
     case 'TryExpr':
       collectCallsFromExpr(expr.body, visit)
-      if (expr.catchClause) collectCallsFromExpr(expr.catchClause.body, visit)
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
+        collectCallsFromExpr(c.body, visit)
+      }
       if (expr.finallyClause) collectCallsFromExpr(expr.finallyClause, visit)
       return
     case 'TernaryExpr':
@@ -2582,9 +2585,34 @@ class Codegen {
   private emitTryStmt(node: TryExpr, allowReturn: boolean): void {
     this.write('try ')
     this.emitBlockStatementBody(node.body, allowReturn)
-    if (node.catchClause) {
-      const c = node.catchClause
-      if (c.param) {
+    const catchClauses = node.catchClauses ?? (node.catchClause ? [node.catchClause] : [])
+    if (catchClauses.length > 0) {
+      if (this.needsCatchDispatch(catchClauses)) {
+        const caught = '__tu_caught'
+        this.write(` catch (${caught}`)
+        if (this.tsMode) this.write(': unknown')
+        this.write(') {\n')
+        for (let i = 0; i < catchClauses.length; i++) {
+          const c = catchClauses[i]!
+          const isLast = i === catchClauses.length - 1
+          if (c.guardType) {
+            this.write(i === 0 ? '  if (' : ' else if (')
+            this.write(`type.is(${caught}, `)
+            this.mark(c.guardStart ?? c.paramStart, c.guardEnd ?? c.paramEnd, () => this.write(c.guardType!))
+            this.write(')) ')
+            this.emitCatchDispatchedBody(c, caught, allowReturn)
+          } else {
+            this.write(i === 0 ? '  ' : ' else ')
+            this.emitCatchDispatchedBody(c, caught, allowReturn)
+          }
+          if (isLast && c.guardType) {
+            this.write(` else { throw ${caught}; }`)
+          }
+        }
+        this.write('\n}')
+      } else {
+        const c = catchClauses[0]!
+        if (c.param) {
         this.write(' catch (')
         this.mark(c.paramStart, c.paramEnd, () => this.write(c.param))
         // TS only allows `unknown` (or `any`) on catch params since 4.0.
@@ -2594,10 +2622,11 @@ class Codegen {
         // `type.is(e, AError)` narrowing produces the right inferred type.
         if (this.tsMode && c.type) this.write(`: unknown`)
         this.write(') ')
-      } else {
-        this.write(' catch ')
+        } else {
+          this.write(' catch ')
+        }
+        this.emitBlockStatementBody(c.body, allowReturn)
       }
-      this.emitBlockStatementBody(c.body, allowReturn)
     }
     if (node.finallyClause) {
       this.write(' finally ')
@@ -2606,12 +2635,35 @@ class Codegen {
     }
   }
 
+  private needsCatchDispatch(catches: TryCatchClause[]): boolean {
+    return catches.length > 1 || catches.some((c) => c.guardType || c.defaultError)
+  }
+
+  private emitCatchDispatchedBody(c: TryCatchClause, caught: string, allowReturn: boolean): void {
+    const prefix = c.param
+      ? () => {
+          this.write('  const ')
+          this.mark(c.paramStart, c.paramEnd, () => this.write(c.param))
+          if (this.tsMode && c.defaultError) this.write(': Error')
+          this.write(' = ')
+          if (c.defaultError) {
+            this.write(`${caught} instanceof Error ? ${caught} : new Error(String(${caught}))`)
+          } else {
+            this.write(caught)
+          }
+          this.write(';\n')
+        }
+      : undefined
+    this.emitBlockStatementBody(c.body, allowReturn, prefix)
+  }
+
   /** Emit a Tu Block as a JS `{ … }` body. When `allowReturn` is true
    *  the last expression becomes `return …;` so the value escapes the
    *  enclosing IIFE; otherwise it's emitted as a plain expression
    *  statement. Used by emitTryExpr. */
-  private emitBlockStatementBody(node: Block, allowReturn: boolean): void {
+  private emitBlockStatementBody(node: Block, allowReturn: boolean, prefix?: () => void): void {
     this.write('{\n')
+    if (prefix) prefix()
     let lastExprIdx = -1
     if (allowReturn) {
       for (let i = node.body.length - 1; i >= 0; i--) {
@@ -3185,7 +3237,7 @@ class Codegen {
       // The const is callable AND carries the descriptor. Type as the
       // intersection of a factory signature + TypeDescriptor.
       const propsType = renderPropsTypeText(node.fields)
-      this.write(`: ((message: string, props?: ${propsType}) => ${node.name}) & __tu_TypeDescriptor`)
+      this.write(`: ((message: string, props?: ${propsType}) => ${node.name}) & __tu_TypedDescriptor<${node.name}>`)
     }
     // Body: build the factory + descriptor, attach descriptor fields
     // onto the function so `type.is(e, XxxError)` reaches them.
@@ -3230,7 +3282,7 @@ class Codegen {
       : `    Object.defineProperty(factory, k, { value: descriptor[k], writable: true, configurable: true, enumerable: true })\n`)
     this.write(`  }\n`)
     this.write(this.tsMode
-      ? `  return factory as typeof factory & __tu_TypeDescriptor\n`
+      ? `  return factory as typeof factory & __tu_TypedDescriptor<${node.name}>\n`
       : `  return factory\n`)
     this.write(`})()`)
   }
@@ -3264,7 +3316,7 @@ class Codegen {
       // not local name matches canonical).
       this.write(`${exp}const `)
       this.mark(node.nameStart, node.nameEnd, () => this.write(node.name))
-      if (this.tsMode) this.write(`: __tu_TypeDescriptor`)
+      if (this.tsMode) this.write(`: __tu_TypedDescriptor<${node.name}>`)
       this.write(` = __tu_canon_${canonical}`)
       return
     }
@@ -3274,9 +3326,9 @@ class Codegen {
     if (this.tsMode) {
       // The const carries the runtime descriptor; the like-named TS
       // interface lives in TS's type namespace. Annotate as
-      // `__tu_TypeDescriptor` so tsserver doesn't expose the descriptor's
+      // `__tu_TypedDescriptor<Name>` so tsserver doesn't expose the descriptor's
       // internal shape (`fields`, `kind`) on user reads of `Foo`.
-      this.write(`: __tu_TypeDescriptor`)
+      this.write(`: __tu_TypedDescriptor<${node.name}>`)
     }
     this.write(` = type.struct(${JSON.stringify(node.name)}, [`)
     for (let i = 0; i < node.fields.length; i++) {
@@ -3673,7 +3725,9 @@ function collectClassRefs(expr: Expr | Block | undefined, out: Set<string>): voi
       return
     case 'TryExpr':
       collectClassRefs(expr.body, out)
-      if (expr.catchClause) collectClassRefs(expr.catchClause.body, out)
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
+        collectClassRefs(c.body, out)
+      }
       if (expr.finallyClause) collectClassRefs(expr.finallyClause, out)
       return
     case 'TernaryExpr':
@@ -3781,7 +3835,9 @@ function collectStyleBlockBodies(expr: Expr | Block | undefined, out: string[]):
       return
     case 'TryExpr':
       collectStyleBlockBodies(expr.body, out)
-      if (expr.catchClause) collectStyleBlockBodies(expr.catchClause.body, out)
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
+        collectStyleBlockBodies(c.body, out)
+      }
       if (expr.finallyClause) collectStyleBlockBodies(expr.finallyClause, out)
       return
     case 'TernaryExpr':
@@ -4288,7 +4344,9 @@ function containsControlFlow(expr: Expr): boolean {
       return false
     case 'TryExpr':
       if (blockHasControlFlow(expr.body)) return true
-      if (expr.catchClause && blockHasControlFlow(expr.catchClause.body)) return true
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
+        if (blockHasControlFlow(c.body)) return true
+      }
       if (expr.finallyClause && blockHasControlFlow(expr.finallyClause)) return true
       return false
     case 'Block':

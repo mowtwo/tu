@@ -275,7 +275,7 @@ function checkDeprecatedPositionalComponentCalls(program: Program, source: strin
         return
       case 'TryExpr':
         visit(expr.body)
-        if (expr.catchClause) visit(expr.catchClause.body)
+        for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) visit(c.body)
         if (expr.finallyClause) visit(expr.finallyClause)
         return
       case 'TernaryExpr':

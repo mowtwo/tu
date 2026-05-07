@@ -96,7 +96,7 @@ describe('M8 Phase 6b/6c — compileBundle()', () => {
     // Per-file TS still has the local interface decl (drives tsserver).
     const aOut = bundle.files.get('a.tu')!.code
     expect(aOut).toContain('interface User {')
-    expect(aOut).toContain('export const User: __tu_TypeDescriptor =')
+    expect(aOut).toContain('export const User: __tu_TypedDescriptor<User> =')
   })
 
   it('M9 Phase D: TS bundle infers exported lambda params from direct cross-file callsites', () => {

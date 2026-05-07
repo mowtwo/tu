@@ -123,5 +123,17 @@ export function referencesAtTuPosition(
       push(ref.fileName, ref.textSpan.start, ref.textSpan.length, isDef)
     }
   }
-  return out
+  return preferWidestDuplicateSpans(out)
+}
+
+function preferWidestDuplicateSpans(items: TuReferenceLocation[]): TuReferenceLocation[] {
+  const best = new Map<string, TuReferenceLocation>()
+  for (const item of items) {
+    const key = `${item.uri}:${item.line}:${item.col}`
+    const prev = best.get(key)
+    if (!prev || item.length > prev.length || (item.isDefinition && !prev.isDefinition)) {
+      best.set(key, item)
+    }
+  }
+  return items.filter((item) => best.get(`${item.uri}:${item.line}:${item.col}`) === item)
 }

@@ -80,7 +80,17 @@ export function renameAtTuPosition(
       newText: newName,
     })
   }
-  return out
+  return preferWidestDuplicateSpans(out)
+}
+
+function preferWidestDuplicateSpans(items: TuRenameEdit[]): TuRenameEdit[] {
+  const best = new Map<string, TuRenameEdit>()
+  for (const item of items) {
+    const key = `${item.uri}:${item.line}:${item.col}`
+    const prev = best.get(key)
+    if (!prev || item.length > prev.length) best.set(key, item)
+  }
+  return items.filter((item) => best.get(`${item.uri}:${item.line}:${item.col}`) === item)
 }
 
 /**

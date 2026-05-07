@@ -483,8 +483,14 @@ let registerTuLangServices = external JS (
     {
       label: "try",
       detail: "try/catch",
-      insertText: 'try {\n  $1\n} catch (e) {\n  $0\n}',
-      docs: "Try expression — catch clause yields fallback value.",
+      insertText: 'try {\n  $1\n} catch ${2:e} {\n  $0\n}',
+      docs: "Try expression — catch binding defaults to Error.",
+    },
+    {
+      label: "catch if",
+      detail: "filtered catch",
+      insertText: 'catch if ${1:ValidationError} as ${2:e} {\n  $0\n}',
+      docs: "Catch only errors matching a runtime type descriptor.",
     },
     {
       label: "style",

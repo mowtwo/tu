@@ -695,6 +695,7 @@ export interface ReturnExpr extends Ranged {
 export interface TryExpr extends Ranged {
   kind: 'TryExpr'
   body: Block
+  catchClauses?: TryCatchClause[]
   catchClause?: TryCatchClause
   finallyClause?: Block
 }
@@ -708,6 +709,12 @@ export interface TryCatchClause {
   /** Optional TS type annotation for the param — emitted only in
    *  TS-shadow mode. */
   type?: string
+  /** `catch if SomeError as e { ... }` guard descriptor name. */
+  guardType?: string
+  guardStart?: number
+  guardEnd?: number
+  /** True for the `catch e { ... }` sugar, whose binding defaults to Error. */
+  defaultError?: boolean
   body: Block
 }
 

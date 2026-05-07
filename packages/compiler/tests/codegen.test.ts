@@ -1107,6 +1107,27 @@ describe('codegen', () => {
     expect(compileToTS(tu)).toContain('catch (e: unknown)')
   })
 
+  it('M6.4: filtered catch sugar lowers to type.is dispatch and default Error fallback', () => {
+    const tu = [
+      'Exception ValidationError { field: string }',
+      'let f = () => try {',
+      '  throw ValidationError("x", { field: "id" })',
+      '} catch if ValidationError as e {',
+      '  e.field',
+      '} catch e {',
+      '  e.message',
+      '}',
+    ].join('\n')
+    const js = compile(tu)
+    expect(js).toContain('catch (__tu_caught)')
+    expect(js).toContain('type.is(__tu_caught, ValidationError)')
+    expect(js).toContain('const e = __tu_caught')
+    expect(js).toContain('const e = __tu_caught instanceof Error ? __tu_caught : new Error(String(__tu_caught))')
+    const ts = compileToTS(tu)
+    expect(ts).toContain('catch (__tu_caught: unknown)')
+    expect(ts).toContain('const e: Error = __tu_caught instanceof Error ? __tu_caught : new Error(String(__tu_caught))')
+  })
+
   it('M6.4: try requires at least catch or finally', () => {
     expect(() => compile('let f = () => try { foo() }')).toThrow(/catch.*finally/)
   })
@@ -1329,10 +1350,10 @@ describe('codegen', () => {
     const ts = compileToTS(['interface User {', '  id: number', '  name: string', '}'].join('\n'))
     expect(ts).toMatch(/interface User \{[\s\S]*?id: number[\s\S]*?name: string[\s\S]*?\}/)
     expect(ts).toContain(
-      'const User: __tu_TypeDescriptor = type.struct("User", [{ name: "id", type: type.Number }, { name: "name", type: type.String }])'
+      'const User: __tu_TypedDescriptor<User> = type.struct("User", [{ name: "id", type: type.Number }, { name: "name", type: type.String }])'
     )
     expect(ts).toContain(
-      `import { type, type TypeDescriptor as __tu_TypeDescriptor } from '@tu-lang/std'`
+      `import { type, type TypedDescriptor as __tu_TypedDescriptor } from '@tu-lang/std'`
     )
   })
 
@@ -1348,7 +1369,7 @@ describe('codegen', () => {
   it('M8: export interface emits export modifier on both sides', () => {
     const ts = compileToTS('export interface User { id: number }')
     expect(ts).toContain('export interface User {')
-    expect(ts).toContain('export const User: __tu_TypeDescriptor')
+    expect(ts).toContain('export const User: __tu_TypedDescriptor<User>')
   })
 
   it('M8: nullable union `T | null` maps to type.Optional(T)', () => {
@@ -1514,13 +1535,13 @@ describe('codegen', () => {
     expect(ts).toContain('interface NotFoundError extends Error {')
     expect(ts).toContain('resource?: string')
     expect(ts).toContain(
-      'const NotFoundError: ((message: string, props?: { resource?: string }) => NotFoundError) & __tu_TypeDescriptor'
+      'const NotFoundError: ((message: string, props?: { resource?: string }) => NotFoundError) & __tu_TypedDescriptor<NotFoundError>'
     )
     expect(ts).toContain('const factory = (message: string, props?: { resource?: string }) => {')
     expect(ts).toContain('const e = new Error(message) as NotFoundError')
     expect(ts).toContain('(v as { name?: unknown }).name === "NotFoundError"')
     expect(ts).toContain('(descriptor as unknown as Record<string, unknown>)[k]')
-    expect(ts).toContain('return factory as typeof factory & __tu_TypeDescriptor')
+    expect(ts).toContain('return factory as typeof factory & __tu_TypedDescriptor<NotFoundError>')
   })
 
   it('Exception decl JS-mode emits a factory function with stack-trace capture', () => {
@@ -1688,7 +1709,7 @@ describe('codegen', () => {
     const ts = compileToTS(['type Variant = "a" | "b" | "c"', 'interface Card { variant: Variant }'].join('\n'))
     expect(ts).toContain('type Variant = "a" | "b" | "c"')
     expect(ts).toContain(
-      'const Card: __tu_TypeDescriptor = type.struct("Card", [{ name: "variant", type: type.String }])'
+      'const Card: __tu_TypedDescriptor<Card> = type.struct("Card", [{ name: "variant", type: type.String }])'
     )
   })
 })

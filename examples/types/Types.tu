@@ -69,7 +69,7 @@ export let runDemo = (): { ok: boolean; report: string } => {
   try {
     let parsed = parseUser(goodInput)
     lines = [...lines, "parsed: " + parsed.name + " (id=" + parsed.id + ")"]
-  } catch (e: unknown) {
+  } catch e {
     lines = [...lines, "unexpected throw: " + (e?.message ?? String(e))]
   }
 
@@ -77,22 +77,21 @@ export let runDemo = (): { ok: boolean; report: string } => {
   try {
     parseUser(badInput)
     lines = [...lines, "(should have thrown)"]
-  } catch (e: ValidationError | unknown) {
-    if (type.is(e, ValidationError)) {
-      lines = [...lines, "got ValidationError: " + (e?.message ?? "")]
-    } else {
-      lines = [...lines, "got non-ValidationError: " + String(e)]
-    }
+  } catch if ValidationError as e {
+    lines = [...lines, "got ValidationError: " + (e?.message ?? "")]
+  } catch e {
+    lines = [...lines, "got non-ValidationError: " + String(e)]
   }
 
   // Lookup that throws specific error types.
   try {
     lookupUser(-1)
-  } catch (e: ValidationError | NotFoundError | unknown) {
-    let kind = if (type.is(e, ValidationError)) { "ValidationError" }
-               else if (type.is(e, NotFoundError)) { "NotFoundError" }
-               else { "unknown" }
-    lines = [...lines, "lookupUser(-1) → " + kind]
+  } catch if ValidationError as e {
+    lines = [...lines, "lookupUser(-1) → ValidationError: " + (e?.message ?? "")]
+  } catch if NotFoundError as e {
+    lines = [...lines, "lookupUser(-1) → NotFoundError: " + (e?.message ?? "")]
+  } catch e {
+    lines = [...lines, "lookupUser(-1) → unknown"]
   }
 
   return { ok: true, report: lines.join("\n") }

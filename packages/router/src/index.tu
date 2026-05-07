@@ -293,7 +293,7 @@ let normalizePath = (path: string): string => {
 let decodeSegment = (segment: string): string => {
   try {
     return decodeURIComponent(segment)
-  } catch (e: unknown) {
+  } catch e {
     return segment
   }
 }

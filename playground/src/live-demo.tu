@@ -243,14 +243,14 @@ let refreshOutputViews = () => {
   let src = model.getValue()
   let jsOut = ""
   let dtsOut = ""
-  try { jsOut = compile(src, { filename: path }) } catch (e: unknown) { jsOut = "// " + (e?.message ?? String(e)) }
+  try { jsOut = compile(src, { filename: path }) } catch e { jsOut = "// " + (e?.message ?? String(e)) }
   // Strip Tu's source-map footer from the JS too — the read-only
   // editor doesn't benefit from it and it dwarfs the actual code.
   jsOut = jsOut.replace(/\/\/#\s*sourceMappingURL=[^\n]*\n?/g, "").trim()
   try {
     let tsOut = compileToTS(src, { filename: path })
     dtsOut = extractDts(tsOut)
-  } catch (e: unknown) {
+  } catch e {
     dtsOut = "// " + (e?.message ?? String(e))
   }
   if (liveJsEditor) { liveJsEditor.getModel()?.setValue(jsOut) }
@@ -288,7 +288,7 @@ let recompileLive = async (): Promise<void> => {
     setStatus("ok", "✓ live")
     if (liveErrorEl) { liveErrorEl.style.display = "none" }
     if (liveCurrentTab == "error") { setActiveTab("preview") }
-  } catch (e: unknown) {
+  } catch e {
     let message = e?.message ?? String(e)
     liveErrorMessage = message
     setStatus("err", "✗ error")

@@ -149,8 +149,8 @@ function walkExpr(
     case 'TryExpr': {
       // Body throws are assumed caught; walk catch + finally normally.
       walkBlock(expr.body, out, declaredExceptions, /*insideTry*/ true)
-      if (expr.catchClause) {
-        walkBlock(expr.catchClause.body, out, declaredExceptions, insideTry)
+      for (const c of expr.catchClauses ?? (expr.catchClause ? [expr.catchClause] : [])) {
+        walkBlock(c.body, out, declaredExceptions, insideTry)
       }
       if (expr.finallyClause) {
         walkBlock(expr.finallyClause, out, declaredExceptions, insideTry)

@@ -65,6 +65,12 @@ export interface TypeDescriptor {
   check?: (v: unknown) => boolean
 }
 
+/** Compile-time-only phantom used by Tu-generated descriptors so TS can
+ * narrow `type.is(value, User)` to `User` in the shadow program. */
+export interface TypedDescriptor<T> extends TypeDescriptor {
+  readonly __tu_type?: T
+}
+
 // ── primitives — sealed module-level singletons ────────────────────
 
 export const Number_: TypeDescriptor = { kind: 'primitive', name: 'number' }
@@ -338,6 +344,8 @@ export function of(value: unknown): TypeDescriptor {
  * Excess properties are tolerated (TS-style); a future `type.strict(I)`
  * wrapper can opt in to no-extras checking.
  */
+export function is<T>(value: unknown, descriptor: TypedDescriptor<T>): value is T
+export function is(value: unknown, descriptor: TypeDescriptor): boolean
 export function is(value: unknown, descriptor: TypeDescriptor): boolean {
   switch (descriptor.kind) {
     case 'primitive':

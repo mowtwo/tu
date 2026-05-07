@@ -129,6 +129,20 @@ describe('parser', () => {
     ])
   })
 
+  it('parses filtered catch clauses and default Error catch sugar', () => {
+    const tree = ast(
+      'let f = () => try { risky() } catch if ValidationError as e { e.field } catch e { e.message }'
+    )
+    const lambda = (tree.body[0] as { value: unknown }).value as { body: unknown }
+    const tryExpr = lambda.body as {
+      catchClauses: Array<{ param: string; type?: string; guardType?: string; defaultError?: boolean }>
+    }
+    expect(tryExpr.catchClauses).toMatchObject([
+      { param: 'e', type: 'ValidationError', guardType: 'ValidationError' },
+      { param: 'e', type: 'Error', defaultError: true },
+    ])
+  })
+
   it('parses tag-call with props and nested children', () => {
     const tree = ast(`
       let App = () => {
