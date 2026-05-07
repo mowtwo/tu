@@ -75,6 +75,24 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const first = (xs: (number | string)[]) =>')
   })
 
+  it('M9 Phase D: callsite inference reads member types from same-file object lets', () => {
+    const ts = compileToTS(`
+      let user = { profile: { name: "Ada" } }
+      let show = (name) => name
+      let out = show(user.profile.name)
+    `)
+    expect(ts).toContain('const show = (name: string) =>')
+  })
+
+  it('M9 Phase D: callsite inference reads element types from indexed arrays', () => {
+    const ts = compileToTS(`
+      let xs = [1, "two"]
+      let show = (value) => value
+      let out = show(xs[0])
+    `)
+    expect(ts).toContain('const show = (value: number | string) =>')
+  })
+
   it('M9 Phase D: uncalled params infer from first member-use shape', () => {
     const ts = compileToTS(`
       let label = (card) => card.title

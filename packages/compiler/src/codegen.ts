@@ -903,8 +903,14 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
   const valueTypes = new Map<string, string>()
   for (const stmt of program.body) {
     if (stmt.kind !== 'LetDecl') continue
-    if (stmt.type !== undefined) valueTypes.set(stmt.name, stmt.type.trim())
     if (stmt.value.kind === 'Lambda') functions.set(stmt.name, stmt.value)
+    if (stmt.type !== undefined) {
+      valueTypes.set(stmt.name, stmt.type.trim())
+      continue
+    }
+    if (stmt.value.kind === 'Lambda') continue
+    const inferredValueType = inferExprTsType(stmt.value, valueTypes)
+    if (inferredValueType) valueTypes.set(stmt.name, inferredValueType)
   }
 
   const inferred: InferredParamTypes = new Map()
@@ -1241,6 +1247,14 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
       if (expr.name === 'null') return 'null'
       return valueTypes.get(expr.name)
     }
+    case 'MemberExpr': {
+      const objectType = inferExprTsType(expr.object, valueTypes)
+      return objectType ? lookupObjectPropertyType(objectType, expr.property) : undefined
+    }
+    case 'IndexExpr': {
+      const objectType = inferExprTsType(expr.object, valueTypes)
+      return objectType ? arrayElementTypeFromType(objectType) : undefined
+    }
     case 'ArrayLit': {
       if (expr.elements.length === 0) return 'unknown[]'
       let elementType: string | undefined
@@ -1269,6 +1283,89 @@ function renderObjectTypeKey(key: string): string {
 
 function arrayElementTypeText(typeText: string): string {
   return splitTopLevel(typeText, '|').length > 1 ? `(${typeText})` : typeText
+}
+
+function arrayElementTypeFromType(typeText: string): string | undefined {
+  const trimmed = typeText.trim()
+  if (trimmed.endsWith('[]')) {
+    const element = trimmed.slice(0, -2).trim()
+    if (element.startsWith('(') && element.endsWith(')')) {
+      const inner = element.slice(1, -1).trim()
+      if (inner) return inner
+    }
+    return element || undefined
+  }
+  if (trimmed.startsWith('Array<') && trimmed.endsWith('>')) {
+    const inner = trimmed.slice('Array<'.length, -1).trim()
+    return inner || undefined
+  }
+  return undefined
+}
+
+function lookupObjectPropertyType(typeText: string, property: string): string | undefined {
+  let out: string | undefined
+  const parts = splitTopLevel(typeText, '|')
+  for (const part of parts) {
+    const found = lookupSingleObjectPropertyType(part.trim(), property)
+    if (!found) return undefined
+    out = mergeInferredTypes(out, found)
+  }
+  return out
+}
+
+function lookupSingleObjectPropertyType(typeText: string, property: string): string | undefined {
+  const trimmed = typeText.trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return undefined
+  const inner = trimmed.slice(1, -1).trim()
+  if (!inner) return undefined
+  for (const field of splitTopLevel(inner, ';')) {
+    const colon = indexOfTopLevel(field, ':')
+    if (colon < 0) continue
+    const rawKey = field.slice(0, colon).trim()
+    const key = parseObjectTypeKey(rawKey)
+    if (key !== property) continue
+    const value = field.slice(colon + 1).trim()
+    return value || undefined
+  }
+  return undefined
+}
+
+function parseObjectTypeKey(rawKey: string): string {
+  if (rawKey.startsWith('"') || rawKey.startsWith("'")) {
+    try {
+      return JSON.parse(rawKey)
+    } catch {
+      return rawKey
+    }
+  }
+  return rawKey
+}
+
+function indexOfTopLevel(s: string, needle: string): number {
+  let depth = 0
+  let quote: string | null = null
+  let escape = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if (quote) {
+      if (escape) {
+        escape = false
+      } else if (ch === '\\') {
+        escape = true
+      } else if (ch === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch
+      continue
+    }
+    if (ch === '(' || ch === '[' || ch === '{' || ch === '<') depth++
+    else if (ch === ')' || ch === ']' || ch === '}' || ch === '>') depth = Math.max(0, depth - 1)
+    else if (depth === 0 && ch === needle) return i
+  }
+  return -1
 }
 
 function collectCallsFromStmt(stmt: Stmt, visit: (call: CallExpr) => void): void {
