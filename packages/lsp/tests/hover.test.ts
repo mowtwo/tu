@@ -188,6 +188,19 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.documentation!).toContain('email: string | null')
   })
 
+  it('M8/M9: interface hover reports canonical same-shape merges', () => {
+    writeFileSync(join(tmp, 'person.tu'), 'export interface Person { id: number; name: string }\n')
+    const src = [
+      'import { Person } from "./person.tu"',
+      'interface User { id: number; name: string }',
+      'export let alice: User = { id: 1, name: "Alice" }',
+    ].join('\n')
+    const info = hoverAtTuPosition(src, join(tmp, 'a.tu'), 2, 12)
+    expect(info).not.toBeNull()
+    expect(info!.documentation).toContain('User')
+    expect(info!.documentation).toContain('Merged with: Person (from person.tu)')
+  })
+
   it('M9: hovering a typed lambda param expands the param interface', () => {
     const src = [
       'interface Card { title: string; count: number }',

@@ -1,4 +1,4 @@
-import { lineColAt, parse, tokenize, type Program } from '@tu-lang/compiler'
+import { lineColAt, parse, tokenize, type CanonicalizeResult, type Program } from '@tu-lang/compiler'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import ts from 'typescript'
@@ -171,11 +171,11 @@ export function hoverAtTuFile(path: string, line: number, col: number): TuHover 
  */
 function expandInterfaceTypes(
   contents: string,
-  shadows: ReadonlyMap<string, { ast: Program; tuPath: string }> | Map<string, unknown>
+  shadows: ReadonlyMap<string, { ast: Program; tuPath: string; canonical?: CanonicalizeResult }> | Map<string, unknown>
 ): string | null {
   // Build an interface name → fields lookup from every shadow's AST.
-  const byName = new Map<string, { fields: string[]; sourceFile: string }>()
-  for (const shadow of (shadows as ReadonlyMap<string, { ast: Program; tuPath: string }>).values()) {
+  const byName = new Map<string, { fields: string[]; sourceFile: string; mergedWith: string[] }>()
+  for (const shadow of (shadows as ReadonlyMap<string, { ast: Program; tuPath: string; canonical?: CanonicalizeResult }>).values()) {
     if (!shadow.ast) continue
     for (const stmt of shadow.ast.body) {
       if (stmt.kind !== 'InterfaceDecl') continue
@@ -189,7 +189,8 @@ function expandInterfaceTypes(
       })
       byName.set(stmt.name, {
         fields,
-        sourceFile: shadow.tuPath.split('/').slice(-1)[0] ?? shadow.tuPath,
+        sourceFile: basename(shadow.tuPath),
+        mergedWith: canonicalPeersForInterface(shadow.canonical, shadow.tuPath, stmt.name),
       })
     }
   }
@@ -211,6 +212,9 @@ function expandInterfaceTypes(
   for (const name of seen) {
     const decl = byName.get(name)!
     lines.push(`**${name}** \`(from ${decl.sourceFile})\``)
+    if (decl.mergedWith.length > 0) {
+      lines.push(`Merged with: ${decl.mergedWith.join(', ')}`)
+    }
     lines.push('```typescript')
     lines.push(`interface ${name} {`)
     for (const f of decl.fields) lines.push(f)
@@ -218,6 +222,25 @@ function expandInterfaceTypes(
     lines.push('```')
   }
   return lines.join('\n')
+}
+
+function canonicalPeersForInterface(
+  canonical: CanonicalizeResult | undefined,
+  filename: string,
+  interfaceName: string
+): string[] {
+  if (!canonical) return []
+  const canonicalName = canonical.perFile.get(filename)?.get(interfaceName)
+  if (!canonicalName) return []
+  const descriptor = canonical.descriptors.find((d) => d.canonicalName === canonicalName)
+  if (!descriptor) return []
+  const peers: string[] = []
+  for (const origin of descriptor.origins) {
+    if (origin.filename === filename && origin.originalName === interfaceName) continue
+    if (origin.originalName.startsWith('__anon_')) continue
+    peers.push(`${origin.originalName} (from ${basename(origin.filename)})`)
+  }
+  return peers
 }
 
 /**

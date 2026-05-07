@@ -1,10 +1,12 @@
 import {
+  canonicalizeShapes,
   classifyTopLevel,
   generateTSWithMap,
   inferBundleParamTypes,
   parse,
   tokenize,
   type CellKind,
+  type CanonicalizeResult,
   type Program,
   type TokenMapping,
 } from '@tu-lang/compiler'
@@ -126,6 +128,9 @@ export interface Shadow {
    *  need to inspect interface decls (M9 hover expansion + goto-def
    *  for type names). Drops trivially small overhead vs. re-parsing. */
   ast: Program
+  /** Cross-file canonical shape merge data. Shared by every shadow in
+   *  a graph; used by hover to explain same-shape interface merges. */
+  canonical: CanonicalizeResult
 }
 
 interface ParsedFile {
@@ -165,6 +170,7 @@ export function buildShadowGraph(
   const programs = new Map<string, Program>()
   for (const [filename, file] of parsed) programs.set(filename, file.ast)
   const inferredParamTypesByFile = inferBundleParamTypes(programs)
+  const canonical = canonicalizeShapes(programs)
   const shadows = new Map<string, Shadow>()
   for (const file of parsed.values()) {
     const importedNameKinds = buildImportedNameKinds(file, exportKinds)
@@ -193,6 +199,7 @@ export function buildShadowGraph(
       mapPos: buildSourceMapper(compiled.map),
       tokenMappings: compiled.tokenMappings,
       ast: file.ast,
+      canonical,
     })
   }
   return shadows
