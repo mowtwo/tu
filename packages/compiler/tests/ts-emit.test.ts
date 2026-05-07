@@ -25,6 +25,30 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('export const f = (x: unknown) =>')
   })
 
+  it('M9 Phase D: untyped params infer from the first same-file callsite', () => {
+    const ts = compileToTS(`
+      let double = (x) => x + 1
+      let out = double(41)
+    `)
+    expect(ts).toContain('const double = (x: number) =>')
+  })
+
+  it('M9 Phase D: first-call inference handles object-literal shapes', () => {
+    const ts = compileToTS(`
+      let label = (card) => card.title
+      let out = label({ title: "Tu", count: 1 })
+    `)
+    expect(ts).toContain('const label = (card: { title: string; count: number }) =>')
+  })
+
+  it('M9 Phase D: explicit param annotations still win over callsite inference', () => {
+    const ts = compileToTS(`
+      let stringify = (x: string | number) => x
+      let out = stringify(42)
+    `)
+    expect(ts).toContain('const stringify = (x: string | number) =>')
+  })
+
   it('M2.2: state-cell let with `: T` wraps the annotation as Signal.State<T>', () => {
     const ts = compileToTS('export let count: number = 0')
     expect(ts).toContain('export const count: Signal.State<number> = new Signal.State(0)')

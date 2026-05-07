@@ -592,6 +592,8 @@ interface BuildResult {
   tokenMappings: TokenMapping[]
 }
 
+type InferredParamTypes = Map<Lambda, Map<number, string>>
+
 /**
  * Per-emit options that the rest of the toolchain (LSP, CLI, vite plugin)
  * uses to give codegen extra context it can't derive from a single source
@@ -693,6 +695,7 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
   if (opts?.canonicalNamesForFile) {
     rewriteAnonDeclsForCanonical(synth, opts.canonicalNamesForFile)
   }
+  const inferredParamTypes = inferTopLevelParamTypes(program)
   const cg = new Codegen(
     cells,
     scopes,
@@ -701,7 +704,8 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     declaredInterfaceNames,
     synth.letToAnon,
     opts?.canonicalNamesForFile,
-    typeAliasBodies
+    typeAliasBodies,
+    inferredParamTypes
   )
   cg.write(`${runtimeImportLine(tsMode)}\n`)
   // Auto-import the M8 type API when this module:
@@ -891,6 +895,200 @@ function analyzeScopedComponents(program: Program): Map<string, ScopeCtx> {
   return out
 }
 
+function inferTopLevelParamTypes(program: Program): InferredParamTypes {
+  const functions = new Map<string, Lambda>()
+  const valueTypes = new Map<string, string>()
+  for (const stmt of program.body) {
+    if (stmt.kind !== 'LetDecl') continue
+    if (stmt.type !== undefined) valueTypes.set(stmt.name, stmt.type.trim())
+    if (stmt.value.kind === 'Lambda') functions.set(stmt.name, stmt.value)
+  }
+
+  const inferred: InferredParamTypes = new Map()
+  for (const stmt of program.body) {
+    collectCallsFromStmt(stmt, (call) => {
+      const lambda = functions.get(call.callee)
+      if (!lambda) return
+      if (call.namedArgs && call.namedArgs.length > 0) return
+      for (let i = 0; i < call.args.length && i < lambda.params.length; i++) {
+        const p = lambda.params[i]!
+        if (p.type !== undefined || p.destructureFields) continue
+        let byParam = inferred.get(lambda)
+        if (byParam?.has(i)) continue
+        const t = inferExprTsType(call.args[i]!, valueTypes)
+        if (!t) continue
+        if (!byParam) {
+          byParam = new Map()
+          inferred.set(lambda, byParam)
+        }
+        byParam.set(i, t)
+      }
+    })
+  }
+  return inferred
+}
+
+function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): string | undefined {
+  switch (expr.kind) {
+    case 'StringLit':
+    case 'TemplateLit':
+      return 'string'
+    case 'NumberLit':
+      return 'number'
+    case 'RegexLit':
+      return 'RegExp'
+    case 'Lambda':
+      return '(...args: unknown[]) => unknown'
+    case 'Ident': {
+      if (expr.name === 'true' || expr.name === 'false') return 'boolean'
+      if (expr.name === 'null') return 'null'
+      return valueTypes.get(expr.name)
+    }
+    case 'ArrayLit': {
+      if (expr.elements.length === 0) return 'unknown[]'
+      const first = inferExprTsType(expr.elements[0]!, valueTypes) ?? 'unknown'
+      return `${first}[]`
+    }
+    case 'ObjectLit': {
+      const fields: string[] = []
+      for (const member of expr.properties) {
+        if (member.kind === 'ObjectSpread') return undefined
+        const valueType = inferExprTsType(member.value, valueTypes) ?? 'unknown'
+        fields.push(`${renderObjectTypeKey(member.key)}: ${valueType}`)
+      }
+      return `{ ${fields.join('; ')} }`
+    }
+    default:
+      return undefined
+  }
+}
+
+function renderObjectTypeKey(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)
+}
+
+function collectCallsFromStmt(stmt: Stmt, visit: (call: CallExpr) => void): void {
+  if (stmt.kind !== 'LetDecl') return
+  collectCallsFromExpr(stmt.value, visit)
+}
+
+function collectCallsFromExpr(expr: Expr, visit: (call: CallExpr) => void): void {
+  switch (expr.kind) {
+    case 'CallExpr':
+      visit(expr)
+      for (const arg of expr.args) collectCallsFromExpr(arg, visit)
+      for (const arg of expr.namedArgs ?? []) collectCallsFromExpr(arg.value, visit)
+      for (const child of expr.children ?? []) collectCallsFromChild(child, visit)
+      return
+    case 'Lambda':
+      collectCallsFromExpr(expr.body, visit)
+      return
+    case 'Block':
+      for (const item of expr.body) {
+        if (item.kind === 'LocalLet') collectCallsFromExpr(item.value, visit)
+        else collectCallsFromExpr(item, visit)
+      }
+      return
+    case 'TagCall':
+      for (const prop of expr.props) collectCallsFromExpr(prop.value, visit)
+      for (const child of expr.children) collectCallsFromChild(child, visit)
+      return
+    case 'ArrayLit':
+      for (const item of expr.elements) collectCallsFromExpr(item, visit)
+      return
+    case 'ObjectLit':
+      for (const prop of expr.properties) {
+        if (prop.kind === 'ObjectSpread') collectCallsFromExpr(prop.arg, visit)
+        else collectCallsFromExpr(prop.value, visit)
+      }
+      return
+    case 'MemberExpr':
+      collectCallsFromExpr(expr.object, visit)
+      return
+    case 'IndexExpr':
+      collectCallsFromExpr(expr.object, visit)
+      collectCallsFromExpr(expr.index, visit)
+      return
+    case 'MethodCallExpr':
+      collectCallsFromExpr(expr.object, visit)
+      for (const arg of expr.args) collectCallsFromExpr(arg, visit)
+      return
+    case 'MemberAssignExpr':
+      collectCallsFromExpr(expr.target, visit)
+      collectCallsFromExpr(expr.value, visit)
+      return
+    case 'InvokeExpr':
+      collectCallsFromExpr(expr.callee, visit)
+      for (const arg of expr.args) collectCallsFromExpr(arg, visit)
+      return
+    case 'AssignExpr':
+      collectCallsFromExpr(expr.value, visit)
+      return
+    case 'BinaryExpr':
+      collectCallsFromExpr(expr.left, visit)
+      collectCallsFromExpr(expr.right, visit)
+      return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+    case 'AsExpr':
+    case 'AwaitExpr':
+      collectCallsFromExpr(expr.arg, visit)
+      return
+    case 'IfExpr':
+      collectCallsFromExpr(expr.cond, visit)
+      collectCallsFromExpr(expr.then, visit)
+      if (expr.else) collectCallsFromExpr(expr.else, visit)
+      return
+    case 'ForExpr':
+      collectCallsFromExpr(expr.iter, visit)
+      collectCallsFromExpr(expr.body, visit)
+      return
+    case 'TryExpr':
+      collectCallsFromExpr(expr.body, visit)
+      if (expr.catchClause) collectCallsFromExpr(expr.catchClause.body, visit)
+      if (expr.finallyClause) collectCallsFromExpr(expr.finallyClause, visit)
+      return
+    case 'TernaryExpr':
+      collectCallsFromExpr(expr.cond, visit)
+      collectCallsFromExpr(expr.then, visit)
+      collectCallsFromExpr(expr.else, visit)
+      return
+    case 'NewExpr':
+      collectCallsFromExpr(expr.arg, visit)
+      return
+    case 'UpdateExpr':
+      collectCallsFromExpr(expr.arg, visit)
+      return
+    case 'TemplateLit':
+      for (const part of expr.expressions) collectCallsFromExpr(part, visit)
+      return
+    case 'SpreadElement':
+      collectCallsFromExpr(expr.arg, visit)
+      return
+    case 'ThrowExpr':
+      collectCallsFromExpr(expr.arg, visit)
+      return
+    case 'ReturnExpr':
+      if (expr.value) collectCallsFromExpr(expr.value, visit)
+      return
+    case 'ImportExpr':
+    case 'ExternalLambda':
+    case 'StringLit':
+    case 'NumberLit':
+    case 'Ident':
+    case 'ClassRef':
+    case 'StyleBlock':
+    case 'MarkdownBlock':
+    case 'RegexLit':
+      return
+  }
+}
+
+function collectCallsFromChild(child: Child, visit: (call: CallExpr) => void): void {
+  if (child === null || typeof child !== 'object') return
+  collectCallsFromExpr(child, visit)
+}
+
 class Codegen {
   /** Stack of binding-name sets shadowing top-level cells (innermost last). */
   private readonly shadowed: Set<string>[] = []
@@ -911,7 +1109,8 @@ class Codegen {
     private readonly declaredInterfaceNames: ReadonlySet<string> = new Set(),
     private readonly anonInterfaceForLet: ReadonlyMap<LetDecl, string> = new Map(),
     private readonly canonicalNamesForFile: ReadonlyMap<string, string> | undefined = undefined,
-    private readonly typeAliasBodies: ReadonlyMap<string, string> = new Map()
+    private readonly typeAliasBodies: ReadonlyMap<string, string> = new Map(),
+    private readonly inferredParamTypes: InferredParamTypes = new Map()
   ) {}
 
   write(text: string): void {
@@ -1688,9 +1887,11 @@ class Codegen {
         // In TS mode, preserve `: type` annotations from the Tu source so
         // tsserver can drive IDE features and `.d.ts` generation. M9
         // Phase B: untyped params default to `unknown` (not TS's
-        // implicit `any`) — forces narrow at use sites.
+        // implicit `any`) — forces narrow at use sites. Phase D starts
+        // with single-file first-call inference for omitted annotations.
         if (this.tsMode) {
-          this.write(`: ${p.type ?? 'unknown'}`)
+          const inferred = this.inferredParamTypes.get(node)?.get(i)
+          this.write(`: ${p.type ?? inferred ?? 'unknown'}`)
         }
       }
       this.write(')')
