@@ -59,6 +59,22 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const label = (card: { title: string } | { title: number }) =>')
   })
 
+  it('M9 Phase D: callsite inference handles arithmetic and comparison args', () => {
+    const ts = compileToTS(`
+      let show = (n, ok) => [n, ok]
+      let out = show(1 + 2, 3 > 1)
+    `)
+    expect(ts).toContain('const show = (n: number, ok: boolean) =>')
+  })
+
+  it('M9 Phase D: array arg inference widens across all elements', () => {
+    const ts = compileToTS(`
+      let first = (xs) => xs
+      let out = first([1, "two"])
+    `)
+    expect(ts).toContain('const first = (xs: (number | string)[]) =>')
+  })
+
   it('M9 Phase D: uncalled params infer from first member-use shape', () => {
     const ts = compileToTS(`
       let label = (card) => card.title

@@ -1200,6 +1200,42 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
       return 'RegExp'
     case 'Lambda':
       return '(...args: unknown[]) => unknown'
+    case 'UnaryExpr': {
+      if (expr.op === '!') return 'boolean'
+      if (expr.op === '-' || expr.op === '+') return 'number'
+      return undefined
+    }
+    case 'BinaryExpr': {
+      switch (expr.op) {
+        case '==':
+        case '!=':
+        case '<':
+        case '<=':
+        case '>':
+        case '>=':
+          return 'boolean'
+        case '||':
+        case '&&':
+        case '??': {
+          const left = inferExprTsType(expr.left, valueTypes)
+          const right = inferExprTsType(expr.right, valueTypes)
+          if (!left) return right
+          if (!right) return left
+          return mergeInferredTypes(left, right)
+        }
+        case '-':
+        case '*':
+        case '/':
+        case '%':
+          return 'number'
+        case '+': {
+          const left = inferExprTsType(expr.left, valueTypes)
+          const right = inferExprTsType(expr.right, valueTypes)
+          return left === 'number' && right === 'number' ? 'number' : undefined
+        }
+      }
+      return undefined
+    }
     case 'Ident': {
       if (expr.name === 'true' || expr.name === 'false') return 'boolean'
       if (expr.name === 'null') return 'null'
@@ -1207,8 +1243,11 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
     }
     case 'ArrayLit': {
       if (expr.elements.length === 0) return 'unknown[]'
-      const first = inferExprTsType(expr.elements[0]!, valueTypes) ?? 'unknown'
-      return `${first}[]`
+      let elementType: string | undefined
+      for (const item of expr.elements) {
+        elementType = mergeInferredTypes(elementType, inferExprTsType(item, valueTypes) ?? 'unknown')
+      }
+      return `${arrayElementTypeText(elementType ?? 'unknown')}[]`
     }
     case 'ObjectLit': {
       const fields: string[] = []
@@ -1226,6 +1265,10 @@ function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): s
 
 function renderObjectTypeKey(key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)
+}
+
+function arrayElementTypeText(typeText: string): string {
+  return splitTopLevel(typeText, '|').length > 1 ? `(${typeText})` : typeText
 }
 
 function collectCallsFromStmt(stmt: Stmt, visit: (call: CallExpr) => void): void {
