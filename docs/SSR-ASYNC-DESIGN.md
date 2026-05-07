@@ -1,6 +1,6 @@
 # Async SSR + Suspense — design
 
-Status: design / pre-implementation
+Status: implemented (M6.11); retained as architecture notes
 Owner: M6.3+ ladder (closes the `Async / Suspense / streaming SSR` row in `docs/DEFERRED.tu`)
 Tasks: #59 (this doc) → #60 (async render) → #61 (Suspense) → #62 (streaming)
 
@@ -9,13 +9,13 @@ Tasks: #59 (this doc) → #60 (async render) → #61 (Suspense) → #62 (streami
 The language already has `async / await / dynamic import()` (landed M6.6). The SSR runtime does not — `renderToString`, `renderPage`, `renderPageHtml` walk the vnode tree synchronously and have no concept of "this child is a promise". A Tu component written as
 
 ```tu
-let UserCard = async (id: string) => async {
-  let user = await fetchUser(id)
+let UserCard = async (props: { id?: string }) => async {
+  let user = await fetchUser(props.id)
   div { user.name }
 }
 ```
 
-compiles cleanly today (M6.6), but invoking `UserCard("alice")` returns `Promise<VNode>`. `renderToString` would coerce that promise to `[object Promise]` via `String(node)` and emit literal garbage.
+compiles cleanly today (M6.6), but invoking `UserCard(id: "alice")` returns `Promise<VNode>`. `renderToString` would coerce that promise to `[object Promise]` via `String(node)` and emit literal garbage.
 
 Closing the gap unlocks tu-shu pages that load data at build time, a real-world SSR story for Tu apps, and a clear path to streaming. `tu-shu/build.ts` is already an `async` function — its IO + `import()` of compiled `.mjs` are async — but the actual render call (`renderToString(Page())`) is sync, so a `Page` that wants to `await` something has nowhere to land that promise.
 
@@ -80,7 +80,7 @@ Tu call-site (M6.1 named-arg form):
 import { Suspense } from "@tu-lang/runtime"
 
 Suspense(fallback: div { "Loading…" }) {
-  UserCard("alice")
+  UserCard(id: "alice")
 }
 ```
 
@@ -229,7 +229,7 @@ Per phase:
 
 After #60+#61 land, the open row at `docs/DEFERRED.tu` line 30 narrows from
 
-> Async / Suspense / streaming SSR — M6.2 ships sync `renderPage` only. Tu has no `async`/`await` syntax. Streaming, per-route data prefetch, and Qwik-style resumability are future work.
+> Async / Suspense / streaming SSR — M6.11 ships `renderToStringAsync`, `renderPageAsync`, `Suspense`, and `renderToStream`. Qwik-style resumability and route-level data APIs remain future work.
 
 to
 

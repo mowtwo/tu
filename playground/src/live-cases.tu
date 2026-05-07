@@ -72,10 +72,10 @@ let compositionCase = (): CaseDefinition => ({
 
 export let App = () => div(class: "stack") {
   h1 { "Composition demo" }
-  Card("Cells") {
+  Card(title: "Cells") {
     p { "Tu auto-wraps top-level let into reactive cells." }
   }
-  Card("Components") {
+  Card(title: "Components") {
     p { "Capitalized lambdas compile to real function calls — hover and goto-def work across files." }
   }
 
@@ -95,9 +95,10 @@ export let App = () => div(class: "stack") {
     },
     {
       path: "Card.tu",
-      content: `export let Card = (title: string, children: Child[]) => .card() {
-  h3 { title }
-  .body() { children }
+      content: `interface CardProps { title?: string; children?: Child[] }
+export let Card = (props: CardProps) => .card() {
+  h3 { props.title }
+  .body() { props.children }
 
   style {
     .card {

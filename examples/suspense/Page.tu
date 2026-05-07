@@ -18,8 +18,9 @@ let fakeFetchUser = async (id: string, delayMs: number): Promise<User> => {
   return { id, name: "Bob", bio: "Loves async + Suspense" }
 }
 
-let UserCard = async (id: string, delayMs: number) => {
-  let user = await fakeFetchUser(id, delayMs)
+interface UserCardProps { id?: string; delayMs?: number }
+let UserCard = async (props: UserCardProps) => {
+  let user = await fakeFetchUser(props.id ?? "alice", props.delayMs ?? 0)
   div(class: "card") {
     h2 { user.name }
     p { user.bio }
@@ -27,8 +28,9 @@ let UserCard = async (id: string, delayMs: number) => {
   }
 }
 
-let Spinner = (label: string) => div(class: "spinner") {
-  span { "⏳ " label "…" }
+interface SpinnerProps { label?: string }
+let Spinner = (props: SpinnerProps) => div(class: "spinner") {
+  span { "⏳ " props.label "…" }
 }
 
 export let Page = () => main(class: "page") {
@@ -39,11 +41,11 @@ export let Page = () => main(class: "page") {
     "we await both before emitting."
   }
   div(class: "grid") {
-    Suspense(fallback: Spinner("alice")) {
-      UserCard("alice", 5)
+    Suspense(fallback: Spinner({ label: "alice" })) {
+      UserCard(id: "alice", delayMs: 5)
     }
-    Suspense(fallback: Spinner("bob")) {
-      UserCard("bob", 30)
+    Suspense(fallback: Spinner({ label: "bob" })) {
+      UserCard(id: "bob", delayMs: 30)
     }
   }
 }

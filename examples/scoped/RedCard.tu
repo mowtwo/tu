@@ -5,8 +5,9 @@
 // suffix that the matching `.card` in BlueCard.tu can't see, so the two
 // styles coexist on the same page without collision.
 
-export let RedCard = (label: string) => {
-  .card() { label }
+interface RedCardProps { label?: string }
+export let RedCard = (props: RedCardProps) => {
+  .card() { props.label }
   style {
     .card {
       padding: 1rem 1.25rem;

@@ -1,5 +1,5 @@
 // M1.4 + M1.8 + M5 demo: a component with a scoped `style { … }` block,
-// children-as-positional-arg, and dual-class injection.
+// named component props, and dual-class injection.
 //
 // Tu features in play:
 //   • `.classname` ClassRef — markup gets BOTH the original name AND the
@@ -7,12 +7,13 @@
 //     still target the unhashed `.card`. The component's own scoped
 //     styles reference the hashed form for isolation.
 //   • `style { … }`'s top-level rules must be class-rooted (M5/D).
-//   • Capitalized `Card` is treated as a real function (M5 V1) — call as
-//     `Card("title", "body")` or compose via `Card("title") { children }`.
+//   • Capitalized `Card` is treated as a real function. Use named props:
+//     `Card(title: "title", body: "body")`.
 
-export let Card = (title: string, body: string) => .card() {
-  h1(class: .card__title) { title }
-  .body() { body }
+interface CardProps { title?: string; body?: string }
+export let Card = (props: CardProps) => .card() {
+  h1(class: .card__title) { props.title }
+  .body() { props.body }
 
   style {
     .card {

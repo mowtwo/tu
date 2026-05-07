@@ -7,7 +7,7 @@
 //   Card(
 //     title: "Settings",
 //     description: "Manage your account",
-//     footer: Button(variant: "primary") { "Save" },
+//     footer: Button(variant: ButtonVariant.Primary) { "Save" },
 //   ) {
 //     p { "Form fields go here" }
 //   }

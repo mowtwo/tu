@@ -3,7 +3,7 @@
 // reactive class binding. Dogfoods cross-package import:
 // `@tu-lang/tu-xing/Badge.tu` is an actual npm-published .tu source.
 
-import { Badge } from "@tu-lang/tu-xing/Badge.tu"
+import { Badge, BadgeVariant } from "@tu-lang/tu-xing/Badge.tu"
 
 export let activeId = "hello"
 
@@ -37,7 +37,7 @@ let DemoLink = (props: DemoLinkProps) => a(
 ) {
   div(class: "flex items-center justify-between gap-2") {
     span { props.label }
-    Badge(variant: "outline") { props.mil }
+    Badge(variant: BadgeVariant.Outline) { props.mil }
   }
 }
 

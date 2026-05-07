@@ -8,8 +8,8 @@ import { BlueCard } from "./BlueCard.tu"
 
 export let Scoped = () => {
   div(class: .stage) {
-    RedCard("I'm a red `.card`")
-    BlueCard("I'm a blue `.card` — same class name, different scope")
+    RedCard(label: "I'm a red `.card`")
+    BlueCard(label: "I'm a blue `.card` — same class name, different scope")
   }
   style {
     .stage {

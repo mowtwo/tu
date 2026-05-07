@@ -2,8 +2,9 @@
 // Scoped.tu alongside RedCard.tu — both declare a `.card` selector, both
 // get a different hash suffix (M1.8 scoping), so they don't collide.
 
-export let BlueCard = (label: string) => {
-  .card() { label }
+interface BlueCardProps { label?: string }
+export let BlueCard = (props: BlueCardProps) => {
+  .card() { props.label }
   style {
     .card {
       padding: 1rem 1.25rem;

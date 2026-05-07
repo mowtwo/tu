@@ -1,8 +1,10 @@
 // tu-xing Badge — pill-shaped status indicator.
 //
-// Usage: Badge(variant: "success") { "Active" }
+// Usage:
+//   import { Badge, BadgeVariant } from "@tu-lang/tu-xing/Badge.tu"
+//   Badge(variant: BadgeVariant.Success) { "Active" }
 
-export type BadgeVariant = "brand" | "success" | "warning" | "danger" | "outline"
+export enum BadgeVariant { Brand = "brand", Success = "success", Warning = "warning", Danger = "danger", Outline = "outline" }
 
 export interface BadgeProps {
   variant?: BadgeVariant
@@ -17,5 +19,5 @@ let variantClass = (v: string): string =>
   else { "bg-[hsl(var(--tu-brand))]/15 text-[hsl(var(--tu-brand))] border-[hsl(var(--tu-brand))]/30" }
 
 export let Badge = ({ variant, children }: BadgeProps) => span(
-  class: "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border " + variantClass(variant ?? "brand"),
+  class: "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border " + variantClass(variant ?? BadgeVariant.Brand),
 ) { children }

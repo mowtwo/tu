@@ -17,9 +17,9 @@ pnpm --filter vscode-tu dev:install
 | Line | Binding | Expected diagnostic |
 |---|---|---|
 | 15 | `bad1 = () => count = "abc"` | `Argument of type 'string' is not assignable to parameter of type 'number'.` (TS 2345) |
-| 22 | `bad2 = () => G(42)` | `Argument of type 'number' is not assignable to parameter of type 'string'.` (TS 2345) |
+| 22 | `bad2 = () => g(42)` | `Argument of type 'number' is not assignable to parameter of type 'string'.` (TS 2345) |
 | 28 | `bad3 = () => triple("nope")` | `Argument of type 'string' is not assignable to parameter of type 'number'.` (TS 2345) |
-| 33 | `good = () => G("World")` | clean — no squiggle |
+| 33 | `good = () => g("World")` | clean — no squiggle |
 
 Each squiggle sits at column 0 of the offending `let` line because M3 V1's source maps are per-top-level-statement. Token-level ranges land in V2.
 

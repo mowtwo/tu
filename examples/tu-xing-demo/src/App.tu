@@ -1,8 +1,8 @@
 // tu-xing showcase — every primitive at once.
-import { Button } from "@tu-lang/tu-xing/Button.tu"
-import { Input } from "@tu-lang/tu-xing/Input.tu"
+import { Button, ButtonVariant, ButtonSize } from "@tu-lang/tu-xing/Button.tu"
+import { Input, InputSize } from "@tu-lang/tu-xing/Input.tu"
 import { Card } from "@tu-lang/tu-xing/Card.tu"
-import { Badge } from "@tu-lang/tu-xing/Badge.tu"
+import { Badge, BadgeVariant } from "@tu-lang/tu-xing/Badge.tu"
 import { Switch } from "@tu-lang/tu-xing/Switch.tu"
 import { Dialog } from "@tu-lang/tu-xing/Dialog.tu"
 import { Tabs } from "@tu-lang/tu-xing/Tabs.tu"
@@ -21,23 +21,23 @@ let closeDialog = () => dialogOpen = false
 let buttonsPanel = () => div(class: "space-y-3") {
   p(class: "text-sm text-[hsl(var(--tu-fg-muted))]") { "Variants × sizes:" }
   div(class: "flex flex-wrap gap-2") {
-    Button(variant: "primary", size: "sm") { "Primary sm" }
-    Button(variant: "primary") { "Primary md" }
-    Button(variant: "primary", size: "lg") { "Primary lg" }
+    Button(variant: ButtonVariant.Primary, size: ButtonSize.Sm) { "Primary sm" }
+    Button(variant: ButtonVariant.Primary) { "Primary md" }
+    Button(variant: ButtonVariant.Primary, size: ButtonSize.Lg) { "Primary lg" }
   }
   div(class: "flex flex-wrap gap-2") {
-    Button(variant: "secondary") { "Secondary" }
-    Button(variant: "ghost") { "Ghost" }
-    Button(variant: "danger") { "Danger" }
-    Button(variant: "primary", disabled: true) { "Disabled" }
+    Button(variant: ButtonVariant.Secondary) { "Secondary" }
+    Button(variant: ButtonVariant.Ghost) { "Ghost" }
+    Button(variant: ButtonVariant.Danger) { "Danger" }
+    Button(variant: ButtonVariant.Primary, disabled: true) { "Disabled" }
   }
 }
 
 let inputsPanel = () => div(class: "space-y-3") {
   p(class: "text-sm text-[hsl(var(--tu-fg-muted))]") { "Sizes:" }
-  Input(placeholder: "Small", size: "sm")
+  Input(placeholder: "Small", size: InputSize.Sm)
   Input(placeholder: "Medium (default)")
-  Input(placeholder: "Large", size: "lg")
+  Input(placeholder: "Large", size: InputSize.Lg)
   Input(placeholder: "Disabled", disabled: true)
   div(class: "pt-2") {
     p(class: "text-sm text-[hsl(var(--tu-fg-muted))] mb-2") { "Live value:" }
@@ -48,10 +48,10 @@ let inputsPanel = () => div(class: "space-y-3") {
 
 let badgesPanel = () => div(class: "flex flex-wrap gap-2 items-center") {
   Badge { "Brand" }
-  Badge(variant: "success") { "Success" }
-  Badge(variant: "warning") { "Warning" }
-  Badge(variant: "danger") { "Danger" }
-  Badge(variant: "outline") { "Outline" }
+  Badge(variant: BadgeVariant.Success) { "Success" }
+  Badge(variant: BadgeVariant.Warning) { "Warning" }
+  Badge(variant: BadgeVariant.Danger) { "Danger" }
+  Badge(variant: BadgeVariant.Outline) { "Outline" }
 }
 
 let switchPanel = () => div(class: "flex items-center gap-3") {
@@ -62,12 +62,12 @@ let switchPanel = () => div(class: "flex items-center gap-3") {
 }
 
 let dialogPanel = () => div {
-  Button(variant: "primary", onClick: openDialog) { "Open dialog" }
+  Button(variant: ButtonVariant.Primary, onClick: openDialog) { "Open dialog" }
   Dialog(open: dialogOpen, onClose: closeDialog, title: "Confirm action") {
     p(class: "text-[hsl(var(--tu-fg-muted))]") { "This is a modal dialog." }
     div(class: "mt-4 flex justify-end gap-2") {
-      Button(variant: "ghost", onClick: closeDialog) { "Cancel" }
-      Button(variant: "primary", onClick: closeDialog) { "Confirm" }
+      Button(variant: ButtonVariant.Ghost, onClick: closeDialog) { "Cancel" }
+      Button(variant: ButtonVariant.Primary, onClick: closeDialog) { "Confirm" }
     }
   }
 }
@@ -76,7 +76,7 @@ export let App = () => div(class: "max-w-3xl mx-auto p-8 space-y-6") {
   header {
     h1(class: "text-3xl font-bold") {
       "tu-xing "
-      Badge(variant: "outline") { "图形" }
+      Badge(variant: BadgeVariant.Outline) { "图形" }
     }
     p(class: "mt-2 text-[hsl(var(--tu-fg-muted))]") {
       "Tu-native UI primitives — Tailwind-driven, theme-tokenised, copy-paste friendly."
@@ -101,9 +101,9 @@ export let App = () => div(class: "max-w-3xl mx-auto p-8 space-y-6") {
   Card(title: "Counter", description: "Reactive state still works — components are just functions.") {
     p(class: "text-5xl font-bold tabular-nums text-[hsl(var(--tu-brand))]") { count }
     div(class: "mt-4 flex gap-2") {
-      Button(variant: "primary", onClick: () => count = count + 1) { "+1" }
-      Button(variant: "secondary", onClick: () => count = count - 1) { "−1" }
-      Button(variant: "ghost", onClick: () => count = 0) { "Reset" }
+      Button(variant: ButtonVariant.Primary, onClick: () => count = count + 1) { "+1" }
+      Button(variant: ButtonVariant.Secondary, onClick: () => count = count - 1) { "−1" }
+      Button(variant: ButtonVariant.Ghost, onClick: () => count = 0) { "Reset" }
     }
   }
 }

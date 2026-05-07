@@ -18,7 +18,7 @@ writeFileSync(outPath, compiled)
 const mod = await import(pathToFileURL(outPath).href)
 
 const name = process.argv[2] ?? 'World'
-const vnode = mod.Greeting(name)
+const vnode = mod.Greeting({ name })
 const html = renderToString(vnode)
 
 console.log('--- compiled JS ---')

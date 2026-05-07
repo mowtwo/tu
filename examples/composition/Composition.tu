@@ -2,12 +2,8 @@
 //
 // What this exercises:
 //   • A capitalized identifier is a real component (function call), not
-//     an HTML tag. `Card("title") { children }` compiles to
-//     `Card("title", [children])` — the trailing block becomes the
-//     final positional argument.
-//   • Component lambdas conventionally take `children` as the last
-//     parameter. The annotation `(children: Child[])` resolves the
-//     `VNode` type via the auto-injected runtime import.
+//     an HTML tag. `Card(title: "title") { children }` compiles to a
+//     real call with one props object, including `children`.
 //   • `Fragment { … }` (from @tu-lang/runtime) lets a component return
 //     multiple sibling vnodes without an enclosing wrapper element.
 //   • Local `let` inside a block body is a plain const (not a Signal
@@ -16,9 +12,10 @@
 import { Fragment } from "@tu-lang/runtime"
 
 // Layout component: renders a header + the children + a footer.
-export let Layout = (title: string, children: Child[]) => Fragment {
-  header(class: .header) { h1 { title } }
-  .body() { children }
+interface LayoutProps { title?: string; children?: Child[] }
+export let Layout = (props: LayoutProps) => Fragment {
+  header(class: .header) { h1 { props.title } }
+  .body() { props.children }
   footer(class: .footer) { "© 2026" }
 
   style {
@@ -29,11 +26,12 @@ export let Layout = (title: string, children: Child[]) => Fragment {
 }
 
 // Card with a derived greeting via a local `let` inside the body.
-export let Card = (name: string, children: Child[]) => {
-  let greeting = "Hello, " + name + "!"
+interface CardProps { name?: string; children?: Child[] }
+export let Card = (props: CardProps) => {
+  let greeting = "Hello, " + props.name + "!"
   .card() {
     h2 { greeting }
-    children
+    props.children
   }
 
   style {
@@ -48,11 +46,11 @@ export let Card = (name: string, children: Child[]) => {
 }
 
 // App composes Layout and Card.
-export let App = () => Layout("Composition demo") {
-  Card("Alice") {
+export let App = () => Layout(title: "Composition demo") {
+  Card(name: "Alice") {
     p { "Lorem ipsum, with reactive bits sprinkled in." }
   }
-  Card("Bob") {
+  Card(name: "Bob") {
     p { "Each Card receives its own children block." }
     p { "And renders a derived greeting from a local let." }
   }

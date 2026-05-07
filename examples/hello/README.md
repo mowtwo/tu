@@ -22,7 +22,7 @@ pnpm --filter @tu-examples/hello demo
 | Feature | Where |
 |---|---|
 | Top-level `let` → `export const` | `let Greeting = ...` |
-| Typed lambda parameters | `(name: string) =>` |
+| Typed component props | `(props: GreetingProps) =>` |
 | Trailing-closure DSL | `div(class: "greet") { ... }` |
 | Mixed text + ident children | `h1 { "Hello, " name "!" }` |
 | Nested tags as children | `div { h1 { ... } p { ... } }` |

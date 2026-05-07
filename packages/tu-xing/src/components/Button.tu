@@ -1,15 +1,15 @@
 // tu-xing Button — primary / secondary / ghost / danger variants × sm / md / lg sizes.
 //
 // Usage (M6.1 named-arg form recommended):
-//   import { Button } from "@tu-lang/tu-xing"
-//   Button(variant: "primary", size: "md", onClick: handler) { "Click me" }
+//   import { Button, ButtonVariant, ButtonSize } from "@tu-lang/tu-xing/Button.tu"
+//   Button(variant: ButtonVariant.Primary, size: ButtonSize.Md, onClick: handler) { "Click me" }
 //
 // Variant CSS uses the theme tokens declared in theme.css — no Tailwind
 // dependency for the component itself, though consumers can pass
 // additional Tailwind utilities via the `class` prop (merged at the end).
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger"
-export type ButtonSize = "sm" | "md" | "lg"
+export enum ButtonVariant { Primary = "primary", Secondary = "secondary", Ghost = "ghost", Danger = "danger" }
+export enum ButtonSize { Sm = "sm", Md = "md", Lg = "lg" }
 
 export interface ButtonProps {
   variant?: ButtonVariant
@@ -40,7 +40,7 @@ let sizeClass = (s: string): string =>
 
 export let Button = (props: ButtonProps) => button(
   type: "button",
-  class: "inline-flex items-center justify-center gap-2 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--tu-brand))] " + variantClass(props.variant) + " " + sizeClass(props.size),
+  class: "inline-flex items-center justify-center gap-2 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--tu-brand))] " + variantClass(props.variant ?? ButtonVariant.Primary) + " " + sizeClass(props.size ?? ButtonSize.Md),
   onClick: props.onClick,
   disabled: props.disabled,
 ) { props.children }

@@ -57,7 +57,7 @@
     "constant": {
       "patterns": [
         {
-          "match": "\\b(true|false|null|undefined)\\b",
+          "match": "\\b(true|false|null)\\b",
           "name": "constant.language.tu"
         }
       ]
@@ -94,7 +94,7 @@
           "name": "entity.name.tag.tu"
         },
         {
-          "comment": "Capitalized identifiers in tag-call position are user components (`Card { … }`, `Greeting('World')`). Use the JSX-style `support.class.component` scope so themes that distinguish components colorize them in line with `<Card />` in JSX.",
+          "comment": "Capitalized identifiers in tag-call position are user components (`Card(title: \"x\") { … }`, `Greeting({ name: 'World' })`). Use the JSX-style `support.class.component` scope so themes that distinguish components colorize them in line with `<Card />` in JSX.",
           "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b(?=\\s*[\\({])",
           "name": "support.class.component.tu"
         }

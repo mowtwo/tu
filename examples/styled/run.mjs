@@ -18,7 +18,10 @@ mkdirSync(dirname(outJsPath), { recursive: true })
 writeFileSync(outJsPath, compiled)
 
 const mod = await import(pathToFileURL(outJsPath).href)
-const cardHtml = renderToString(mod.Card('Tu', 'A reactive UI language with first-class style blocks.'))
+const cardHtml = renderToString(mod.Card({
+  title: 'Tu',
+  body: 'A reactive UI language with first-class style blocks.',
+}))
 
 const page = `<!doctype html>
 <html lang="en">

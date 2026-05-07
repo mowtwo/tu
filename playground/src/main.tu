@@ -79,7 +79,7 @@ let shuffleInPlace = external JS (arr: any[]): any[] {
 }
 
 let demos = () => [
-  { id: "hello", setup: () => null, thunk: () => HelloMod.Greeting("World") },
+  { id: "hello", setup: () => null, thunk: () => HelloMod.Greeting({ name: "World" }) },
   {
     id: "counter",
     setup: () => CounterMod.count.set(0),
@@ -97,7 +97,10 @@ let demos = () => [
     id: "card",
     setup: () => null,
     thunk: () =>
-      CardMod.Card("Tu", "A reactive UI language with first-class style blocks."),
+      CardMod.Card({
+        title: "Tu",
+        body: "A reactive UI language with first-class style blocks.",
+      }),
   },
   {
     id: "clicker",

@@ -178,7 +178,7 @@ export let Page = () => div {
     Trailing-closure DSL. **Capitalization is the discriminator** (mirrors React/JSX):
 
     - **Lowercase identifier** → `h("tag", props, children)` — an HTML element.
-    - **Uppercase identifier** → `Callee(args, [children])` — a real component function call.
+    - **Uppercase identifier** → `Callee(props)` — a real component function call. Named props and trailing children are merged into one props object.
 
     ### Bare tag with children
 
@@ -202,12 +202,12 @@ export let Page = () => div {
     ### Component invocation
 
     ```tu
-    Card("title")                     → Card("title")
-    Card("title") { p { "body" } }    → Card("title", [h("p", {}, ["body"])])
-    Card { p { "no args, just kids" } }  → Card([h("p", {}, ["no args, just kids"])])
+    Card(title: "title")              → Card({ "title": "title" })
+    Card(title: "title") { p { "body" } }
+                                      → Card({ "title": "title", "children": [h("p", {}, ["body"])] })
     ```
 
-    Components are real functions. tsserver sees them as such — hover, goto-definition, and rename all work cross-`.tu`. The trailing children block becomes the **last positional argument**, conventionally typed as `(children: Child[])`.
+    Components are real functions. tsserver sees them as such — hover, goto-definition, and rename all work cross-`.tu`. The trailing children block becomes `props.children`, conventionally typed as `children?: Child[]`.
 
     ### Fragment (multi-root return)
 
@@ -331,7 +331,7 @@ export let Page = () => div {
     1. **`{}` is an empty OBJECT, not an empty block.** Write `{ null }` for an empty block.
     2. **Children are whitespace-separated.** Don't write `,` between them: `div { x, y }` parses as `div { (x, y) }` which is not what you want.
     3. **No shorthand object props yet.** `{ x }` is a Block, not `{ x: x }`. Write the key explicitly.
-    4. **No spread / computed keys / member access via `[]`.** Use object literal + member access via `.` only.
+    4. **No object shorthand yet.** `{ x }` is a Block, not `{ x: x }`. Computed keys, spread, and indexed access are supported; shorthand remains intentionally absent.
     5. **`.foo()` after a sibling expression is NOT a method call.** It's pug-shorthand for the next element. `tag1 { x }\n.foo() { y }` parses as two siblings, not one chained call. (Member access `obj.foo` only applies to value-yielding exprs.)
     6. **Capitalized names are components, lowercase are HTML tags.** `Card { … }` and `card { … }` parse to entirely different things.
     7. **Style block top-level rules must be class-rooted.** No `body`, `*`, `:root` at the top level (use `:global(...)` if you really need them).
@@ -339,7 +339,7 @@ export let Page = () => div {
     9. **No `match` / pattern matching.** Removed in M1.11 due to TC39 Pattern Matching collision. Use chained `if / else if / else`.
     10. **No `function` keyword anywhere.** All functions are arrow-style `(args) => body`.
     11. **No `class` keyword for OOP.** Tu is immutable-by-default; user-defined types are functions, not classes.
-    12. **No member access through `()` chained results.** `make(n).x` works; `Card("hi") { … }.x` does not (the second is a vnode, not a value).
+    12. **No member access through component-call children results.** `make(n).x` works; `Card(title: "hi") { … }.x` does not (the second is a vnode, not a value).
 
     ## Compilation model (high-level)
 
@@ -385,14 +385,14 @@ export let Page = () => div {
     See the full list at [DEFERRED.md](./DEFERRED). Quick exclusions:
 
     - `match` / pattern matching — removed in M1.11.
-    - Object shorthand `{ x }` / spread `{ ...r }` / computed keys `{ [k]: v }`.
-    - Array spread `[...arr]`.
-    - Indexed access `obj["key"]` or `arr[i]`.
-    - Method calls `obj.foo()` (works only when `foo` is a real function field; no protocol/method overloading).
-    - Default exports.
-    - `async` / `await` syntax (no async story yet).
-    - Per-component HMR.
-    - Static-HTML subtree optimization (post-M5).
+    - Generic syntax on Tu declarations.
+    - User-defined `class`; use functions, interfaces, and enums instead.
+    - Object shorthand `{ x }` in Tu-authored object literals.
+    - Per-component fine-grained HMR boundaries.
+    - Local reactivity (`let` inside functions remains plain local state).
+    - Router, lifecycle hooks, and ref sugar.
+    - Qwik-style SSR resumability.
+    - HTML-section `await` sugar and `for await`.
 
     When unsure: **stick to the constructs documented above**. The language deliberately surfaces a small, opinionated set; if a JS-side feature isn't listed here, it probably isn't in V1.
 
@@ -405,7 +405,7 @@ export let Page = () => div {
     | `let d = computed(c * 2)` | `const d = new Signal.Computed(() => (c.get() * 2))` |
     | `count = count + 1` | `count.set(count.get() + 1)` |
     | `div { x }` | `h("div", {}, [x.get()])` |
-    | `Card("hi") { p { y } }` | `Card("hi", [h("p", {}, [y.get()])])` |
+    | `Card(title: "hi") { p { y } }` | `Card({ "title": "hi", "children": [h("p", {}, [y.get()])] })` |
     | `.card() { x }` | `h("div", { class: "card card-tu-XXX" }, [x.get()])` |
     | `{ x: 1, y: 2 }` | `{ x: 1, y: 2 }` |
     | `obj.x` (cell) | `obj.get().x` |
@@ -421,7 +421,7 @@ export let Page = () => div {
 
     ---
 
-    *Tu is pre-alpha (`0.1.0-alpha.6` on npm). This skill reflects the language as of 2026-05-01 (M6.2 + tu-xing + tu-shu shipped; obj.x member access and obj.method() method calls both supported). When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*
+    *Tu is pre-alpha (`0.1.0-alpha.6` on npm). This skill reflects the language as of 2026-05-07 after M9 enum declarations, named-prop component diagnostics, default exports, async SSR, and modern JS expression compatibility. When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*
 
   }
 }

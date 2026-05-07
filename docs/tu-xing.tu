@@ -61,18 +61,18 @@ export let Page = () => div {
     ## Use
 
     ```tu
-    import { Button } from "@tu-lang/tu-xing/Button.tu"
+    import { Button, ButtonVariant } from "@tu-lang/tu-xing/Button.tu"
     import { Card } from "@tu-lang/tu-xing/Card.tu"
-    import { Badge } from "@tu-lang/tu-xing/Badge.tu"
+    import { Badge, BadgeVariant } from "@tu-lang/tu-xing/Badge.tu"
 
     export let App = () => Card(
       title: "Welcome",
       description: "Tu × Tailwind × shadcn",
-      footer: () => Button(variant: "primary") { "Get started" },
+      footer: () => Button(variant: ButtonVariant.Primary) { "Get started" },
     ) {
       p {
         "Built with Tu's M6.1 named-arg components — props default optional. "
-        Badge(variant: "success") { "stable" }
+        Badge(variant: BadgeVariant.Success) { "stable" }
       }
     }
     ```

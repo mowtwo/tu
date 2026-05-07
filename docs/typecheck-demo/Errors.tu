@@ -17,10 +17,10 @@ export let bad1 = () => count = "abc"
 
 
 // ── Error 2: calling a typed function with the wrong argument type ───────
-// G expects (name: string). G(42) is a TS error 2345:
+// g expects (name: string). g(42) is a TS error 2345:
 // "Argument of type 'number' is not assignable to parameter of type 'string'."
-export let G = (name: string) => p { name }
-export let bad2 = () => G(42)
+export let g = (name: string) => p { name }
+export let bad2 = () => g(42)
 
 
 // ── Error 3: arithmetic on a string param ────────────────────────────────
@@ -31,4 +31,4 @@ export let bad3 = () => triple("nope")
 
 // ── Clean reference (should NOT have a red line) ─────────────────────────
 // This one is well-typed end-to-end.
-export let good = () => G("World")
+export let good = () => g("World")

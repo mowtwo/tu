@@ -139,12 +139,12 @@ export let Page = () => div {
 
     ```tu
     type Pair = { x: number, y: number }
-    export type Color = "red" | "green" | "blue"
+    export enum Color { Red = "red", Green = "green", Blue = "blue" }
     ```
 
-    The RHS is captured as a raw source slice (Tu doesn't parse types itself —
-    the TS compiler does at the `tu check` / IDE step). Type aliases erase
-    entirely from JS-mode output.
+    Use `enum` when the values are meaningful at runtime (`Color.Red`) and a
+    type annotation should accept those values. Type aliases still work for
+    structural or ad hoc unions; they erase entirely from JS-mode output.
 
     `type` is a contextual keyword: it triggers only when followed by `Ident =`
     at statement boundary. So a lambda param named `type` still works:
@@ -189,10 +189,10 @@ export let Page = () => div {
     integers only at the syntactic level (decimal-point parsing not in V1).
 
     `{ … }` is disambiguated against the block form (see [Blocks](#blocks)):
-    an opener of `{ }`, `{ Ident :`, or `{ String :` parses as an object
-    literal. Anything else (`{ x }`, `{ let y = 1; y }`, `{ tag(...) }`) stays
-    a Block. Shorthand (`{ x }` → `{ x: x }`), computed keys (`{ [k]: v }`),
-    and spread (`{ ...rest }`) aren't recognized yet — see `docs/DEFERRED.md`.
+    an opener of `{ }`, `{ Ident :`, `{ String :`, `{ [expr] :`, or
+    `{ ...expr }` parses as an object literal. Anything else (`{ x }`,
+    `{ let y = 1; y }`, `{ tag(...) }`) stays a Block. Shorthand
+    (`{ x }` → `{ x: x }`) is still not recognized; write the key explicitly.
 
     When an object literal appears immediately after `=>` in a lambda body, the
     codegen wraps it in parens (`() => ({ x: 1 })`) so JS doesn't read it as a
@@ -331,18 +331,10 @@ export let Page = () => div {
     All props are optional by construction — call `Card()`, `Card(title:
     "x")`, or `Card(title: "x") { p { "body" } }` all work.
 
-    **Legacy positional form** — deprecated M5.x shape:
-
-    ```tu
-    let Card = (name: string, children: Child[]) => .card() {
-      h2 { "Hello, " name "!" }
-      children
-    }
-    let App = () => Card("Alice") { p { "Body content" } }
-    ```
-
-    This still emits unchanged for backward compatibility, but editor and
-    `tu check` diagnostics point at `Card` and ask for named props. The parser
+    **Legacy positional form** — deprecated M5.x shape. Calls like
+    `Card("Alice") { ... }` still emit unchanged for backward compatibility,
+    but editor and `tu check` diagnostics point at `Card` and ask for named
+    props. The parser
     disambiguates by peeking the first token after `(`: an `Ident :` opener
     triggers named-arg; anything else stays positional.
 
@@ -408,8 +400,9 @@ export let Page = () => div {
     else { "many items" }
     ```
 
-    `if` is an expression. `else` is optional (`undefined` fallthrough). Else-if
-    chains stay flat.
+    `if` is an expression. `else` is optional; a missing branch renders as no
+    child. Use `else { null }` when you want the empty case to be explicit.
+    Else-if chains stay flat.
 
     ### `for`
 
@@ -736,7 +729,8 @@ export let Page = () => div {
 
     See [DEFERRED](./DEFERRED) for the live list. As of M6.11 the notable gaps are:
 
-    - **Default exports** — TBD; revisit when component-as-file becomes idiomatic.
+    - **Generic syntax on Tu declarations** — `interface Box<T>` and generic
+      component declarations remain deferred.
     - **Lifecycle hooks + element ref sugar** — no `onMount` / `onUnmount`; no Vue-2-style explicit `ref`.
     - **Router** — Tu has no built-in routing yet; tu-shu loads pages by file discovery, but there's no general router (M7 milestone).
     - **`as` type assertion** — no `expr as Type` cast; route through `external JS` for now.

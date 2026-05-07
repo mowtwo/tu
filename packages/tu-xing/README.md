@@ -36,16 +36,18 @@ Adjust the `../node_modules/...` prefix to match your project's depth (some mono
 ## Use
 
 ```tu
-import { Button, Card, Badge } from "@tu-lang/tu-xing"
+import { Button, ButtonVariant } from "@tu-lang/tu-xing/Button.tu"
+import { Card } from "@tu-lang/tu-xing/Card.tu"
+import { Badge, BadgeVariant } from "@tu-lang/tu-xing/Badge.tu"
 
 export let App = () => Card(
   title: "Welcome",
   description: "Tu × Tailwind × shadcn",
-  footer: () => Button(variant: "primary") { "Get started" },
+  footer: () => Button(variant: ButtonVariant.Primary) { "Get started" },
 ) {
   p {
     "Tu's M6.1 named-arg component calls map cleanly onto shadcn-style "
-    Badge(variant: "success") { "props" }
+    Badge(variant: BadgeVariant.Success) { "props" }
     " — no positional arg footguns."
   }
 }

@@ -29,18 +29,19 @@ let setMany = () => {
   count = 3
 }
 
-let Demo = (children:string) => {
+interface DemoProps { children?: Child[] }
+let Demo = (props: DemoProps) => {
   div {
     p { "This is a demo of M1.3 control flow and M1.10 visibility." }
     p { "The buttons below manipulate the `items` and `count` cells, which are exported from this module." }
     p { "The list of items is rendered with a `for` loop, and the label is computed with an `if/else if/else` expression." }
-    children
+    props.children
   }
 }
 
 export let Todo = () => {
 
-  let d = Demo("")
+  let d = Demo(children: [])
 
   div(class: "todo") {
     h1 { "Todo — " label }

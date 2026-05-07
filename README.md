@@ -71,7 +71,7 @@ The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files
 | Pug-style class shorthand | `.card() { … }` → `<div class="card …">` | ✅ |
 | Multi-class shorthand | `.card.elevated() { … }` | ✅ |
 | `:global(.foo)` escape hatch | `style { :global(.legacy) { … } }` | ✅ |
-| Capitalized components are real functions | `Card("title") { children }` (no `h("Card", …)`) | ✅ |
+| Capitalized components are real functions | `Card(title: "title") { children }` (no `h("Card", …)`) | ✅ |
 | `Fragment { … }` for multi-root returns | `Fragment { header { … } main { … } }` | ✅ |
 | Local `let` inside a block (plain const) | `() => { let g = "Hi, " + n; p { g } }` | ✅ |
 | Type aliases | `type Point = { x: number; y: number }` | ✅ |

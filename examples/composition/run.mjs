@@ -1,7 +1,7 @@
 // M5 composition demo runner: compile Composition.tu, mount the App in
 // a jsdom-simulated browser, print the resulting DOM. Showcases:
 //   - Capitalized components (Layout, Card) as function calls
-//   - `children: VNode[]` as the last positional arg
+//   - named props plus `children?: Child[]`
 //   - `Fragment { … }` from @tu-lang/runtime for multi-child returns
 //   - Local `let greeting = …` inside a component body
 //   - Dual class injection: `class="card card-tu-XXX"` in markup,
