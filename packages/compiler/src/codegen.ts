@@ -3219,9 +3219,13 @@ class Codegen {
     // in strict mode. Manually copy each descriptor field via
     // `Object.defineProperty` to override the built-in.
     this.write(`  const descriptor = type.native(${JSON.stringify(node.name)}, (v) => `)
-    this.write(`v != null && typeof v === "object" && (v as { name?: unknown }).name === ${JSON.stringify(node.name)})\n`)
+    this.write(this.tsMode
+      ? `v != null && typeof v === "object" && (v as { name?: unknown }).name === ${JSON.stringify(node.name)})\n`
+      : `v != null && typeof v === "object" && v.name === ${JSON.stringify(node.name)})\n`)
     this.write(`  for (const k of Object.keys(descriptor)) {\n`)
-    this.write(`    Object.defineProperty(factory, k, { value: (descriptor as unknown as Record<string, unknown>)[k], writable: true, configurable: true, enumerable: true })\n`)
+    this.write(this.tsMode
+      ? `    Object.defineProperty(factory, k, { value: (descriptor as unknown as Record<string, unknown>)[k], writable: true, configurable: true, enumerable: true })\n`
+      : `    Object.defineProperty(factory, k, { value: descriptor[k], writable: true, configurable: true, enumerable: true })\n`)
     this.write(`  }\n`)
     this.write(this.tsMode
       ? `  return factory as typeof factory & __tu_TypeDescriptor\n`
