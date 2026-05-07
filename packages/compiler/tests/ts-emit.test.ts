@@ -41,6 +41,21 @@ describe('compileToTS — type-annotation preservation', () => {
     expect(ts).toContain('const label = (card: { title: string; count: number }) =>')
   })
 
+  it('M9 Phase D: uncalled params infer from first member-use shape', () => {
+    const ts = compileToTS(`
+      let label = (card) => card.title
+    `)
+    expect(ts).toContain('const label = (card: { title: unknown }) =>')
+  })
+
+  it('M9 Phase D: callsite inference wins over body-use fallback', () => {
+    const ts = compileToTS(`
+      let label = (card) => card.title
+      let out = label({ title: "Tu" })
+    `)
+    expect(ts).toContain('const label = (card: { title: string }) =>')
+  })
+
   it('M9 Phase D: explicit param annotations still win over callsite inference', () => {
     const ts = compileToTS(`
       let stringify = (x: string | number) => x

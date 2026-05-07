@@ -925,7 +925,215 @@ function inferTopLevelParamTypes(program: Program): InferredParamTypes {
       }
     })
   }
+  for (const lambda of functions.values()) {
+    const bodyShapes = inferBodyFirstUseParamTypes(lambda)
+    if (bodyShapes.size === 0) continue
+    let byParam = inferred.get(lambda)
+    for (const [idx, typeText] of bodyShapes) {
+      const p = lambda.params[idx]
+      if (!p || p.type !== undefined || p.destructureFields) continue
+      if (byParam?.has(idx)) continue
+      if (!byParam) {
+        byParam = new Map()
+        inferred.set(lambda, byParam)
+      }
+      byParam.set(idx, typeText)
+    }
+  }
   return inferred
+}
+
+function inferBodyFirstUseParamTypes(lambda: Lambda): Map<number, string> {
+  const paramNames = new Map<string, number>()
+  for (let i = 0; i < lambda.params.length; i++) {
+    const p = lambda.params[i]!
+    if (p.type !== undefined || p.destructureFields) continue
+    paramNames.set(p.name, i)
+  }
+  if (paramNames.size === 0) return new Map()
+
+  const fieldsByParam = new Map<number, Set<string>>()
+  collectParamMemberReads(lambda.body, paramNames, fieldsByParam, new Set())
+
+  const out = new Map<number, string>()
+  for (const [idx, fields] of fieldsByParam) {
+    if (fields.size === 0) continue
+    const body = [...fields]
+      .sort()
+      .map((field) => `${renderObjectTypeKey(field)}: unknown`)
+      .join('; ')
+    out.set(idx, `{ ${body} }`)
+  }
+  return out
+}
+
+function collectParamMemberReads(
+  expr: Expr,
+  paramNames: ReadonlyMap<string, number>,
+  fieldsByParam: Map<number, Set<string>>,
+  shadowed: ReadonlySet<string>
+): void {
+  const recordMember = (object: Expr, property: string): void => {
+    if (object.kind !== 'Ident') return
+    if (shadowed.has(object.name)) return
+    const idx = paramNames.get(object.name)
+    if (idx === undefined) return
+    let fields = fieldsByParam.get(idx)
+    if (!fields) {
+      fields = new Set()
+      fieldsByParam.set(idx, fields)
+    }
+    fields.add(property)
+  }
+
+  switch (expr.kind) {
+    case 'MemberExpr':
+      recordMember(expr.object, expr.property)
+      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
+      return
+    case 'MethodCallExpr':
+      if (expr.property !== '') recordMember(expr.object, expr.property)
+      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'Lambda': {
+      const nextShadowed = new Set(shadowed)
+      for (const p of expr.params) {
+        if (p.destructureFields) {
+          for (const f of p.destructureFields) nextShadowed.add(f)
+        } else {
+          nextShadowed.add(p.name)
+        }
+      }
+      collectParamMemberReads(expr.body, paramNames, fieldsByParam, nextShadowed)
+      return
+    }
+    case 'Block': {
+      const nextShadowed = new Set(shadowed)
+      for (const item of expr.body) {
+        if (item.kind === 'LocalLet') {
+          collectParamMemberReads(item.value, paramNames, fieldsByParam, nextShadowed)
+          if (item.destructureFields) {
+            for (const f of item.destructureFields) nextShadowed.add(f)
+          } else {
+            nextShadowed.add(item.name)
+          }
+        } else {
+          collectParamMemberReads(item, paramNames, fieldsByParam, nextShadowed)
+        }
+      }
+      return
+    }
+    case 'CallExpr':
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
+      for (const arg of expr.namedArgs ?? []) collectParamMemberReads(arg.value, paramNames, fieldsByParam, shadowed)
+      for (const child of expr.children ?? []) collectParamMemberReadsFromChild(child, paramNames, fieldsByParam, shadowed)
+      return
+    case 'TagCall':
+      for (const prop of expr.props) collectParamMemberReads(prop.value, paramNames, fieldsByParam, shadowed)
+      for (const child of expr.children) collectParamMemberReadsFromChild(child, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ArrayLit':
+      for (const item of expr.elements) collectParamMemberReads(item, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ObjectLit':
+      for (const prop of expr.properties) {
+        if (prop.kind === 'ObjectSpread') collectParamMemberReads(prop.arg, paramNames, fieldsByParam, shadowed)
+        else collectParamMemberReads(prop.value, paramNames, fieldsByParam, shadowed)
+      }
+      return
+    case 'IndexExpr':
+      collectParamMemberReads(expr.object, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.index, paramNames, fieldsByParam, shadowed)
+      return
+    case 'MemberAssignExpr':
+      collectParamMemberReads(expr.target, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      return
+    case 'InvokeExpr':
+      collectParamMemberReads(expr.callee, paramNames, fieldsByParam, shadowed)
+      for (const arg of expr.args) collectParamMemberReads(arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'AssignExpr':
+      collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      return
+    case 'BinaryExpr':
+      collectParamMemberReads(expr.left, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.right, paramNames, fieldsByParam, shadowed)
+      return
+    case 'UnaryExpr':
+    case 'NonNullAssertExpr':
+    case 'AsExpr':
+    case 'AwaitExpr':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'IfExpr':
+      collectParamMemberReads(expr.cond, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.then, paramNames, fieldsByParam, shadowed)
+      if (expr.else) collectParamMemberReads(expr.else, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ForExpr': {
+      collectParamMemberReads(expr.iter, paramNames, fieldsByParam, shadowed)
+      const nextShadowed = new Set(shadowed)
+      nextShadowed.add(expr.item)
+      collectParamMemberReads(expr.body, paramNames, fieldsByParam, nextShadowed)
+      return
+    }
+    case 'TryExpr':
+      collectParamMemberReads(expr.body, paramNames, fieldsByParam, shadowed)
+      if (expr.catchClause) {
+        const nextShadowed = new Set(shadowed)
+        if (expr.catchClause.param) nextShadowed.add(expr.catchClause.param)
+        collectParamMemberReads(expr.catchClause.body, paramNames, fieldsByParam, nextShadowed)
+      }
+      if (expr.finallyClause) collectParamMemberReads(expr.finallyClause, paramNames, fieldsByParam, shadowed)
+      return
+    case 'TernaryExpr':
+      collectParamMemberReads(expr.cond, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.then, paramNames, fieldsByParam, shadowed)
+      collectParamMemberReads(expr.else, paramNames, fieldsByParam, shadowed)
+      return
+    case 'NewExpr':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'UpdateExpr':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'TemplateLit':
+      for (const part of expr.expressions) collectParamMemberReads(part, paramNames, fieldsByParam, shadowed)
+      return
+    case 'SpreadElement':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ThrowExpr':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ReturnExpr':
+      if (expr.value) collectParamMemberReads(expr.value, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ImportExpr':
+      collectParamMemberReads(expr.arg, paramNames, fieldsByParam, shadowed)
+      return
+    case 'ExternalLambda':
+    case 'StringLit':
+    case 'NumberLit':
+    case 'Ident':
+    case 'ClassRef':
+    case 'StyleBlock':
+    case 'MarkdownBlock':
+    case 'RegexLit':
+      return
+  }
+}
+
+function collectParamMemberReadsFromChild(
+  child: Child,
+  paramNames: ReadonlyMap<string, number>,
+  fieldsByParam: Map<number, Set<string>>,
+  shadowed: ReadonlySet<string>
+): void {
+  if (child === null || typeof child !== 'object') return
+  collectParamMemberReads(child, paramNames, fieldsByParam, shadowed)
 }
 
 function inferExprTsType(expr: Expr, valueTypes: ReadonlyMap<string, string>): string | undefined {
