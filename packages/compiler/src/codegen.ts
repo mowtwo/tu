@@ -3877,75 +3877,194 @@ function rewriteCss(css: string, declared: Set<string>, hash: string): string {
 }
 
 /**
- * Walk the CSS body's top-level rules. A rule's "selector" is whatever
- * sits between the previous depth-0 `}` (or start) and the next `{`.
- * Comma-split each, trim, and check each piece starts with `.` (class
- * selector), `:global(` (escape hatch), or `@` (at-rule like `@media`).
- *
- * Returns the first offending selector text on violation, or `null` when
- * every top-level rule is class-rooted.
- *
- * Skips strings, comments, and `:global(...)` wrappers' interiors so a
- * `.foo > p` inside a global escape doesn't flag.
+ * Walk CSS rules and reject unscoped style-rule roots. Nested selectors
+ * inside a class-rooted rule are allowed (`.card { p { ... } }`), while
+ * grouping at-rules (`@media`, `@layer`, `@supports`, `@container`) recurse
+ * and still require their contained style rules to be class-rooted. `@scope`
+ * is accepted when its scope root is class-rooted, and then its body may use
+ * element selectors because the scope root provides the component boundary.
  */
 function findNonClassTopLevelSelector(css: string): string | null {
-  let buffer = ''
-  let depth = 0
+  return validateCssRuleBlock(css, 0, false).violation
+}
+
+function validateCssRuleBlock(
+  css: string,
+  start: number,
+  parentClassRooted: boolean
+): { violation: string | null; end: number } {
   let i = 0
+  i = start
   while (i < css.length) {
-    const c = css.charAt(i)
-    if (c === '/' && css.charAt(i + 1) === '*') {
-      const end = css.indexOf('*/', i + 2)
-      if (end < 0) break
-      i = end + 2
-      continue
-    }
-    if (c === '"' || c === "'") {
-      const q = c
-      i++
-      while (i < css.length && css.charAt(i) !== q) {
-        if (css.charAt(i) === '\\') i++
-        i++
-      }
-      if (i < css.length) i++
-      continue
-    }
-    if (c === '{') {
-      if (depth === 0) {
-        const v = checkSelectorList(buffer)
-        if (v !== null) return v
-        buffer = ''
-      }
-      depth++
+    i = skipCssTrivia(css, i)
+    if (i >= css.length) break
+    if (css.charAt(i) === '}') return { violation: null, end: i + 1 }
+
+    const preludeStart = i
+    const header = readCssRuleHeader(css, i)
+    const prelude = css.slice(preludeStart, header.end).trim()
+    i = header.end
+
+    if (header.terminator === ';') {
       i++
       continue
     }
-    if (c === '}') {
-      depth--
-      if (depth === 0) buffer = ''
-      i++
-      continue
-    }
-    if (depth === 0) buffer += c
-    i++
+    if (header.terminator === '}') return { violation: null, end: i + 1 }
+    if (header.terminator !== '{') break
+
+    const rule = classifyCssRule(prelude, parentClassRooted)
+    if (rule.violation !== null) return { violation: rule.violation, end: i }
+    const child = validateCssRuleBlock(css, i + 1, rule.childClassRooted)
+    if (child.violation !== null) return child
+    i = child.end
   }
-  return null
+  return { violation: null, end: i }
+}
+
+function classifyCssRule(
+  prelude: string,
+  parentClassRooted: boolean
+): { violation: string | null; childClassRooted: boolean } {
+  if (prelude === '') return { violation: null, childClassRooted: parentClassRooted }
+  if (prelude.startsWith('@')) {
+    if (/^@keyframes\b/i.test(prelude)) {
+      return { violation: null, childClassRooted: true }
+    }
+    if (/^@scope\b/i.test(prelude)) {
+      const root = extractScopeRoot(prelude)
+      if (root !== null) {
+        const violation = checkSelectorList(root)
+        if (violation !== null) return { violation, childClassRooted: false }
+        return { violation: null, childClassRooted: true }
+      }
+    }
+    return { violation: null, childClassRooted: parentClassRooted }
+  }
+  const violation = parentClassRooted ? null : checkSelectorList(prelude)
+  return {
+    violation,
+    childClassRooted: parentClassRooted || violation === null,
+  }
 }
 
 function checkSelectorList(raw: string): string | null {
   const trimmed = raw.trim()
   if (trimmed === '') return null
-  // Comma-split. Doesn't fully respect parens (`:not(.a, .b)`), good
-  // enough for V1 — common CSS rarely has commas inside top-level
-  // pseudo-class args.
-  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean)
+  const parts = splitSelectorList(trimmed)
   for (const p of parts) {
     if (p.startsWith('.')) continue
     if (p.startsWith(':global(')) continue
+    if (p.startsWith('&')) continue
     if (p.startsWith('@')) continue
     return p
   }
   return null
+}
+
+function splitSelectorList(raw: string): string[] {
+  const out: string[] = []
+  let start = 0
+  let parenDepth = 0
+  let bracketDepth = 0
+  let i = 0
+  while (i < raw.length) {
+    const c = raw.charAt(i)
+    if (c === '"' || c === "'") {
+      i = skipCssString(raw, i)
+      continue
+    }
+    if (c === '(') parenDepth++
+    else if (c === ')' && parenDepth > 0) parenDepth--
+    else if (c === '[') bracketDepth++
+    else if (c === ']' && bracketDepth > 0) bracketDepth--
+    else if (c === ',' && parenDepth === 0 && bracketDepth === 0) {
+      const part = raw.slice(start, i).trim()
+      if (part) out.push(part)
+      start = i + 1
+    }
+    i++
+  }
+  const tail = raw.slice(start).trim()
+  if (tail) out.push(tail)
+  return out
+}
+
+function readCssRuleHeader(
+  css: string,
+  start: number
+): { end: number; terminator: '{' | '}' | ';' | 'eof' } {
+  let parenDepth = 0
+  let bracketDepth = 0
+  let i = start
+  while (i < css.length) {
+    const c = css.charAt(i)
+    if (c === '/' && css.charAt(i + 1) === '*') {
+      const end = css.indexOf('*/', i + 2)
+      if (end < 0) return { end: css.length, terminator: 'eof' }
+      i = end + 2
+      continue
+    }
+    if (c === '"' || c === "'") {
+      i = skipCssString(css, i)
+      continue
+    }
+    if (c === '(') parenDepth++
+    else if (c === ')' && parenDepth > 0) parenDepth--
+    else if (c === '[') bracketDepth++
+    else if (c === ']' && bracketDepth > 0) bracketDepth--
+    else if ((c === '{' || c === '}' || c === ';') && parenDepth === 0 && bracketDepth === 0) {
+      return { end: i, terminator: c }
+    }
+    i++
+  }
+  return { end: i, terminator: 'eof' }
+}
+
+function extractScopeRoot(prelude: string): string | null {
+  const open = prelude.indexOf('(')
+  if (open < 0) return null
+  let depth = 1
+  let i = open + 1
+  while (i < prelude.length && depth > 0) {
+    const c = prelude.charAt(i)
+    if (c === '"' || c === "'") {
+      i = skipCssString(prelude, i)
+      continue
+    }
+    if (c === '(') depth++
+    else if (c === ')') depth--
+    if (depth === 0) return prelude.slice(open + 1, i).trim()
+    i++
+  }
+  return null
+}
+
+function skipCssTrivia(css: string, start: number): number {
+  let i = start
+  while (i < css.length) {
+    if (/\s/.test(css.charAt(i))) {
+      i++
+      continue
+    }
+    if (css.charAt(i) === '/' && css.charAt(i + 1) === '*') {
+      const end = css.indexOf('*/', i + 2)
+      if (end < 0) return css.length
+      i = end + 2
+      continue
+    }
+    break
+  }
+  return i
+}
+
+function skipCssString(css: string, start: number): number {
+  const quote = css.charAt(start)
+  let i = start + 1
+  while (i < css.length && css.charAt(i) !== quote) {
+    if (css.charAt(i) === '\\') i++
+    i++
+  }
+  return i < css.length ? i + 1 : i
 }
 
 // ─── Static-HTML subtree optimization (M6.0) ───────────────────────────────

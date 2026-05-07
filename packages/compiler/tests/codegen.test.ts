@@ -967,6 +967,59 @@ describe('codegen', () => {
     `)).not.toThrow()
   })
 
+  it('M9: selector-list validation respects pseudo-class comma groups', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style { .card:is(.active, .selected) { color: red; } }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    expect(js).toContain(`.card-tu-${hash}:is(.active-tu-${hash}, .selected-tu-${hash})`)
+  })
+
+  it('M9: grouping at-rules still enforce class-rooted style rules', () => {
+    expect(() => compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style {
+          @layer components {
+            .card { color: blue; }
+            p { color: red; }
+          }
+        }
+      }
+    `)).toThrow(/top-level CSS rule must use a class selector/)
+  })
+
+  it('M9: @scope with a class root may contain element selectors', () => {
+    const js = compile(`
+      let App = () => {
+        div(class: .card) { p { "x" } }
+        style {
+          @scope (.card) {
+            p { color: red; }
+          }
+        }
+      }
+    `)
+    const hash = js.match(/-tu-([a-f0-9]{6})/)![1]
+    expect(js).toContain(`@scope (.card-tu-${hash})`)
+  })
+
+  it('M9: @scope with a non-class root is rejected', () => {
+    expect(() => compile(`
+      let App = () => {
+        div(class: .card) { "x" }
+        style {
+          @scope (main) {
+            .card { color: red; }
+          }
+        }
+      }
+    `)).toThrow(/top-level CSS rule must use a class selector/)
+  })
+
   it('M5: lowercase ident in tag-call position remains an HTML tag', () => {
     const js = compile('let App = () => div { "x" }')
     expect(js).toContain('h("div", {}, ["x"])')
