@@ -411,6 +411,9 @@ importers:
       '@tu-lang/dom':
         specifier: workspace:*
         version: link:../packages/dom
+      '@tu-lang/lsp':
+        specifier: workspace:*
+        version: link:../packages/lsp
       '@tu-lang/router':
         specifier: workspace:*
         version: link:../packages/router
