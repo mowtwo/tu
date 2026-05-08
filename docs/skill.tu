@@ -26,10 +26,12 @@ export let Page = () => div {
     ```tu
     // 1. Imports. Sources end in .tu (cross-Tu) or are bare (npm packages).
     import { Fragment } from "@tu-lang/runtime"
+    import { type } from "@tu-lang/std"
     import { Card } from "./Card.tu"
 
-    // 2. Interfaces for object shapes.
+    // 2. Runtime-visible object and error shapes.
     interface Point { x: number; y: number }
+    Exception ValidationError { field: string }
 
     // 3. Module-private cell (top-level `let` → Signal.State<number>).
     let count = 0
@@ -40,7 +42,13 @@ export let Page = () => div {
     // 5. Computed cell (re-derives when its read-cells mutate).
     export let doubled = computed(count * 2)
 
-    // 6. Component (capitalized lambda; not wrapped in a Signal cell).
+    // 6. Components and errors compose with normal control flow.
+    let parsePoint = (raw: unknown): Point ? ValidationError => {
+      if (type.is(raw, Point)) { raw }
+      else { throw ValidationError("Invalid point", { field: "point" }) }
+    }
+
+    // 7. Component (capitalized lambda; not wrapped in a Signal cell).
     export let App = (children: Child[]) => .panel() {
       h1 { "count = " count " (doubled = " doubled ")" }
       button(onClick: () => count = count + 1) { "+1" }
@@ -96,15 +104,17 @@ export let Page = () => div {
 
     A local `let` is a **plain const**, not a Signal cell. It exists for closures, derived values, and small locals. Block bodies with one or more `let`s compile to an IIFE.
 
-    ## Interfaces and type aliases
+    ## Interfaces, aliases, enums, and Exceptions
 
     ```tu
     interface Point { x: number; y: number }
     type RGB = readonly [number, number, number]
+    enum Tone { Neutral, Accent = "accent" }
+    Exception ValidationError { field: string }
     export interface AppProps { children?: Child[] }
     ```
 
-    Use `interface` for object shapes, especially component props and exported data. Use `type` for erased aliases such as tuples or ad hoc unions; the RHS is captured verbatim and emitted into the TS shadow.
+    Use `interface` for object shapes, especially component props and exported data. Interfaces emit both a TS type and a runtime descriptor, so `type.is(value, Point)` performs a structural check and narrows in the LSP/TS shadow. Use `type` for erased aliases such as tuples or ad hoc unions; the RHS is captured verbatim and emitted into the TS shadow. Use `Exception` for structured errors: it creates an Error-compatible factory with a default `message: string`, optional custom fields, stack capture, and a descriptor usable with `type.is`.
 
     ## Values
 
@@ -120,13 +130,19 @@ export let Page = () => div {
     {}                          // EMPTY OBJECT — not an empty block
     ```
 
-    `{` is disambiguated against the block form by lookahead: `{ }`, `{ Ident :`, or `{ String :` triggers an ObjectLit. Anything else (`{ x }`, `{ let y = 1; y }`, `{ tag(...) }`) stays a Block.
+    `{` is disambiguated against the block form by lookahead: `{ }`, `{ Ident :`, `{ String :`, `{ [expr] :`, or `{ ...expr }` triggers an ObjectLit. Anything else (`{ x }`, `{ let y = 1; y }`, `{ tag(...) }`) stays a Block.
 
     **Not yet supported** (don't emit these — see the [Deferred backlog](./DEFERRED)):
 
     - Object shorthand: `{ x }` — write `{ x: x }`
-    - Computed keys: `{ [k]: v }`
-    - Spread: `{ ...rest }`, `[...arr]`
+
+    Supported modern object/array forms:
+
+    ```tu
+    { [key]: value }
+    { ...base, x: 1 }
+    [...items, next]
+    ```
 
     ### Identifiers + member access
 
@@ -263,6 +279,46 @@ export let Page = () => div {
 
     Compiles roughly to `Array.from(items, (item) => …)`. The iterable's tail `{ … }` is the loop body, **not** a tag-call on the iterable (the parser suppresses brace-block parsing inside the iter expression for exactly this reason).
 
+    ### `try` / `catch` / `throw`
+
+    ```tu
+    Exception ValidationError { field: string }
+
+    let loadUser = (raw: unknown): User ? ValidationError => {
+      if (type.is(raw, User)) { raw }
+      else { throw ValidationError("Invalid user", { field: "user" }) }
+    }
+
+    try {
+      loadUser(input)
+    } catch if ValidationError as e {
+      "ValidationError on " + e.field + ": " + e.message
+    } catch e {
+      "Error: " + e.message
+    } finally {
+      cleanup()
+    }
+    ```
+
+    Prefer `catch if SomeError as e` for structured Tu exceptions. The binding is narrowed inside that block. A plain `catch e` is the fallback branch; `e` defaults to Error-like fields, including `message: string`.
+
+    ### Modern JS expression forms
+
+    Tu intentionally supports common JS expression syntax when it does not collide with the language grammar:
+
+    ```tu
+    `Hello ${name}`
+    user?.profile?.name ?? "Anonymous"
+    items[index]
+    { [field]: value, ...base }
+    [...items, next]
+    total += 1
+    await fetchUser(id)
+    import("./plugin.tu")
+    ```
+
+    Still banned in Tu source: `instanceof` (use `type.is(value, T)`), value-position `undefined` (use `null`), ternary `?:`, `++` / `--`, user-defined `class`, and raw `function`.
+
     ## Reactivity
 
     - Top-level `let X = …` (non-lambda, non-`computed(…)`) → `Signal.State<T>`. Reads of `X` inside any expression context emit as `X.get()`. Assignments `X = expr` desugar to `X.set(expr)`.
@@ -314,7 +370,7 @@ export let Page = () => div {
     import { Fragment } from "@tu-lang/runtime"  // npm package
     ```
 
-    V1 supports named imports only. No default imports, no namespace imports.
+    V1 supports named imports and default imports. Namespace imports remain deferred.
 
     ### Re-export
 
@@ -330,15 +386,15 @@ export let Page = () => div {
 
     1. **`{}` is an empty OBJECT, not an empty block.** Write `{ null }` for an empty block.
     2. **Children are whitespace-separated.** Don't write `,` between them: `div { x, y }` parses as `div { (x, y) }` which is not what you want.
-    3. **No shorthand object props yet.** `{ x }` is a Block, not `{ x: x }`. Write the key explicitly.
-    4. **No object shorthand yet.** `{ x }` is a Block, not `{ x: x }`. Computed keys, spread, and indexed access are supported; shorthand remains intentionally absent.
-    5. **`.foo()` after a sibling expression is NOT a method call.** It's pug-shorthand for the next element. `tag1 { x }\n.foo() { y }` parses as two siblings, not one chained call. (Member access `obj.foo` only applies to value-yielding exprs.)
-    6. **Capitalized names are components, lowercase are HTML tags.** `Card { … }` and `card { … }` parse to entirely different things.
-    7. **Style block top-level rules must be class-rooted.** No `body`, `*`, `:root` at the top level (use `:global(...)` if you really need them).
-    8. **An explicit `class:` prop inside a pug-shorthand is an error.** The shorthand already binds class.
-    9. **No `match` / pattern matching.** Removed in M1.11 due to TC39 Pattern Matching collision. Use chained `if / else if / else`.
-    10. **No `function` keyword anywhere.** All functions are arrow-style `(args) => body`.
-    11. **No `class` keyword for OOP.** Tu is immutable-by-default; user-defined types are functions, not classes.
+    3. **No shorthand object props yet.** `{ x }` is a Block, not `{ x: x }`. Write the key explicitly. Computed keys, spread, and indexed access are supported.
+    4. **`.foo()` after a sibling expression is NOT a method call.** It's pug-shorthand for the next element. `tag1 { x }\n.foo() { y }` parses as two siblings, not one chained call. (Member access `obj.foo` only applies to value-yielding exprs.)
+    5. **Capitalized names are components, lowercase are HTML tags.** `Card { … }` and `card { … }` parse to entirely different things.
+    6. **Style block top-level rules must be class-rooted.** No `body`, `*`, `:root` at the top level (use `:global(...)` if you really need them).
+    7. **An explicit `class:` prop inside a pug-shorthand is an error.** The shorthand already binds class.
+    8. **No `match` / pattern matching.** Removed in M1.11 due to TC39 Pattern Matching collision. Use chained `if / else if / else`.
+    9. **No `function` keyword anywhere.** All functions are arrow-style `(args) => body`.
+    10. **No `class` keyword for OOP.** Tu is immutable-by-default; user-defined types are functions, not classes.
+    11. **No `instanceof`.** Use `type.is(value, InterfaceOrDescriptor)` from `@tu-lang/std`; the LSP narrows after successful guards.
     12. **No member access through component-call children results.** `make(n).x` works; `Card(title: "hi") { … }.x` does not (the second is a vnode, not a value).
 
     ## Compilation model (high-level)
@@ -351,7 +407,9 @@ export let Page = () => div {
     4. **Generates** JS/TS via a streaming buffer that records `TokenMapping`s as it emits. Top-level lets become `const X = new Signal.State(…)` / `Signal.Computed(…)` / plain const based on classification. Tag-calls become `h("tag", props, children)`. Component calls stay as real function calls. Pug-shorthand desugars in the AST. ClassRefs emit hashed class strings. Style blocks emit as `<style>` vnode children with the CSS rewritten.
     5. **Source maps** are V3, per-token + per-statement.
 
-    The universal runtime is `@tu-lang/runtime` — `h(tag, props, children)`, `renderToString(node)`, async SSR helpers, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Browser entry points live in `@tu-lang/dom` — `mount(thunk, container)`, `hydrate(thunk, container)`, and `defineCustomElement(...)`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved). Routing lives in `@tu-lang/router` via `createRouter`, `renderRoute`, and `renderRouteToStream`.
+    The universal runtime is `@tu-lang/runtime` — `h(tag, props, children)`, `renderToString(node)`, async SSR helpers, `Fragment(children)`, `Signal.State`, `Signal.Computed`. Browser entry points live in `@tu-lang/dom` — `mount(thunk, container)`, `hydrate(thunk, container)`, and `defineCustomElement(...)`. Standard descriptors, `type.of`, `type.is`, `type.as`, `type.tryFrom`, and time helpers live in `@tu-lang/std`. Mount drives a keyed diff (LIS-based reorder, focus / scroll / `<input>` value preserved). Routing lives in `@tu-lang/router` via `createRouter`, `renderRoute`, and `renderRouteToStream`; the router package source is Tu-native.
+
+    The VS Code extension and browser playground use the same `@tu-lang/lsp` shadow-graph path, so hover and diagnostics should match between local editor and live docs.
 
     ## Testing pattern
 
@@ -390,7 +448,7 @@ export let Page = () => div {
     - Object shorthand `{ x }` in Tu-authored object literals.
     - Per-component fine-grained HMR boundaries.
     - Local reactivity (`let` inside functions remains plain local state).
-    - Router, lifecycle hooks, and ref sugar.
+    - Lifecycle hooks and ref sugar.
     - Qwik-style SSR resumability.
     - HTML-section `await` sugar and `for await`.
 
@@ -411,6 +469,11 @@ export let Page = () => div {
     | `obj.x` (cell) | `obj.get().x` |
     | `obj.x` (param/local) | `obj.x` |
     | `for x in xs { … }` | `Array.from(xs.get(), (x) => …)` |
+    | `type.is(v, User)` | structural runtime check + TS/LSP narrowing |
+    | `catch if ValidationError as e { … }` | `type.is`-guarded catch branch |
+    | `catch e { … }` | fallback catch branch with Error-like `e` |
+    | `` `hi ${name}` `` | JS template literal |
+    | `{ ...base, [k]: v }` | JS object spread + computed key |
 
     ## Related resources
 
@@ -421,7 +484,7 @@ export let Page = () => div {
 
     ---
 
-    *Tu is pre-alpha (`0.1.0-alpha.6` on npm). This skill reflects the language as of 2026-05-07 after M9 enum declarations, named-prop component diagnostics, default exports, async SSR, and modern JS expression compatibility. When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*
+    *Tu is pre-alpha (`0.1.0-alpha.8` on npm). This skill reflects the language as of 2026-05-08 after Tu-native router, shareable playground routes, shared browser/workspace LSP, filtered catch narrowing, runtime type metadata, and modern JS expression compatibility. When in doubt, read [LANGUAGE.md](./LANGUAGE) for the canonical reference, and check the [git log](https://github.com/mowtwo/tu/commits/main) for the latest changes.*
 
   }
 }

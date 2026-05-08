@@ -2,7 +2,7 @@
 
 A reactive UI language. Trailing-closure DSL over HTML / CSS / state, scoped style blocks per component, top-level `let` auto-binds to TC39 Signals, types via TypeScript (Volar pattern), full LSP — hover, completion, goto-definition, rename, diagnostics.
 
-> **Status**: pre-alpha (`0.1.0-alpha.6` on npm). The compiler, runtime, type system, full LSP, SSR (`renderToString` / `hydrate` / `renderPage`), Custom Elements wrapper, [tu-xing UI library](https://www.npmjs.com/package/@tu-lang/tu-xing), [tu-shu SSG](https://www.npmjs.com/package/@tu-lang/tu-shu), and Tailwind compat are all shipped.
+> **Status**: pre-alpha (`0.1.0-alpha.8` on npm). The compiler, runtime, type system, full LSP, SSR (`renderToString` / `hydrate` / `renderPage`), Custom Elements wrapper, [router](https://www.npmjs.com/package/@tu-lang/router), [tu-xing UI library](https://www.npmjs.com/package/@tu-lang/tu-xing), [tu-shu SSG](https://www.npmjs.com/package/@tu-lang/tu-shu), and Tailwind compat are all shipped.
 
 **Docs**: [Language reference](docs/LANGUAGE.md) · [Deferred backlog](docs/DEFERRED.md) · [Examples](examples/) · [Playground](https://mowtwo.github.io/tu/playground/) · [Live docs](https://mowtwo.github.io/tu/)
 
@@ -75,6 +75,10 @@ The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files
 | `Fragment { … }` for multi-root returns | `Fragment { header { … } main { … } }` | ✅ |
 | Local `let` inside a block (plain const) | `() => { let g = "Hi, " + n; p { g } }` | ✅ |
 | Interfaces | `interface Point { x: number; y: number }` | ✅ |
+| Runtime type metadata | `type.is(value, Point)` narrows structurally | ✅ |
+| Structured Exceptions | `Exception ValidationError { field: string }` | ✅ |
+| Filtered catch | `catch if ValidationError as e { e.field } catch e { e.message }` | ✅ |
+| Modern JS expressions | template literals, spread, optional chaining, dynamic import | ✅ |
 | Annotated bindings | `let count: number = 0` (wraps as `Signal.State<number>`) | ✅ |
 | Lambda return-type annotation | `(n: number): Point => { x: n, y: n }` | ✅ |
 | Object literals + member access | `let p = { x: 1 }; p.x` | ✅ |
@@ -82,6 +86,7 @@ The playground (`playground/`) runs Vite over the `examples/*/*.tu` source files
 | Cross-`.tu` imports + re-exports | `import { Card } from "./Card.tu"` | ✅ |
 | `tu check` CLI | type-check `.tu` files with code-frame output | ✅ |
 | LSP — diagnostics, hover, completion, goto-def, rename | `@tu-lang/lsp` + `vscode-tu` | ✅ |
+| Universal router | `createRouter`, `renderRoute`, `renderRouteToStream` | ✅ |
 | SSR | `renderToString(thunk())` | ✅ |
 | Hydration | `hydrate(thunk, container)` (focus / scroll / `<input>` value preserved) | ✅ |
 | Custom Elements wrapper | `defineCustomElement(thunk, "my-tag", { attributes })` | ✅ |
@@ -104,9 +109,9 @@ packages/
 ├── cli/         @tu-lang/cli        tu build / tu dev / tu check / tu fmt
 ├── format/      @tu-lang/format     formatter (Prettier plugin)
 ├── create-tu/   create-tu      project scaffold (npx create-tu-app)
-└── std/         @tu-lang/std        standard library (placeholder)
+└── std/         @tu-lang/std        type metadata, conversions, time helpers
 
-examples/      hello, counter, todo, styled, scoped, clicker, diff, composition, typed, ssr
+examples/      hello, counter, todo, styled, scoped, clicker, diff, composition, typed, types, router, js-compat, ssr
 docs/          LANGUAGE.md, DEFERRED.md
 playground/    Vite app — Tu-rendered chrome over every milestone demo
 ```
@@ -120,7 +125,7 @@ pnpm test        # vitest across compiler, runtime, lsp, cli, vscode
 pnpm check       # tsc --noEmit across packages
 ```
 
-The compiler / runtime / LSP test suite covers ~280 cases across 7 files in `packages/compiler`, plus per-package suites for runtime, lsp, cli, and vscode-tu. The CLI's `tu check` integration test type-checks a real `.tu` file by spinning up the LSP shadow graph + a `ts.LanguageService`.
+The compiler / runtime / LSP test suite covers hundreds of cases across the compiler, runtime, DOM, std, router, LSP, CLI, Vite, formatter, and VS Code packages. The CLI's `tu check` integration test type-checks a real `.tu` file by spinning up the LSP shadow graph + a `ts.LanguageService`.
 
 ### VS Code syntax highlighting + LSP
 

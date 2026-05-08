@@ -7,8 +7,10 @@ export let Page = () => div {
     # Tu Language Reference
 
     A practical reference for every Tu syntactic form that compiles today. Covers
-    the language through the M6.11 line (async / Suspense / streaming SSR) — see
-    [DEFERRED](./DEFERRED) for work still in flight.
+    the current pre-alpha line (`0.1.0-alpha.8`): async / Suspense / streaming
+    SSR, runtime type metadata, structured Exceptions, filtered catches,
+    Tu-native router, and the shared LSP path used by VS Code and the playground.
+    See [DEFERRED](./DEFERRED) for work still in flight.
 
     Tu is a single-pass, expression-oriented language that compiles to a small
     ESM module per `.tu` file. The compiler also emits a TypeScript shadow with
@@ -31,7 +33,9 @@ export let Page = () => div {
     - `interface X { … }` / `export interface X { … }` — object shape
     - `type X = …` / `export type X = …` — erased alias for non-object unions/tuples
     - `enum X { … }` / `export enum X { … }` — frozen value object + TS value-union type
+    - `Exception X { … }` / `export Exception X { … }` — Error-compatible factory + runtime descriptor
     - `import { … } from "./other.tu"` — named import
+    - `import X from "./other.tu"` — default import
     - `export { … } from "./other.tu"` — named re-export
 
     Comments use `//` (line) — there is no block-comment form yet.
@@ -174,6 +178,53 @@ export let Page = () => div {
 
     ---
 
+    ## Exceptions and runtime type metadata
+
+    ```tu
+    import { type } from "@tu-lang/std"
+
+    interface User { id: number; name: string }
+    Exception ValidationError { field: string }
+
+    let parseUser = (raw: unknown): User ? ValidationError => {
+      if (type.is(raw, User)) { raw }
+      else { throw ValidationError("Invalid user", { field: "user" }) }
+    }
+
+    let label = (raw: unknown) => try {
+      parseUser(raw).name
+    } catch if ValidationError as e {
+      "ValidationError on " + e.field + ": " + e.message
+    } catch e {
+      "Error: " + e.message
+    }
+    ```
+
+    Interfaces and Exceptions emit runtime descriptors in addition to TS shadow
+    types. `type.is(value, User)` is a structural runtime check and a TS/LSP type
+    predicate, so values narrow inside guarded blocks. Anonymous object shapes
+    that exactly match a nearby named interface are reused in editor hovers when
+    possible.
+
+    `Exception Name { field: T }` emits an Error-compatible factory. The first
+    argument is always the default `message: string`; the optional second object
+    supplies custom fields. A lambda may declare possible structured throws with
+    `(): Result ? ValidationError | NotFoundError`. The throws clause is
+    documentation and LSP signal; JS output still uses normal `throw`.
+
+    Prefer filtered catches:
+
+    ```tu
+    catch if ValidationError as e { e.field }
+    catch e { e.message }
+    ```
+
+    The fallback `catch e` binding defaults to an Error-like base type with
+    `message: string`. Legacy `catch (e: T)` remains accepted for compatibility,
+    but new code should use `catch if T as e`.
+
+    ---
+
     ## Values
 
     ### Literals
@@ -200,6 +251,22 @@ export let Page = () => div {
     When an object literal appears immediately after `=>` in a lambda body, the
     codegen wraps it in parens (`() => ({ x: 1 })`) so JS doesn't read it as a
     block.
+
+    ### Modern JS expression forms
+
+    ```tu
+    `Hello ${name}`                   // template literal
+    user?.profile?.name ?? "Guest"    // optional chaining + nullish coalesce
+    items[index]                      // indexed access
+    { [field]: value, ...base }       // computed key + object spread
+    [...items, next]                  // array spread
+    total += 1                        // compound assignment
+    await loadUser(id)                // async expressions
+    import("./Plugin.tu")             // dynamic import
+    ```
+
+    Tu supports these JS expression forms where they preserve Tu's grammar
+    shape. `instanceof` is intentionally banned; use `type.is(value, T)`.
 
     ### Identifiers
 
@@ -419,6 +486,25 @@ export let Page = () => div {
     to `Array.from(items, (item) => …)`. The iter-expression's tail `{ … }` is
     NOT treated as a tag-call children block during this parse — the trailing
     brace belongs to the loop body.
+
+    ### `try` / `catch` / `finally`
+
+    ```tu
+    try {
+      risky()
+    } catch if ValidationError as e {
+      e.field
+    } catch e {
+      e.message
+    } finally {
+      cleanup()
+    }
+    ```
+
+    `try` is an expression. Filtered catches lower to a single JS catch with
+    `type.is` dispatch, and the LSP narrows the bound error inside each branch.
+    Use `throw SomeException("message", { field: "x" })` for Tu Exceptions or
+    normal JS `Error` values for fallback errors.
 
     ---
 
@@ -677,11 +763,12 @@ export let Page = () => div {
 
     ```tu
     import { Card, Header } from "./Card.tu"
+    import App from "./App.tu"
     ```
 
-    Relative `.tu` paths are resolved by the compiler. The import maps to a
-    standard ESM `import` in the JS output (and `.ts` extension in the TS
-    shadow so tsserver resolves the sibling shadow file).
+    Relative `.tu` paths are resolved by the compiler. Named and default
+    imports map to standard ESM `import` in the JS output (and `.ts` extension
+    in the TS shadow so tsserver resolves the sibling shadow file).
 
     ### Re-export
 
@@ -724,8 +811,9 @@ export let Page = () => div {
 
     The TS shadow looks like normal TypeScript: `Signal.State<T>` cells,
     `Signal.Computed<T>` cells, function lambdas with declared param types,
-    interfaces, `type X = …` aliases, and (for exported lambdas with all-typed params) a
-    synthesized `interface ${Name}Props { … }`.
+    interfaces with typed runtime descriptors, `Exception` factories, `type X = …`
+    aliases, and (for exported lambdas with all-typed params) a synthesized
+    `interface ${Name}Props { … }`.
 
     `tu check <file>` runs the shadow through tsserver and pretty-prints
     diagnostics back at the `.tu` source. The `@tu-lang/lsp` package exposes the
@@ -751,6 +839,25 @@ export let Page = () => div {
       patches are deeper rework.
     - **Style ↔ JS state interop** — design pending; cells don't auto-bind to CSS variables yet.
     - **Qwik-style resumability** — hydrate re-runs the first-frame thunk; serialized listener references are future work.
+
+    ## Recent landed features
+
+    - **Tu-native `@tu-lang/router`** — static, dynamic (`:id`), and catch-all
+      (`*slug`) matching; deployment-base stripping; query parsing; fallback
+      handlers; and SSR helpers. The playground now uses shareable URLs such as
+      `/tu/playground/types`.
+    - **Shared browser/workspace LSP** — VS Code and the live playground editor
+      use the same `@tu-lang/lsp` shadow-graph implementation for diagnostics,
+      hover, completion, definition, references, and rename.
+    - **Runtime type metadata** — `interface` and `Exception` declarations emit
+      descriptors consumed by `type.of`, `type.is`, `type.as`, and `type.tryFrom`.
+      `type.is` narrows in editor hovers and TS diagnostics.
+    - **Filtered catch narrowing** — `catch if ValidationError as e` narrows `e`
+      to the matching Exception, and `catch e` falls back to an Error-like base.
+    - **Modern JS expression compatibility** — template literals, optional
+      chaining, nullish coalescing, indexed access, spread, computed object keys,
+      dynamic import, async/await, compound assignment, exponentiation, and
+      bitwise operators are supported.
 
     ## What landed in M6.11 (async + SSR)
 
