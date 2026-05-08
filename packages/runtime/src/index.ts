@@ -8,6 +8,8 @@ export type Child =
   | VNode
   | string
   | number
+  | boolean
+  | bigint
   | null
   | undefined
   | Child[]
@@ -240,7 +242,7 @@ export function Fragment(children: Child[]): Child {
 export function renderToString(node: Child): string {
   if (node == null) return ''
   if (typeof node === 'string') return escapeText(node)
-  if (typeof node === 'number') return String(node)
+  if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
   if (Array.isArray(node)) {
     let out = ''
     for (const c of node) out += renderToString(c)
@@ -385,7 +387,7 @@ export function renderPageHtml(bodyHtml: string, options: RenderPageOptions = {}
 export async function renderToStringAsync(node: Child): Promise<string> {
   if (node == null) return ''
   if (typeof node === 'string') return escapeText(node)
-  if (typeof node === 'number') return String(node)
+  if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
   if (isPromise(node)) {
     // Cast through Child — the promise's fulfillment type is `unknown`
     // because `isPromise` returns `Promise<unknown>` (TS forbids the
@@ -457,7 +459,7 @@ async function renderVNodeAsync(node: VNode): Promise<string> {
 async function renderRawTextChildAsync(node: Child): Promise<string> {
   if (node == null) return ''
   if (typeof node === 'string') return node
-  if (typeof node === 'number') return String(node)
+  if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
   if (isPromise(node)) {
     const resolved = (await (node as Promise<unknown>)) as Child
     return renderRawTextChildAsync(resolved)
@@ -590,7 +592,7 @@ class ShellRenderer {
   walk(node: Child): string {
     if (node == null) return ''
     if (typeof node === 'string') return escapeText(node)
-    if (typeof node === 'number') return String(node)
+    if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
     if (Array.isArray(node)) {
       let out = ''
       for (const c of node) out += this.walk(c)
@@ -647,7 +649,7 @@ class ShellRenderer {
   private walkRaw(node: Child): string {
     if (node == null) return ''
     if (typeof node === 'string') return node
-    if (typeof node === 'number') return String(node)
+    if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
     if (Array.isArray(node)) {
       let out = ''
       for (const c of node) out += this.walkRaw(c)
@@ -755,7 +757,7 @@ export function renderToStream(
 function renderRawTextChild(node: Child): string {
   if (node == null) return ''
   if (typeof node === 'string') return node
-  if (typeof node === 'number') return String(node)
+  if (typeof node === 'number' || typeof node === 'boolean' || typeof node === 'bigint') return String(node)
   if (Array.isArray(node)) {
     let out = ''
     for (const c of node) out += renderRawTextChild(c)

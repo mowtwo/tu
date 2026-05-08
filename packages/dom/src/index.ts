@@ -106,7 +106,7 @@ const STATIC_TAG = '$static'
 
 // ── Internal instance shapes (DOM-side only) ──────────────────────
 
-type NormalizedChild = VNode | string | number
+type NormalizedChild = VNode | string | number | boolean | bigint
 
 interface ElInstance {
   kind: 'el'
@@ -334,7 +334,7 @@ function flattenInto(out: NormalizedChild[], c: Child): void {
     out.push(c)
     return
   }
-  if (typeof c === 'number') {
+  if (typeof c === 'number' || typeof c === 'boolean' || typeof c === 'bigint') {
     out.push(c)
     return
   }

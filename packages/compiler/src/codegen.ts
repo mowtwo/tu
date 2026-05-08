@@ -12,6 +12,7 @@ import type {
   Expr,
   ForExpr,
   ExceptionDecl,
+  Ident,
   IfExpr,
   InterfaceDecl,
   Lambda,
@@ -280,9 +281,13 @@ function renderPropsTypeText(fields: ReadonlyArray<{ name: string; rawType: stri
   if (fields.length === 0) return '{}'
   const parts = fields.map((f) => {
     const opt = f.optional ? '?' : ''
-    return `${f.name}${opt}: ${f.rawType.trim()}`
+    return `${f.name}${opt}: ${tsTypeText(f.rawType)}`
   })
   return `{ ${parts.join('; ')} }`
+}
+
+function tsTypeText(raw: string): string {
+  return raw.trim().replace(/\bEvent\b/g, '__TuEvent')
 }
 
 /**
@@ -732,6 +737,10 @@ function buildBody(program: Program, tsMode: boolean, opts?: CodegenOptions): Bu
     inferredParamTypes
   )
   cg.write(`${runtimeImportLine(tsMode)}\n`)
+  if (tsMode) {
+    cg.write('type __TuEventTarget = { value: string }\n')
+    cg.write('type __TuEvent = { target: __TuEventTarget; currentTarget?: __TuEventTarget; preventDefault(): void; stopPropagation(): void }\n')
+  }
   // Auto-import the M8 type API when this module:
   // (a) declares an `interface` (compiles to `type.struct(…)`), or
   // (b) declares an `Exception` (compiles to `type.native(…)`), or
@@ -2023,6 +2032,8 @@ function collectCallsFromChild(child: Child, visit: (call: CallExpr) => void): v
 class Codegen {
   /** Stack of binding-name sets shadowing top-level cells (innermost last). */
   private readonly shadowed: Set<string>[] = []
+  /** Stack of stable aliases for narrowed top-level cell reads. */
+  private readonly cellReadAliases: Map<string, string>[] = []
   /** Stack of scoped-component contexts pushed at LetDecl emit time. */
   private readonly scopes: ScopeCtx[] = []
   /** Streaming output buffer. */
@@ -2095,7 +2106,7 @@ class Codegen {
       this.write(`${prefix} `)
       this.mark(stmt.nameStart, stmt.nameEnd, () => this.write(stmt.name))
       this.write(' = ')
-      this.mark(stmt.typeStart, stmt.typeEnd, () => this.write(stmt.type))
+      this.mark(stmt.typeStart, stmt.typeEnd, () => this.write(tsTypeText(stmt.type)))
       return
     }
     if (stmt.kind === 'InterfaceDecl') {
@@ -2157,9 +2168,9 @@ class Codegen {
           this.mark(p.nameStart, p.nameEnd, () => this.write(p.name))
           this.write('?: ')
           if (p.typeStart !== undefined && p.typeEnd !== undefined) {
-            this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+            this.mark(p.typeStart, p.typeEnd, () => this.write(tsTypeText(p.type!)))
           } else {
-            this.write(p.type!)
+            this.write(tsTypeText(p.type!))
           }
         }
         if (!hasOwnChildren) {
@@ -2187,24 +2198,24 @@ class Codegen {
         if (preWrapped || kind === 'function') {
           this.write(': ')
           if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
-            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(tsTypeText(decl.type!)))
           } else {
-            this.write(decl.type)
+            this.write(tsTypeText(decl.type))
           }
         } else if (kind === 'computed') {
           this.write(': Signal.Computed<')
           if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
-            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(tsTypeText(decl.type!)))
           } else {
-            this.write(decl.type)
+            this.write(tsTypeText(decl.type))
           }
           this.write('>')
         } else {
           this.write(': Signal.State<')
           if (decl.typeStart !== undefined && decl.typeEnd !== undefined) {
-            this.mark(decl.typeStart, decl.typeEnd, () => this.write(decl.type!))
+            this.mark(decl.typeStart, decl.typeEnd, () => this.write(tsTypeText(decl.type!)))
           } else {
-            this.write(decl.type)
+            this.write(tsTypeText(decl.type))
           }
           this.write('>')
         }
@@ -2516,9 +2527,9 @@ class Codegen {
         if (p.optional) this.write('?')
         this.write(': ')
         if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
-          this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+          this.mark(p.typeStart, p.typeEnd, () => this.write(tsTypeText(p.type!)))
         } else {
-          this.write(p.type ?? 'unknown')
+          this.write(p.type !== undefined ? tsTypeText(p.type) : 'unknown')
         }
       }
     }
@@ -2526,9 +2537,9 @@ class Codegen {
     if (this.tsMode && node.returnType !== undefined) {
       this.write(': ')
       if (node.returnTypeStart !== undefined && node.returnTypeEnd !== undefined) {
-        this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(node.returnType!))
+        this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(tsTypeText(node.returnType!)))
       } else {
-        this.write(node.returnType)
+        this.write(tsTypeText(node.returnType))
       }
     }
     this.write(' => {')
@@ -2767,6 +2778,28 @@ class Codegen {
    *  `allowReturn: false` since the parent context already discards
    *  the value. */
   private emitIfStatement(node: IfExpr): void {
+    const guard = this.makeCellNullishGuard(node.cond)
+    if (guard !== null) {
+      this.write('{ const ')
+      this.write(guard.alias)
+      this.write(' = ')
+      this.mark(guard.nameStart, guard.nameEnd, () => this.write(guard.name))
+      this.write('.get(); if (')
+      this.emitCellNullishGuardCondition(guard)
+      this.write(') ')
+      this.withCellReadAlias(guard.nonNullBranch === 'then' ? guard.name : null, guard.alias, () => {
+        this.emitBlockStatementBody(node.then, /*allowReturn*/ false)
+      })
+      if (node.else !== undefined) {
+        this.write(' else ')
+        this.withCellReadAlias(guard.nonNullBranch === 'else' ? guard.name : null, guard.alias, () => {
+          if (node.else!.kind === 'IfExpr') this.emitIfStatement(node.else as IfExpr)
+          else this.emitBlockStatementBody(node.else as Block, /*allowReturn*/ false)
+        })
+      }
+      this.write(' }\n')
+      return
+    }
     this.write('if (')
     this.emitExpr(node.cond)
     this.write(') ')
@@ -2929,9 +2962,9 @@ class Codegen {
           if (p.optional) this.write('?')
           this.write(': ')
           if (p.type !== undefined && p.typeStart !== undefined && p.typeEnd !== undefined) {
-            this.mark(p.typeStart, p.typeEnd, () => this.write(p.type!))
+            this.mark(p.typeStart, p.typeEnd, () => this.write(tsTypeText(p.type!)))
           } else {
-            this.write(p.type ?? inferred ?? 'unknown')
+            this.write(p.type !== undefined ? tsTypeText(p.type) : inferred ?? 'unknown')
           }
         }
       }
@@ -2939,9 +2972,9 @@ class Codegen {
       if (this.tsMode && node.returnType !== undefined) {
         this.write(': ')
         if (node.returnTypeStart !== undefined && node.returnTypeEnd !== undefined) {
-          this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(node.returnType!))
+          this.mark(node.returnTypeStart, node.returnTypeEnd, () => this.write(tsTypeText(node.returnType!)))
         } else {
-          this.write(node.returnType)
+          this.write(tsTypeText(node.returnType))
         }
       }
       this.write(' => ')
@@ -3151,9 +3184,9 @@ class Codegen {
     if (this.tsMode && node.type !== undefined) {
       this.write(': ')
       if (node.typeStart !== undefined && node.typeEnd !== undefined) {
-        this.mark(node.typeStart, node.typeEnd, () => this.write(node.type!))
+        this.mark(node.typeStart, node.typeEnd, () => this.write(tsTypeText(node.type!)))
       } else {
-        this.write(node.type)
+        this.write(tsTypeText(node.type))
       }
     }
     this.write(' = ')
@@ -3225,7 +3258,7 @@ class Codegen {
         this.mark(f.nameStart, f.nameEnd, () => this.write(f.name))
         if (f.optional) this.write('?')
         this.write(': ')
-        this.mark(f.typeStart, f.typeEnd, () => this.write(f.rawType.trim()))
+        this.mark(f.typeStart, f.typeEnd, () => this.write(tsTypeText(f.rawType)))
       }
       this.write(node.fields.length > 0 ? '\n}\n' : '}\n')
     }
@@ -3298,7 +3331,7 @@ class Codegen {
         this.mark(f.nameStart, f.nameEnd, () => this.write(f.name))
         if (f.optional) this.write('?')
         this.write(': ')
-        this.mark(f.typeStart, f.typeEnd, () => this.write(f.rawType.trim()))
+        this.mark(f.typeStart, f.typeEnd, () => this.write(tsTypeText(f.rawType)))
       }
       this.write(node.fields.length > 0 ? '\n}\n' : '}\n')
     }
@@ -3374,7 +3407,7 @@ class Codegen {
     this.write(`const ${tmp}`)
     if (this.tsMode && node.type !== undefined) {
       this.write(': ')
-      this.mark(node.typeStart!, node.typeEnd!, () => this.write(node.type!))
+      this.mark(node.typeStart!, node.typeEnd!, () => this.write(tsTypeText(node.type!)))
     }
     this.write(' = ')
     this.emitExpr(node.value)
@@ -3556,6 +3589,29 @@ class Codegen {
   }
 
   private emitIfExpr(node: IfExpr): void {
+    const guard = this.makeCellNullishGuard(node.cond)
+    if (guard !== null) {
+      this.write('((() => { const ')
+      this.write(guard.alias)
+      this.write(' = ')
+      this.mark(guard.nameStart, guard.nameEnd, () => this.write(guard.name))
+      this.write('.get(); return (')
+      this.emitCellNullishGuardCondition(guard)
+      this.write(' ? ')
+      this.withCellReadAlias(guard.nonNullBranch === 'then' ? guard.name : null, guard.alias, () => {
+        this.emitExpr(node.then)
+      })
+      this.write(' : ')
+      if (node.else === undefined) {
+        this.write('undefined')
+      } else {
+        this.withCellReadAlias(guard.nonNullBranch === 'else' ? guard.name : null, guard.alias, () => {
+          this.emitExpr(node.else as Expr)
+        })
+      }
+      this.write('); })())')
+      return
+    }
     this.write('(')
     this.emitExpr(node.cond)
     this.write(' ? ')
@@ -3624,6 +3680,13 @@ class Codegen {
    * and shouldn't be highlighted by diagnostics.
    */
   private emitIdentRead(name: string, srcStart: number, srcEnd: number): void {
+    for (let i = this.cellReadAliases.length - 1; i >= 0; i--) {
+      const alias = this.cellReadAliases[i]?.get(name)
+      if (alias !== undefined) {
+        this.mark(srcStart, srcEnd, () => this.write(alias))
+        return
+      }
+    }
     for (let i = this.shadowed.length - 1; i >= 0; i--) {
       if (this.shadowed[i]?.has(name)) {
         this.mark(srcStart, srcEnd, () => this.write(name))
@@ -3638,6 +3701,65 @@ class Codegen {
     }
     this.mark(srcStart, srcEnd, () => this.write(name))
   }
+
+  private withCellReadAlias(name: string | null, alias: string, fn: () => void): void {
+    if (name === null) {
+      fn()
+      return
+    }
+    this.cellReadAliases.push(new Map([[name, alias]]))
+    try {
+      fn()
+    } finally {
+      this.cellReadAliases.pop()
+    }
+  }
+
+  private makeCellNullishGuard(cond: Expr): CellNullishGuard | null {
+    if (cond.kind !== 'BinaryExpr') return null
+    if (cond.op !== '!=' && cond.op !== '==') return null
+    const left = cond.left
+    const right = cond.right
+    let cell: Ident | null = null
+    let nullish: Ident | null = null
+    if (left.kind === 'Ident' && right.kind === 'Ident' && isNullishIdent(right) && this.isStateOrComputedCell(left.name)) {
+      cell = left
+      nullish = right
+    } else if (left.kind === 'Ident' && right.kind === 'Ident' && isNullishIdent(left) && this.isStateOrComputedCell(right.name)) {
+      cell = right
+      nullish = left
+    }
+    if (cell === null || nullish === null) return null
+    return {
+      name: cell.name,
+      nameStart: cell.start,
+      nameEnd: cell.end,
+      alias: `__tu_${cell.name}_guard_${this.tokenMappings.length}`,
+      op: cond.op,
+      nullishText: nullish.name as 'null' | 'undefined',
+      nonNullBranch: cond.op === '!=' ? 'then' : 'else',
+    }
+  }
+
+  private emitCellNullishGuardCondition(guard: CellNullishGuard): void {
+    this.write(guard.alias)
+    this.write(guard.op === '!=' ? ' !== ' : ' === ')
+    this.write(guard.nullishText)
+  }
+}
+
+interface CellNullishGuard {
+  name: string
+  nameStart: number
+  nameEnd: number
+  alias: string
+  op: '!=' | '=='
+  nullishText: 'null' | 'undefined'
+  nonNullBranch: 'then' | 'else'
+}
+
+function isNullishIdent(expr: Ident): boolean {
+  return expr.name === 'null' || expr.name === 'undefined'
 }
 
 // ─── AST walkers (scope analysis) ──────────────────────────────────────────

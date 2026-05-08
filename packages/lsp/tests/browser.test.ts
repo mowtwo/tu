@@ -42,4 +42,16 @@ describe('browser LSP workspace adapter', () => {
 
     expect(diags.map((d) => d.message)).toEqual([])
   })
+
+  it('accepts common input event target value access in live-editor cases', () => {
+    const source = [
+      'let draft = ""',
+      'let onInput = (e: Event) => draft = e.target.value',
+      'export let App = () => input(value: draft, onInput: onInput)',
+    ].join('\n')
+
+    const diags = diagnosticsAtTuBrowserFile([{ path: '/todo/App.tu', source }], '/todo/App.tu')
+
+    expect(diags.map((d) => d.message)).toEqual([])
+  })
 })

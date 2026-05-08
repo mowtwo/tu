@@ -910,9 +910,9 @@ interface ObjectConstructor { keys(o: object): string[]; defineProperty(o: objec
 declare var Object: ObjectConstructor
 interface JSON { parse(text: string): unknown; stringify(value: unknown): string }
 declare var JSON: JSON
-interface Event { target: EventTarget | null }
-interface EventTarget {}
-interface HTMLElement extends EventTarget { value?: string }
+interface Event { target: HTMLElement; currentTarget?: HTMLElement }
+interface EventTarget { value: string }
+interface HTMLElement extends EventTarget { value: string }
 declare function String(value: unknown): string
 declare function Number(value: unknown): number
 declare function Boolean(value: unknown): boolean
@@ -929,7 +929,7 @@ function runtimeDts(): string {
   return `
 declare module '@tu-lang/runtime' {
   export interface VNode { tag: string; props: Record<string, unknown>; children: Child[]; html?: string }
-  export type Child = VNode | string | number | null | undefined | Child[] | Promise<Child>
+  export type Child = VNode | string | number | boolean | bigint | null | undefined | Child[] | Promise<Child>
   export function h(tag: string, props?: Record<string, unknown>, children?: Child[], html?: string): VNode
   export namespace Signal {
     class State<T> { constructor(value: T); get(): T; set(value: T): void }

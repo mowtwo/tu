@@ -55,6 +55,8 @@ describe('@tu-lang/runtime', () => {
   it('renderToString returns text for primitives', () => {
     expect(renderToString('hi')).toBe('hi')
     expect(renderToString(42)).toBe('42')
+    expect(renderToString(true)).toBe('true')
+    expect(renderToString(false)).toBe('false')
     expect(renderToString(null)).toBe('')
     expect(renderToString(undefined)).toBe('')
   })

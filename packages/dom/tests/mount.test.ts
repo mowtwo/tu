@@ -27,6 +27,13 @@ describe('mount()', () => {
     stop()
   })
 
+  it('renders boolean children as text', () => {
+    const root = dom.window.document.getElementById('root')!
+    const stop = mount(() => h('p', {}, [true, ' / ', false]), root)
+    expect(root.innerHTML).toBe('<p>true / false</p>')
+    stop()
+  })
+
   it('M9: class accepts an array — flattens to a space-joined string', () => {
     const root = dom.window.document.getElementById('root')!
     const stop = mount(

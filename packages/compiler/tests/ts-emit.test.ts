@@ -554,11 +554,30 @@ describe.skipIf(!tscAvailable)('tsc accepts compileToTS output (M2 type erasure 
     `)
   })
 
+  it('M9: typechecks boolean children', () => {
+    check(`
+      export let App = (ok: boolean) => p { "ok = " ok }
+    `)
+  })
+
   it('M8: typechecks `interface User { … }` + typed `let alice: User = {…}` end-to-end', () => {
     check(`
       interface User { id: number; name: string }
       let alice: User = { id: 1, name: "Alice" }
       export let App = () => p { alice.name }
+    `)
+  })
+
+  it('M9: narrows top-level cell reads after a null guard', () => {
+    check(`
+      interface User { id: number; name: string }
+      let bob: User | null = { id: 1, name: "Bob" }
+      export let App = () => if (bob != null) {
+        div {
+          p { bob.id }
+          p { bob.name }
+        }
+      }
     `)
   })
 
