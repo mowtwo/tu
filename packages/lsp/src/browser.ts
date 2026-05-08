@@ -116,14 +116,18 @@ export function hoverAtTuBrowserPosition(
   if (!mapped) return null
   const info = session.service.getQuickInfoAtPosition(session.rootShadow.virtualPath, mapped.tsOffset)
   if (!info) return null
-  const rawContents = ts.displayPartsToString(info.displayParts)
+  const sourceToken = root.slice(mapped.tokenSrcStart, mapped.tokenSrcEnd)
+  const rawContents = sanitizeSyntheticGuardHover(
+    ts.displayPartsToString(info.displayParts),
+    sourceToken
+  )
   const contents = replaceAnonymousObjectTypes(
     rawContents,
     session.shadows,
     session.rootShadow.tuPath,
     mapped.tokenSrcStart,
     session.rootShadow.ast,
-    root.slice(mapped.tokenSrcStart, mapped.tokenSrcEnd)
+    sourceToken
   )
   let documentation = info.documentation?.length
     ? ts.displayPartsToString(info.documentation)
@@ -138,6 +142,14 @@ export function hoverAtTuBrowserPosition(
     col: lc.col - 1,
     length: Math.max(1, mapped.tokenSrcEnd - mapped.tokenSrcStart),
   }
+}
+
+function sanitizeSyntheticGuardHover(contents: string, sourceToken: string): string {
+  if (!/^[A-Za-z_$][\w$]*$/.test(sourceToken)) return contents
+  return contents.replace(
+    /\b(const|let)\s+__tu_[A-Za-z_$][\w$]*_guard_\d+(\s*:)/g,
+    `$1 ${sourceToken}$2`
+  )
 }
 
 export function completionsAtTuBrowserPosition(

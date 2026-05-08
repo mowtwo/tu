@@ -54,4 +54,25 @@ describe('browser LSP workspace adapter', () => {
 
     expect(diags.map((d) => d.message)).toEqual([])
   })
+
+  it('hides synthetic cell null-guard aliases in browser hover', () => {
+    const source = [
+      'interface User { id: number; name: string }',
+      'let bob: User | null = { id: 1, name: "Bob" }',
+      'export let App = () => if (bob != null) {',
+      '  div {',
+      '    p { "bob.id = " bob.id }',
+      '  }',
+      '}',
+    ].join('\n')
+    const line = 4
+    const col = source.split('\n')[line]!.lastIndexOf('bob')
+
+    const info = hoverAtTuBrowserPosition([{ path: '/types/App.tu', source }], '/types/App.tu', line, col)
+
+    expect(info).not.toBeNull()
+    expect(info!.contents).toContain('bob')
+    expect(info!.contents).toContain('User')
+    expect(info!.contents).not.toContain('__tu_bob_guard')
+  })
 })

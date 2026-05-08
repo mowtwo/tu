@@ -74,8 +74,11 @@ export function hoverAtTuPosition(
   )
   if (!quickInfo) return null
 
-  const rawContents = ts.displayPartsToString(quickInfo.displayParts)
   const sourceToken = session.rootShadow.tuSource.slice(mapped.tokenSrcStart, mapped.tokenSrcEnd)
+  const rawContents = sanitizeSyntheticGuardHover(
+    ts.displayPartsToString(quickInfo.displayParts),
+    sourceToken
+  )
   const contents = replaceAnonymousObjectTypes(
     rawContents,
     session.shadows,
@@ -108,6 +111,14 @@ export function hoverAtTuPosition(
   }
   if (documentation !== undefined) result.documentation = documentation
   return result
+}
+
+function sanitizeSyntheticGuardHover(contents: string, sourceToken: string): string {
+  if (!/^[A-Za-z_$][\w$]*$/.test(sourceToken)) return contents
+  return contents.replace(
+    /\b(const|let)\s+__tu_[A-Za-z_$][\w$]*_guard_\d+(\s*:)/g,
+    `$1 ${sourceToken}$2`
+  )
 }
 
 /**

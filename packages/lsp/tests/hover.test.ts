@@ -283,4 +283,23 @@ describe('hoverAtTuPosition — quick info at a .tu cursor position', () => {
     expect(info!.contents).toContain('field')
     expect(info!.contents).toContain('string')
   })
+
+  it('M9: hover hides synthetic cell null-guard aliases', () => {
+    const lines = [
+      'interface User { id: number; name: string }',
+      'let bob: User | null = { id: 1, name: "Bob" }',
+      'export let App = () => if (bob != null) {',
+      '  div {',
+      '    p { "bob.id = " bob.id }',
+      '  }',
+      '}',
+    ]
+    const src = lines.join('\n')
+    const col = lines[4]!.lastIndexOf('bob')
+    const info = hoverAtTuPosition(src, join(tmp, 'guard-cell.tu'), 4, col)
+    expect(info).not.toBeNull()
+    expect(info!.contents).toContain('bob')
+    expect(info!.contents).toContain('User')
+    expect(info!.contents).not.toContain('__tu_bob_guard')
+  })
 })
